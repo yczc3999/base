@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+
+# 环境变量
+.env
+!.env.example
+
+# 编译输出
+dist/
+generated/
+
+# 日志
+logs/
+*.log
+
+# 编辑器
+.idea/
+.vscode/
+.roomodes
+
+# 系统文件
+.DS_Store
+
+# 压缩包（参考用，不入库）
+*.tar.gz

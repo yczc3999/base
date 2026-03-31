@@ -1,0 +1,15 @@
+# 依赖目录（体积大，无需分析）
+node_modules/
+
+# Prisma 生成代码（自动生成，无需阅读）
+src/models/generated/
+
+# 编译输出
+dist/
+
+# 日志
+logs/
+*.log
+
+# 测试覆盖率
+coverage/
