@@ -34,7 +34,7 @@ class SettingLogic(BaseLogic):
             if row.category not in data:
                 data[row.category] = {}
             data[row.category][row.name] = row.value
-        await cache_set(SETTINGS_CACHE_KEY, data)
+        await cache_set(SETTINGS_CACHE_KEY, data, ttl=300)  # 5 分钟兜底过期
         return data
 
     async def set_many(self, db: AsyncSession, items: dict):

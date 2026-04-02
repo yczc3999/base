@@ -30,7 +30,8 @@ class QiniuDriver(BaseDriver):
             return ""
 
         # 生成上传 token
-        policy = json.dumps({"scope": f"{bucket}:{path}", "deadline": int(__import__('time').time()) + 3600})
+        import time as _time
+        policy = json.dumps({"scope": f"{bucket}:{path}", "deadline": int(_time.time()) + 600})  # 10 分钟过期
         encoded_policy = base64.urlsafe_b64encode(policy.encode()).decode()
         sign = base64.urlsafe_b64encode(
             hmac.new(sk.encode(), encoded_policy.encode(), hashlib.sha1).digest()
@@ -49,7 +50,8 @@ class QiniuDriver(BaseDriver):
             f"Content-Type: application/octet-stream\r\n\r\n"
         ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
 
-        req = Request("https://up.qiniup.com/", data=body, method="POST")
+        upload_url = self._get("upload_url") or "https://up.qiniup.com/"
+        req = Request(upload_url, data=body, method="POST")
         req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
 
         try:

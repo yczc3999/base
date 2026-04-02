@@ -43,8 +43,15 @@ class AssignRolesDto(BaseModel):
 
 @router.post("/user/login")
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
-    ip = request.client.host if request.client else ""
+    from app.utils.rate_limit import check_rate_limit
+    from app.utils.helpers import get_client_ip
+
+    ip = get_client_ip(request)
     ua = request.headers.get("user-agent", "")
+
+    # 登录限速：同 IP 5 分钟内最多 10 次
+    if not await check_rate_limit(f"login:{ip}", max_attempts=10, window=300):
+        return fail("请求过于频繁，请稍后再试", 429)
 
     user = await admin_user_logic.verify_login(db, dto.username, dto.password)
     if not user:

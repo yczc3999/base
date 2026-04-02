@@ -362,7 +362,14 @@ class BaseLogic:
     # ==================== 生命周期钩子（子类覆写） ====================
 
     def format_save_data(self, data: dict, is_update: bool = False) -> dict:
-        """入库前格式化（移除空字符串字段等）"""
+        """
+        入库前格式化
+
+        创建时：移除空字符串字段（不写入默认值以外的空值）
+        编辑时：保留空字符串（允许用户清空字段）
+        """
+        if is_update:
+            return data
         return {k: v for k, v in data.items() if v != ""}
 
     def before_create(self, data: dict) -> dict:

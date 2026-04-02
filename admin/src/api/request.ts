@@ -32,9 +32,8 @@ function hideLoading() {
   }
 }
 
-// ── refresh 锁 ──
-let isRefreshing = false
-let pendingRequests: Array<(token: string) => void> = []
+// ── refresh 锁（Promise 共享方案，解决并发 401 卡死问题）──
+let refreshPromise: Promise<string | null> | null = null
 
 async function doRefresh(): Promise<string | null> {
   const refreshToken = getRefreshToken()
@@ -49,6 +48,13 @@ async function doRefresh(): Promise<string | null> {
     }
   } catch {}
   return null
+}
+
+function getRefreshPromise(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = doRefresh().finally(() => { refreshPromise = null })
+  }
+  return refreshPromise
 }
 
 // ── 请求拦截器 ──
@@ -84,35 +90,16 @@ async function request<T = any>(
       return res.data
     }
 
-    // 401 — 尝试 refresh
+    // 401 — 所有并发请求共享同一个 refresh Promise
     if (res.code === 401 && retry) {
-      if (!isRefreshing) {
-        isRefreshing = true
-        const newToken = await doRefresh()
-        isRefreshing = false
-
-        if (newToken) {
-          // 重试所有等待的请求
-          pendingRequests.forEach((cb) => cb(newToken))
-          pendingRequests = []
-          // 重试当前请求
-          config.headers = { ...config.headers, Authorization: `Bearer ${newToken}` }
-          return request<T>(config, { ...options, retry: false })
-        } else {
-          // refresh 也失败了，清除登录态
-          clearTokens()
-          pendingRequests = []
-          window.location.hash = '#/login'
-          throw new Error('请登录')
-        }
+      const newToken = await getRefreshPromise()
+      if (newToken) {
+        config.headers = { ...config.headers, Authorization: `Bearer ${newToken}` }
+        return request<T>(config, { ...options, retry: false })
       } else {
-        // 正在刷新中，排队等待
-        return new Promise((resolve) => {
-          pendingRequests.push((token: string) => {
-            config.headers = { ...config.headers, Authorization: `Bearer ${token}` }
-            resolve(request<T>(config, { ...options, retry: false }))
-          })
-        })
+        clearTokens()
+        window.location.hash = '#/login'
+        throw new Error('请登录')
       }
     }
 

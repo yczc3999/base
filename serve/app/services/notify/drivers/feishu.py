@@ -44,6 +44,7 @@ class FeishuDriver(BaseDriver):
         payload = json.dumps(payload_dict).encode()
         req = Request(webhook, data=payload, method="POST")
         req.add_header("Content-Type", "application/json")
+        req.add_header("User-Agent", "BasePlatform/1.0")
 
         try:
             ctx = ssl.create_default_context()
