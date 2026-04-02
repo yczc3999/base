@@ -64,6 +64,7 @@
       </div>
       <div class="toolbar-right">
         <span class="total-text">共 {{ crud.total.value }} 条</span>
+        <el-button :icon="RefreshIcon" @click="crud.getList" title="刷新" />
       </div>
     </div>
 
@@ -322,6 +323,7 @@ defineExpose({ crud })
   align-items: center;
 
   .toolbar-left { display: flex; gap: 8px; }
+  .toolbar-right { display: flex; align-items: center; gap: 10px; }
   .total-text { font-size: var(--text-xs); color: var(--text-secondary); }
 }
 

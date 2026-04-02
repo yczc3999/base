@@ -1,12 +1,13 @@
 <template>
   <div>
-    <div class="crud-toolbar" style="margin-bottom:12px">
-      <el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div><el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button></div>
+      <div><el-button :icon="Refresh" @click="loadTree">刷新</el-button></div>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <el-table v-loading="loading" :data="treeData" row-key="id" border default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="label" label="名称" min-width="140" />
-        <el-table-column prop="slug" label="标识" width="150" />
+        <el-table-column prop="label" label="名称" width="130" />
+        <el-table-column prop="slug" label="标识" width="140" />
         <el-table-column prop="type" label="类型" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.type===0" size="small">目录</el-tag>
@@ -20,14 +21,14 @@
             <span v-else style="color:#CBD5E1">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="perms" label="权限标识" min-width="180" />
+        <el-table-column prop="perms" label="权限标识" width="180" />
         <el-table-column prop="sort" label="排序" width="70" align="center" />
         <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <span class="status-badge" :class="row.status===1?'success':'danger'">{{ row.status===1?'正常':'禁用' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right" align="center">
+        <el-table-column label="操作" width="180" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link size="small" :icon="Delete" @click="handleDelete(row)">删除</el-button>
@@ -65,7 +66,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Plus, Edit, Delete, Check } from "@element-plus/icons-vue"
+import { Plus, Edit, Delete, Check, RefreshRight as Refresh } from "@element-plus/icons-vue"
 import IconPicker from "@/components/IconPicker/index.vue"
 import menuApi from '@/api/modules/menu'
 import { ElMessage, ElMessageBox } from 'element-plus'

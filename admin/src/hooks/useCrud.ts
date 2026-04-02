@@ -12,6 +12,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { createCrudApi, type CrudApi } from '@/api/crud'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import NProgress from '@/utils/nprogress'
 
 export interface CrudOptions {
   /** API 路径前缀（如 'admin/user'），自动生成 CRUD 接口 */
@@ -68,6 +69,7 @@ export function useCrud(options: CrudOptions) {
   // ── 列表 ──
   async function getList() {
     loading.value = true
+    NProgress.start()
     try {
       const params: any = {
         page: queryParams.page,
@@ -84,6 +86,7 @@ export function useCrud(options: CrudOptions) {
       total.value = data.total || 0
     } catch {}
     loading.value = false
+    NProgress.done()
   }
 
   // ── 搜索 ──
