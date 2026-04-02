@@ -2,7 +2,7 @@
   <el-dialog v-model="visible" title="文件管理器" width="900px" destroy-on-close top="5vh">
     <!-- 工具栏 -->
     <div class="fm-toolbar">
-      <el-button type="primary" size="small" @click="triggerUpload">⬆ 上传文件</el-button>
+      <el-button type="primary" size="small" :icon="Upload" @click="triggerUpload">上传</el-button>
       <input ref="fileInputRef" type="file" :accept="accept" :multiple="multiple" style="display:none" @change="handleFileSelect" />
       <div class="fm-toolbar-right">
         <el-input v-model="keyword" placeholder="搜索文件名..." size="small" clearable style="width:200px" @input="handleSearch" />
@@ -35,7 +35,7 @@
         <span class="fm-count">已选择 <strong>{{ selectedIds.size }}</strong> / {{ limit }}</span>
         <div>
           <el-button @click="visible = false">取消</el-button>
-          <el-button type="primary" :disabled="!selectedIds.size" @click="handleConfirm">确 定</el-button>
+          <el-button type="primary" :icon="Check" :disabled="!selectedIds.size" @click="handleConfirm">确 定</el-button>
         </div>
       </div>
     </template>
@@ -44,6 +44,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
+import { Upload, Check } from "@element-plus/icons-vue"
 import fileApi from '@/api/modules/file'
 import { ElMessage } from 'element-plus'
 

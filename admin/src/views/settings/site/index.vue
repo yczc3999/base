@@ -14,7 +14,7 @@
         <el-form-item label="ICP 备案"><el-input v-model="form.icp" placeholder="京ICP备xxxxxxxx号" /></el-form-item>
         <el-form-item label="版权信息"><el-input v-model="form.copyright" placeholder="© 2026 Base Platform" /></el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="save">保存</el-button>
+          <el-button type="primary" :icon="Check" @click="save">保存</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -25,6 +25,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
 import { ElMessage } from 'element-plus'
+import { Check } from "@element-plus/icons-vue"
 import ImageUpload from '@/components/ImageUpload/index.vue'
 
 const api = createSettingApi('site')

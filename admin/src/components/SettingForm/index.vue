@@ -15,7 +15,7 @@
             <div v-if="f.tip && f.type !== 'input'" class="field-tip">{{ f.tip }}</div>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="saveExtras">保存</el-button>
+            <el-button type="primary" :icon="Check" @click="saveExtras">保存</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -96,8 +96,8 @@
                 <div v-if="f.tip" class="field-tip">{{ f.tip }}</div>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" @click="saveProvider(p.key)">保存配置</el-button>
-                <el-button @click="$emit('test', p.key, providerData[p.key])">测试连接</el-button>
+                <el-button type="primary" :icon="Check" @click="saveProvider(p.key)">保存</el-button>
+                <el-button :icon="Connection" @click="$emit('test', p.key, providerData[p.key])">测试</el-button>
               </el-form-item>
             </el-form>
           </div>
@@ -110,6 +110,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
+import { Check, Connection } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
 import type { SettingProvider, SettingExtra } from './types'
 

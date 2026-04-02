@@ -126,3 +126,21 @@
     padding: 20px;
   }
 }
+
+// ── 弹窗底部按钮 ──
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+
+  .el-button {
+    min-width: 80px;
+  }
+}
+
+// ── 工具栏 ──
+.crud-toolbar {
+  .el-button + .el-button {
+    margin-left: 0; // 用 gap 代替 margin
+  }
+}

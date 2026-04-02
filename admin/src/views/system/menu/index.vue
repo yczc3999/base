@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="crud-toolbar" style="margin-bottom:12px">
-      <el-button type="primary" @click="handleAdd">+ 新增</el-button>
+      <el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <el-table v-loading="loading" :data="treeData" row-key="id" border default-expand-all :tree-props="{ children: 'children' }">
@@ -24,8 +24,8 @@
         </el-table-column>
         <el-table-column label="操作" width="140" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link size="small" :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="danger" link size="small" :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -53,13 +53,14 @@
       </el-form>
       <template #footer>
         <el-button @click="formVisible=false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确 定</el-button>
+        <el-button type="primary" :icon="Check" :loading="submitLoading" @click="handleSubmit">确 定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Plus, Edit, Delete, Check } from "@element-plus/icons-vue"
 import IconPicker from "@/components/IconPicker/index.vue"
 import menuApi from '@/api/modules/menu'
 import { ElMessage, ElMessageBox } from 'element-plus'

@@ -7,7 +7,7 @@
         <el-form-item label="昵称"><el-input v-model="form.nickname" /></el-form-item>
         <el-form-item label="邮箱"><el-input v-model="form.email" /></el-form-item>
         <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
-        <el-form-item><el-button type="primary" @click="saveProfile">保存</el-button></el-form-item>
+        <el-form-item><el-button type="primary" :icon="Check" @click="saveProfile">保存</el-button></el-form-item>
       </el-form>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:16px">
@@ -15,13 +15,14 @@
       <el-form :model="pwdForm" label-width="80px">
         <el-form-item label="原密码"><el-input v-model="pwdForm.oldPassword" type="password" show-password /></el-form-item>
         <el-form-item label="新密码"><el-input v-model="pwdForm.newPassword" type="password" show-password /></el-form-item>
-        <el-form-item><el-button type="primary" @click="changePassword">提交</el-button></el-form-item>
+        <el-form-item><el-button type="primary" :icon="Check" @click="changePassword">提交</el-button></el-form-item>
       </el-form>
     </div>
   </div>
 </template>
 <script setup lang="ts">
 import { reactive, onMounted } from 'vue'
+import { Check } from "@element-plus/icons-vue"
 import { useUserStore } from '@/stores/user'
 import authApi from '@/api/modules/auth'
 import { ElMessage } from 'element-plus'

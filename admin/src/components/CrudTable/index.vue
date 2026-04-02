@@ -38,8 +38,8 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="crud.handleSearch">搜索</el-button>
-          <el-button @click="crud.handleReset">重置</el-button>
+          <el-button type="primary" :icon="SearchIcon" @click="crud.handleSearch">搜索</el-button>
+          <el-button :icon="RefreshIcon" @click="crud.handleReset">重置</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -47,14 +47,14 @@
     <!-- 工具栏 -->
     <div class="crud-toolbar">
       <div class="toolbar-left">
-        <el-button v-if="perms && hasPerms(`${perms}:create`)" type="primary" @click="crud.handleAdd">
-          + 新增
+        <el-button v-if="perms ? hasPerms(`${perms}:create`) : true" type="primary" :icon="PlusIcon" @click="crud.handleAdd">
+          新增
         </el-button>
-        <el-button v-if="!perms" type="primary" @click="crud.handleAdd">+ 新增</el-button>
         <el-button
           v-if="perms ? hasPerms(`${perms}:delete`) : true"
           type="danger"
           plain
+          :icon="DeleteIcon"
           :disabled="!crud.selections.value.length"
           @click="crud.handleBatchDelete"
         >
@@ -124,12 +124,12 @@
             <slot name="actions" :row="row">
               <el-button
                 v-if="perms ? hasPerms(`${perms}:edit`) : true"
-                type="primary" link size="small"
+                type="primary" link size="small" :icon="EditIcon"
                 @click="crud.handleEdit(row)"
               >编辑</el-button>
               <el-button
                 v-if="perms ? hasPerms(`${perms}:delete`) : true"
-                type="danger" link size="small"
+                type="danger" link size="small" :icon="DeleteIcon"
                 @click="crud.handleDelete(row)"
               >删除</el-button>
             </slot>
@@ -218,10 +218,10 @@
         <slot name="form" :data="crud.formData.value" :mode="crud.formMode.value" />
       </el-form>
       <template #footer>
-        <el-button @click="crud.formVisible.value = false">取消</el-button>
-        <el-button type="primary" :loading="crud.formLoading.value" @click="submitForm">
-          确 定
-        </el-button>
+        <div class="dialog-footer">
+          <el-button @click="crud.formVisible.value = false">取消</el-button>
+          <el-button type="primary" :icon="CheckIcon" :loading="crud.formLoading.value" @click="submitForm">确 定</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -234,6 +234,7 @@ import { usePermission } from '@/hooks/usePermission'
 import type { CrudColumn, SearchField, FormField } from './types'
 import type { CrudApi } from '@/api/crud'
 import ImageUpload from '@/components/ImageUpload/index.vue'
+import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{
   /** API 路径（如 'admin/user'）或 CrudApi 对象 */

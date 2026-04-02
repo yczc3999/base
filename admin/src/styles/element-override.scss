@@ -31,11 +31,28 @@
   letter-spacing: 0.01em;
   border: none !important;
   box-shadow: none !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
   transition: background-color 0.1s, opacity 0.1s !important;
 
   &:hover { opacity: 0.85; }
   &:active { transform: scale(0.97); opacity: 1; }
   &:focus { outline: none !important; box-shadow: none !important; }
+
+  .el-icon { margin-right: 4px; font-size: 14px; }
+
+  &.el-button--small {
+    height: 28px !important;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+  }
+
+  &.el-button--large {
+    height: 40px !important;
+    padding: 0 20px !important;
+    font-size: 14px !important;
+  }
 }
 
 .el-button--default {
