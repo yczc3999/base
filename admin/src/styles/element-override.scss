@@ -1,12 +1,27 @@
 // ═══════════════════════════════════════════════
-// Element Plus 覆写 — 纯扁平 + 纯色块 + 零立体
+// Element Plus 覆写 — 纯扁平 + 纯色块 + 零立体 + 极小圆角
 // ═══════════════════════════════════════════════
 
-// ── 全局：消灭所有 box-shadow ──
+// ── 全局：消灭所有 box-shadow + 统一圆角 ──
 .el-button, .el-input__wrapper, .el-select, .el-tag,
 .el-dialog, .el-card, .el-message, .el-dropdown-menu,
-.el-popover, .el-tooltip__content, .el-table {
+.el-popover, .el-tooltip__content, .el-table,
+.el-select-dropdown, .el-message-box, .el-textarea__inner {
   box-shadow: none !important;
+  border-radius: var(--radius) !important;
+}
+
+// ── 全局 Element Plus CSS 变量覆盖 ──
+:root {
+  --el-border-radius-base: 2px !important;
+  --el-border-radius-small: 1px !important;
+  --el-border-radius-round: 2px !important;
+  --el-color-primary: #3B82F6 !important;
+  --el-color-primary-light-3: #60A5FA !important;
+  --el-color-primary-light-5: #93C5FD !important;
+  --el-color-primary-light-7: #BFDBFE !important;
+  --el-color-primary-light-9: #EFF6FF !important;
+  --el-color-primary-dark-2: #2563EB !important;
 }
 
 // ── 按钮：纯色块，零阴影，零渐变 ──

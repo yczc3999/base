@@ -48,8 +48,8 @@ export const useUserStore = defineStore('user', {
     },
 
     hasPerms(perms: string | string[]): boolean {
-      // 超管 或 权限列表未加载时放行（等加载完再校验）
-      if (this.isSuperAdmin || !this.permissions.length) return true
+      if (this.isSuperAdmin) return true
+      if (!this.permissions.length) return true  // 权限未加载时暂时放行
       const arr = Array.isArray(perms) ? perms : [perms]
       return arr.some((p) => this.permissions.includes(p))
     },

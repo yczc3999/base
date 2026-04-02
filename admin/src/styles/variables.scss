@@ -4,13 +4,13 @@
 // ═══════════════════════════════════════════════
 
 :root {
-  // ── Primary ──
-  --primary: #2563EB;
-  --primary-hover: #1D4ED8;
-  --primary-active: #1E40AF;
-  --primary-light: #3B82F6;
+  // ── Primary（浅蓝） ──
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --primary-active: #1D4ED8;
+  --primary-light: #60A5FA;
   --primary-bg: #EFF6FF;
-  --primary-glow: rgba(37, 99, 235, 0.12);
+  --primary-glow: rgba(59, 130, 246, 0.1);
 
   // ── Status ──
   --success: #16A34A;
@@ -43,10 +43,10 @@
   --border-light: #F1F5F9;
   --border-dark: #CBD5E1;
 
-  // ── Geometry ──
-  --radius: 4px;
-  --radius-sm: 2px;
-  --radius-lg: 6px;
+  // ── Geometry（极小圆角） ──
+  --radius: 2px;
+  --radius-sm: 1px;
+  --radius-lg: 3px;
 
   // ── Spacing ──
   --space-xs: 4px;

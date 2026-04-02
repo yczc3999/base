@@ -32,6 +32,12 @@ export const usePermissionStore = defineStore('permission', {
       this.menus = data.menus || []
       this.routes = generateRoutes(this.menus)
       this.isLoaded = true
+
+      // 同步 permissions 到 userStore（避免重复请求）
+      const { useUserStore } = await import('@/stores/user')
+      const userStore = useUserStore()
+      userStore.permissions = data.permissions || []
+
       return this.routes
     },
 

@@ -40,8 +40,7 @@ export function setupGuard(router: Router) {
     try {
       loadRetryCount++
       await userStore.getUserInfo()
-      const dynamicRoutes = await permStore.loadMenus()
-      await userStore.getMenusAndPerms()
+      const dynamicRoutes = await permStore.loadMenus()  // 内部已同步 permissions 到 userStore
 
       for (const route of dynamicRoutes) {
         router.addRoute('Layout', route)
