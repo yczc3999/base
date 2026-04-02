@@ -1,0 +1,85 @@
+// ═══════════════════════════════════════════════
+// Element Plus 覆写 — 扁平 + 锐角 + 大色块
+// ═══════════════════════════════════════════════
+
+// 按钮
+.el-button {
+  --el-button-border-radius: var(--radius) !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+
+  &:active { transform: scale(0.97); }
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--primary) !important;
+  --el-button-border-color: var(--primary) !important;
+  --el-button-hover-bg-color: var(--primary-hover) !important;
+  --el-button-hover-border-color: var(--primary-hover) !important;
+}
+
+// 输入框
+.el-input__wrapper {
+  border-radius: var(--radius) !important;
+  box-shadow: 0 0 0 1px var(--border) !important;
+  background: var(--bg-input) !important;
+  transition: all var(--transition-fast) !important;
+
+  &:hover { box-shadow: 0 0 0 1px var(--border-dark) !important; }
+  &.is-focus {
+    box-shadow: 0 0 0 1px var(--primary), 0 0 0 3px var(--primary-glow) !important;
+    background: var(--bg-card) !important;
+  }
+}
+
+// 表格
+.el-table {
+  --el-table-border-color: var(--border) !important;
+  --el-table-header-bg-color: #F8FAFC !important;
+  --el-table-row-hover-bg-color: #F8FAFC !important;
+  font-size: var(--text-sm) !important;
+
+  th.el-table__cell {
+    font-weight: 600 !important;
+    font-size: var(--text-xs) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary) !important;
+    background: #F8FAFC !important;
+  }
+
+  .el-table__row { height: 52px; }
+}
+
+// 分页
+.el-pagination {
+  --el-pagination-button-bg-color: transparent !important;
+  .el-pager li.is-active {
+    background: var(--primary) !important;
+    color: white !important;
+    border-radius: var(--radius) !important;
+  }
+}
+
+// 弹窗
+.el-dialog {
+  --el-dialog-border-radius: var(--radius-lg) !important;
+  .el-dialog__header { border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+  .el-dialog__footer { border-top: 1px solid var(--border); padding-top: 16px; }
+}
+
+// 消息
+.el-message { border-radius: var(--radius) !important; }
+
+// 标签
+.el-tag {
+  --el-tag-border-radius: var(--radius-sm) !important;
+  font-weight: 500;
+}
+
+// 卡片
+.el-card {
+  --el-card-border-radius: var(--radius) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}

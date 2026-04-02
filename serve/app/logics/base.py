@@ -289,9 +289,18 @@ class BaseLogic:
         # 先清旧缓存（读旧值），再更新 DB
         await self._clear_cache(pk_value, db)
 
-        update_data = {
-            k: v for k, v in data.items() if k != self.pk_name and v is not None
-        }
+        update_data = {}
+        for k, v in data.items():
+            if k == self.pk_name or v is None:
+                continue
+            # ISO 字符串 → datetime（防止缓存数据类型不匹配）
+            if isinstance(v, str) and k.endswith("_at"):
+                from datetime import datetime as dt
+                try:
+                    v = dt.fromisoformat(v)
+                except (ValueError, TypeError):
+                    pass
+            update_data[k] = v
         stmt = (
             update(self.model)
             .where(getattr(self.model, self.pk_name) == pk_value)

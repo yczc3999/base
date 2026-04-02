@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base Admin — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — Base Admin Design System
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #3B82F6;
+  --primary-lighter: #EFF6FF;
+  --primary-glow: rgba(37, 99, 235, 0.15);
+
+  --success: #16A34A;
+  --success-light: #DCFCE7;
+  --danger: #EF4444;
+  --warning: #F59E0B;
+
+  --bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-placeholder: #9CA3AF;
+  --border: #E5E7EB;
+  --border-light: #F3F4F6;
+
+  --sidebar-bg: #111827;
+  --sidebar-deep: #0B1120;
+
+  --radius-sm: 4px;
+  --radius-base: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-base: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05);
+  --shadow-xl: 0 20px 25px rgba(0,0,0,0.1), 0 8px 10px rgba(0,0,0,0.04);
+  --shadow-primary: 0 4px 14px rgba(37,99,235,0.25);
+
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN LAYOUT — Split Panel
+   ═══════════════════════════════════════════════════════════ */
+.login-page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ─── LEFT PANEL: Brand ─── */
+.brand-panel {
+  position: relative;
+  width: 45%;
+  min-width: 480px;
+  background: var(--sidebar-deep);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+/* Animated grid background */
+.brand-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37,99,235,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37,99,235,0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridPulse 8s ease-in-out infinite;
+}
+
+@keyframes gridPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Gradient orbs */
+.brand-panel .orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  animation: orbFloat 12s ease-in-out infinite;
+}
+
+.brand-panel .orb-1 {
+  width: 400px; height: 400px;
+  background: rgba(37, 99, 235, 0.15);
+  top: -10%; left: -10%;
+  animation-delay: 0s;
+}
+
+.brand-panel .orb-2 {
+  width: 300px; height: 300px;
+  background: rgba(99, 102, 241, 0.12);
+  bottom: -5%; right: -5%;
+  animation-delay: -4s;
+}
+
+.brand-panel .orb-3 {
+  width: 200px; height: 200px;
+  background: rgba(37, 99, 235, 0.08);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: -8s;
+}
+
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 30px) scale(0.95); }
+}
+
+/* Geometric decorations */
+.geo-lines {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.3;
+}
+
+.geo-lines .line {
+  position: absolute;
+  background: linear-gradient(90deg, transparent, rgba(37,99,235,0.3), transparent);
+  height: 1px;
+}
+
+.geo-lines .line-1 { top: 25%; left: 0; right: 0; animation: lineSlide 6s linear infinite; }
+.geo-lines .line-2 { top: 50%; left: 0; right: 0; animation: lineSlide 8s linear infinite reverse; }
+.geo-lines .line-3 { top: 75%; left: 0; right: 0; animation: lineSlide 7s linear infinite; animation-delay: -2s; }
+
+.geo-lines .vline {
+  position: absolute;
+  background: linear-gradient(180deg, transparent, rgba(37,99,235,0.2), transparent);
+  width: 1px;
+  top: 0; bottom: 0;
+}
+
+.geo-lines .vline-1 { left: 25%; }
+.geo-lines .vline-2 { left: 50%; }
+.geo-lines .vline-3 { left: 75%; }
+
+@keyframes lineSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Brand content */
+.brand-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 40px;
+  animation: brandEnter 0.8s var(--ease-out) both;
+  animation-delay: 0.2s;
+}
+
+@keyframes brandEnter {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--primary), #6366F1);
+  border-radius: var(--radius-xl);
+  margin-bottom: 32px;
+  box-shadow: 0 8px 32px rgba(37,99,235,0.3);
+}
+
+.brand-logo svg {
+  width: 32px;
+  height: 32px;
+  color: white;
+}
+
+.brand-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #F1F5F9;
+  letter-spacing: -0.5px;
+  margin-bottom: 12px;
+}
+
+.brand-subtitle {
+  font-size: 15px;
+  color: #94A3B8;
+  font-weight: 400;
+  line-height: 1.7;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+/* Version badge */
+.brand-version {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 32px;
+  padding: 6px 14px;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.brand-version .dot {
+  width: 6px; height: 6px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ─── RIGHT PANEL: Form ─── */
+.form-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  position: relative;
+}
+
+/* Subtle pattern */
+.form-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,0.02) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.form-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  padding: 40px;
+  animation: formEnter 0.6s var(--ease-out) both;
+  animation-delay: 0.4s;
+}
+
+@keyframes formEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.form-header {
+  margin-bottom: 36px;
+}
+
+.form-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  margin-bottom: 8px;
+}
+
+.form-header p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORM INPUTS — Refined & Distinctive
+   ═══════════════════════════════════════════════════════════ */
+.form-group {
+  margin-bottom: 20px;
+  animation: fieldEnter 0.5s var(--ease-out) both;
+}
+
+.form-group:nth-child(1) { animation-delay: 0.5s; }
+.form-group:nth-child(2) { animation-delay: 0.6s; }
+.form-group:nth-child(3) { animation-delay: 0.7s; }
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+@keyframes fieldEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper .icon {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-placeholder);
+  transition: color 0.2s var(--ease-out);
+  pointer-events: none;
+}
+
+.form-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px 0 42px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: all 0.2s var(--ease-out);
+}
+
+.form-input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.form-input:hover {
+  border-color: #D1D5DB;
+}
+
+.form-input:focus {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+  transform: translateY(-1px);
+}
+
+.form-input:focus ~ .icon {
+  color: var(--primary);
+}
+
+/* Password toggle */
+.password-toggle {
+  position: absolute;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-placeholder);
+  cursor: pointer;
+  transition: color 0.15s;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover { color: var(--text-secondary); }
+
+/* Remember me */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  animation: fieldEnter 0.5s var(--ease-out) both;
+  animation-delay: 0.75s;
+}
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-input {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+}
+
+.checkbox-input:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.checkbox-input:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 5px;
+  width: 4px; height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.forgot-link {
+  font-size: 13px;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.forgot-link:hover {
+  color: var(--primary-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN BUTTON — Precision Crafted
+   ═══════════════════════════════════════════════════════════ */
+.btn-login {
+  width: 100%;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s var(--ease-out);
+  animation: fieldEnter 0.5s var(--ease-out) both;
+  animation-delay: 0.85s;
+}
+
+.btn-login::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.btn-login:hover {
+  background: var(--primary-hover);
+  box-shadow: var(--shadow-primary);
+  transform: translateY(-1px);
+}
+
+.btn-login:hover::before { opacity: 1; }
+
+.btn-login:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+/* Loading state */
+.btn-login.loading {
+  pointer-events: none;
+  background: var(--primary);
+}
+
+.btn-login .spinner {
+  display: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.btn-login.loading .spinner { display: block; }
+.btn-login.loading .btn-text { display: none; }
+.btn-login.loading .btn-loading-text { display: inline; }
+.btn-login .btn-loading-text { display: none; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Success state */
+.btn-login.success {
+  background: var(--success);
+  pointer-events: none;
+}
+
+.btn-login .btn-check {
+  display: none;
+  width: 20px;
+  height: 20px;
+}
+
+.btn-login.success .btn-check { display: block; }
+.btn-login.success .btn-text { display: none; }
+.btn-login.success .spinner { display: none; }
+.btn-login.success .btn-loading-text { display: none; }
+
+/* ═══════════════════════════════════════════════════════════
+   FOOTER & EXTRAS
+   ═══════════════════════════════════════════════════════════ */
+.form-footer {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-placeholder);
+  animation: fieldEnter 0.5s var(--ease-out) both;
+  animation-delay: 0.95s;
+}
+
+.form-footer a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+/* Keyboard shortcut hint */
+.shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-placeholder);
+  animation: fieldEnter 0.5s var(--ease-out) both;
+  animation-delay: 1s;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ERROR STATE
+   ═══════════════════════════════════════════════════════════ */
+.error-shake {
+  animation: shake 0.4s var(--ease-out);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.form-error {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: var(--radius-base);
+  font-size: 13px;
+  color: var(--danger);
+  animation: errorEnter 0.3s var(--ease-out);
+}
+
+.form-error.show { display: flex; }
+
+.form-error svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+@keyframes errorEnter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PAGE TRANSITIONS
+   ═══════════════════════════════════════════════════════════ */
+.page-exit {
+  animation: pageOut 0.4s var(--ease-in) forwards;
+}
+
+@keyframes pageOut {
+  to { opacity: 0; transform: scale(0.98); filter: blur(4px); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 992px) {
+  .brand-panel { display: none; }
+  .form-panel { background: var(--bg); }
+}
+
+@media (max-width: 480px) {
+  .form-container { padding: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div class="login-page" id="loginPage">
+  <!-- ═══ LEFT: Brand Panel ═══ -->
+  <div class="brand-panel">
+    <!-- Atmospheric orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Geometric grid lines -->
+    <div class="geo-lines">
+      <div class="line line-1"></div>
+      <div class="line line-2"></div>
+      <div class="line line-3"></div>
+      <div class="vline vline-1"></div>
+      <div class="vline vline-2"></div>
+      <div class="vline vline-3"></div>
+    </div>
+
+    <!-- Brand content -->
+    <div class="brand-content">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <h1 class="brand-title">Base Platform</h1>
+      <p class="brand-subtitle">构建可靠的企业级应用基础设施<br>安全 · 高效 · 可扩展</p>
+      <div class="brand-version">
+        <span class="dot"></span>
+        <span>v1.0.0 · 系统运行中</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT: Form Panel ═══ -->
+  <div class="form-panel">
+    <div class="form-container">
+      <div class="form-header">
+        <h1>欢迎回来</h1>
+        <p>登录您的管理账户以继续</p>
+      </div>
+
+      <!-- Error message -->
+      <div class="form-error" id="errorMsg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <span id="errorText">用户名或密码错误</span>
+      </div>
+
+      <form id="loginForm" onsubmit="return false;">
+        <!-- Username -->
+        <div class="form-group">
+          <label class="form-label" for="username">账户</label>
+          <div class="input-wrapper">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+            <input class="form-input" id="username" type="text" placeholder="用户名或邮箱" autocomplete="username" autofocus>
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="form-group">
+          <label class="form-label" for="password">密码</label>
+          <div class="input-wrapper">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input class="form-input" id="password" type="password" placeholder="请输入密码" autocomplete="current-password">
+            <button class="password-toggle" type="button" onclick="togglePassword()" aria-label="显示密码">
+              <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Options -->
+        <div class="form-options">
+          <label class="checkbox-wrapper">
+            <input class="checkbox-input" type="checkbox" id="remember">
+            <span class="checkbox-label">记住我</span>
+          </label>
+          <a href="#" class="forgot-link">忘记密码？</a>
+        </div>
+
+        <!-- Submit -->
+        <button class="btn-login" id="loginBtn" type="submit" onclick="handleLogin()">
+          <span class="spinner"></span>
+          <svg class="btn-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span class="btn-text">登 录</span>
+          <span class="btn-loading-text">登录中...</span>
+        </button>
+      </form>
+
+      <div class="shortcut-hint">
+        按 <span class="kbd">Enter</span> 快速登录
+      </div>
+
+      <div class="form-footer">
+        © 2026 Base Platform · Crafted with precision
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══ Password visibility toggle ═══
+function togglePassword() {
+  const input = document.getElementById('password');
+  const icon = document.getElementById('eyeIcon');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  } else {
+    input.type = 'password';
+    icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  }
+}
+
+// ═══ Login handler ═══
+function handleLogin() {
+  const btn = document.getElementById('loginBtn');
+  const form = document.getElementById('loginForm');
+  const error = document.getElementById('errorMsg');
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+
+  // Hide previous error
+  error.classList.remove('show');
+
+  // Validate
+  if (!username || !password) {
+    error.classList.add('show');
+    document.getElementById('errorText').textContent = '请输入用户名和密码';
+    form.classList.add('error-shake');
+    setTimeout(() => form.classList.remove('error-shake'), 400);
+    return;
+  }
+
+  // Loading state
+  btn.classList.add('loading');
+
+  // Simulate API call
+  setTimeout(() => {
+    if (username === 'admin' && password === 'admin123') {
+      // Success
+      btn.classList.remove('loading');
+      btn.classList.add('success');
+
+      // Page exit animation
+      setTimeout(() => {
+        document.getElementById('loginPage').classList.add('page-exit');
+      }, 600);
+
+      // Redirect
+      setTimeout(() => {
+        alert('✅ 登录成功！将跳转到 Dashboard');
+      }, 1000);
+    } else {
+      // Failure
+      btn.classList.remove('loading');
+      error.classList.add('show');
+      document.getElementById('errorText').textContent = '用户名或密码错误';
+      form.classList.add('error-shake');
+      setTimeout(() => form.classList.remove('error-shake'), 400);
+
+      // Focus username
+      document.getElementById('username').focus();
+    }
+  }, 1500);
+}
+
+// ═══ Enter key support ═══
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleLogin();
+  }
+});
+
+// ═══ Input focus effects ═══
+document.querySelectorAll('.form-input').forEach(input => {
+  input.addEventListener('focus', () => {
+    input.closest('.form-group').style.transform = 'translateY(-1px)';
+    input.closest('.form-group').style.transition = 'transform 0.2s var(--ease-out)';
+  });
+  input.addEventListener('blur', () => {
+    input.closest('.form-group').style.transform = 'translateY(0)';
+  });
+});
+</script>
+
+</body>
+</html>

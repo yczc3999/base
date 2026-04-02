@@ -1,0 +1,86 @@
+// ═══════════════════════════════════════════════
+// Design Tokens — Base Admin
+// Sharp geometry, bold color blocks, flat surfaces
+// ═══════════════════════════════════════════════
+
+:root {
+  // ── Primary ──
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-active: #1E40AF;
+  --primary-light: #3B82F6;
+  --primary-bg: #EFF6FF;
+  --primary-glow: rgba(37, 99, 235, 0.12);
+
+  // ── Status ──
+  --success: #16A34A;
+  --success-bg: #DCFCE7;
+  --warning: #F59E0B;
+  --warning-bg: #FEF3C7;
+  --danger: #EF4444;
+  --danger-bg: #FEE2E2;
+  --info: #6B7280;
+  --info-bg: #F3F4F6;
+
+  // ── Surfaces ──
+  --bg-page: #F1F5F9;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #0F172A;
+  --bg-header: #FFFFFF;
+  --bg-input: #F8FAFC;
+
+  // ── Text ──
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --text-placeholder: #94A3B8;
+  --text-disabled: #CBD5E1;
+  --text-inverse: #FFFFFF;
+  --text-sidebar: #94A3B8;
+  --text-sidebar-active: #FFFFFF;
+
+  // ── Borders ──
+  --border: #E2E8F0;
+  --border-light: #F1F5F9;
+  --border-dark: #CBD5E1;
+
+  // ── Geometry ──
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-lg: 6px;
+
+  // ── Spacing ──
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-base: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  // ── Typography ──
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
+  // ── Layout ──
+  --sidebar-width: 220px;
+  --sidebar-collapsed: 64px;
+  --header-height: 60px;
+  --tags-height: 38px;
+
+  // ── Shadows (minimal, flat design) ──
+  --shadow-header: 0 1px 0 var(--border);
+  --shadow-card: none;
+  --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.08);
+
+  // ── Transitions ──
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}

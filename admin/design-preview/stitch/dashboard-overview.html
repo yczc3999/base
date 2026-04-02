@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tactical Interface - Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-tertiary-fixed-variant": "#7d2d00",
+                        "on-surface": "#131b2e",
+                        "on-tertiary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed": "#00174b",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "secondary-fixed": "#dbe1ff",
+                        "secondary-fixed-dim": "#b4c5ff",
+                        "on-error-container": "#93000a",
+                        "surface-dim": "#d2d9f4",
+                        "surface-container": "#eaedff",
+                        "surface-tint": "#0053db",
+                        "outline": "#737686",
+                        "primary": "#004ac6",
+                        "on-background": "#131b2e",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-container": "#ffede6",
+                        "tertiary": "#943700",
+                        "primary-fixed": "#dbe1ff",
+                        "on-secondary-fixed-variant": "#31447b",
+                        "on-tertiary-fixed": "#360f00",
+                        "secondary-container": "#acbfff",
+                        "inverse-primary": "#b4c5ff",
+                        "background": "#faf8ff",
+                        "surface": "#faf8ff",
+                        "tertiary-fixed-dim": "#ffb596",
+                        "on-surface-variant": "#434655",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "on-secondary-container": "#394c84",
+                        "surface-container-low": "#f2f3ff",
+                        "inverse-surface": "#283044",
+                        "surface-container-high": "#e2e7ff",
+                        "tertiary-container": "#bc4800",
+                        "outline-variant": "#c3c6d7",
+                        "inverse-on-surface": "#eef0ff",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdbcd",
+                        "on-secondary-fixed": "#00174b",
+                        "surface-variant": "#dae2fd",
+                        "surface-bright": "#faf8ff",
+                        "secondary": "#495c95",
+                        "surface-container-highest": "#dae2fd"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "geist": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            font-size: 20px;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-geist selection:bg-primary-container selection:text-white">
+<!-- SideNavBar Anchor -->
+<aside class="bg-[#0F172A] h-screen w-64 fixed left-0 top-0 overflow-y-auto flex flex-col z-50">
+<div class="px-6 py-8">
+<div class="text-lg font-semibold tracking-tighter text-white">Enterprise Admin</div>
+<div class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">System Controller</div>
+</div>
+<nav class="flex-1 px-0 mt-4">
+<div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest px-6 mb-4">Main Menu</div>
+<!-- Dashboard Active -->
+<a class="border-l-[3px] border-blue-600 bg-blue-600/10 text-white font-medium px-6 py-2.5 flex items-center gap-3 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-sm">仪表盘</span>
+</a>
+<!-- System Management Group -->
+<div class="mt-4">
+<div class="text-slate-400 px-6 py-2 flex items-center gap-3 text-sm">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>系统管理</span>
+</div>
+<div class="pl-14 flex flex-col space-y-1 mt-1">
+<a class="text-slate-400 hover:text-slate-100 py-1.5 text-sm transition-colors" href="#">用户</a>
+<a class="text-slate-400 hover:text-slate-100 py-1.5 text-sm transition-colors" href="#">角色</a>
+<a class="text-slate-400 hover:text-slate-100 py-1.5 text-sm transition-colors" href="#">菜单</a>
+<a class="text-slate-400 hover:text-slate-100 py-1.5 text-sm transition-colors" href="#">配置</a>
+<a class="text-slate-400 hover:text-slate-100 py-1.5 text-sm transition-colors" href="#">日志</a>
+</div>
+</div>
+</nav>
+<div class="p-4 mt-auto border-t border-slate-800/50">
+<a class="text-slate-400 hover:text-slate-100 px-4 py-2 flex items-center gap-3 transition-colors text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+<a class="text-slate-400 hover:text-slate-100 px-4 py-2 flex items-center gap-3 transition-colors text-sm" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Shell -->
+<div class="ml-64 min-h-screen flex flex-col">
+<!-- TopAppBar Anchor -->
+<header class="bg-[#faf8ff] dark:bg-slate-950 flex items-center justify-between h-12 px-6 sticky top-0 z-40 border-b border-slate-200/20 dark:border-slate-800/20">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold text-slate-900 dark:text-white">Tactical Interface</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-blue-600 border-b-2 border-blue-600 pb-1 text-sm font-semibold" href="#">Users</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-sm font-medium" href="#">Roles</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-sm font-medium" href="#">Menu</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-sm font-medium" href="#">Config</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-sm font-medium" href="#">Logs</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-1 text-slate-500 hover:text-blue-600 transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-1 text-slate-500 hover:text-blue-600 transition-colors">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border border-outline-variant/20">
+<img alt="Admin" class="w-full h-full object-cover" data-alt="professional headshot of a business executive in a dark suit with neutral background and sharp studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8IDMBKkFgr6KZK2vLTLP3ePK_IJ8B81BOLNKgIc-VhVmKTDrRCo0xgHiUEHwEL6uZz3jFR1f6XkK93a9T9ZKeYmvTFkGzlQtPk1n-ACUSKskzOCCoEQLgO5nW1Vv3l4vyeOmt-X88qzhHpwT2YR40pIdX_x7D0583x7q_Vjj3zABXK4q_6dXPb80bLUBq2JHAM6cvSfavCCsXknofe5D1NKtBgUDtyY2vT6cnjvIFAhAN4nt6KANJPFyEIYimnLeKjEtEHbpeKhs"/>
+</div>
+</div>
+</header>
+<!-- Main Dashboard Canvas -->
+<main class="p-6 space-y-6">
+<!-- Stat Cards Row -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+<!-- Card 1: Blue -->
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-[4px] border-l-[4px] border-l-primary p-4 flex flex-col justify-between h-24">
+<span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">System Uptime</span>
+<div class="flex items-baseline justify-between">
+<span class="text-2xl font-bold tracking-tight text-on-surface">99.98%</span>
+<span class="text-[10px] text-primary font-medium">+0.02%</span>
+</div>
+</div>
+<!-- Card 2: Green -->
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-[4px] border-l-[4px] border-l-emerald-600 p-4 flex flex-col justify-between h-24">
+<span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active Sessions</span>
+<div class="flex items-baseline justify-between">
+<span class="text-2xl font-bold tracking-tight text-on-surface">1,284</span>
+<span class="text-[10px] text-emerald-600 font-medium">Stable</span>
+</div>
+</div>
+<!-- Card 3: Amber -->
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-[4px] border-l-[4px] border-l-amber-500 p-4 flex flex-col justify-between h-24">
+<span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Memory Usage</span>
+<div class="flex items-baseline justify-between">
+<span class="text-2xl font-bold tracking-tight text-on-surface">64.2%</span>
+<span class="text-[10px] text-amber-600 font-medium">Warning</span>
+</div>
+</div>
+<!-- Card 4: Red -->
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-[4px] border-l-[4px] border-l-red-600 p-4 flex flex-col justify-between h-24">
+<span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Security Alerts</span>
+<div class="flex items-baseline justify-between">
+<span class="text-2xl font-bold tracking-tight text-on-surface">12</span>
+<span class="text-[10px] text-red-600 font-medium">Critical</span>
+</div>
+</div>
+</div>
+<!-- Dashboard Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Performance Chart Section -->
+<div class="lg:col-span-8 bg-surface-container-lowest border border-outline-variant/20 rounded-lg p-6">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h2 class="text-lg font-bold tracking-tight">System Performance</h2>
+<p class="text-xs text-slate-500 mt-1">Real-time processing throughput (ms)</p>
+</div>
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-surface-container-low text-[10px] font-bold uppercase tracking-wider rounded border border-outline-variant/10">Live</span>
+</div>
+</div>
+<!-- Mock Chart Visualization -->
+<div class="h-64 flex items-end gap-1.5 px-2">
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[40%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[65%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[50%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[85%]"></div>
+<div class="flex-1 bg-primary/30 rounded-t-sm h-[95%]"></div>
+<div class="flex-1 bg-primary/40 rounded-t-sm h-[70%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[45%]"></div>
+<div class="flex-1 bg-primary/10 rounded-t-sm h-[30%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[55%]"></div>
+<div class="flex-1 bg-primary/30 rounded-t-sm h-[75%]"></div>
+<div class="flex-1 bg-primary/60 rounded-t-sm h-[100%]"></div>
+<div class="flex-1 bg-primary/40 rounded-t-sm h-[60%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[40%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[50%]"></div>
+<div class="flex-1 bg-primary/30 rounded-t-sm h-[70%]"></div>
+</div>
+<div class="flex justify-between mt-4 border-t border-outline-variant/10 pt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+<span>00:00</span>
+<span>06:00</span>
+<span>12:00</span>
+<span>18:00</span>
+<span>24:00</span>
+</div>
+</div>
+<!-- System Info Side Panel -->
+<div class="lg:col-span-4 space-y-6">
+<div class="bg-surface-container-highest/30 border border-outline-variant/20 rounded-lg p-6">
+<h3 class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">System Nodes</h3>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+<span class="text-sm font-medium">Cluster-US-East</span>
+</div>
+<span class="text-xs font-mono text-slate-500">10.0.0.45</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+<span class="text-sm font-medium">Cluster-EU-West</span>
+</div>
+<span class="text-xs font-mono text-slate-500">10.0.0.12</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-amber-500"></div>
+<span class="text-sm font-medium">Cluster-ASIA-S</span>
+</div>
+<span class="text-xs font-mono text-slate-500">10.0.0.89</span>
+</div>
+</div>
+</div>
+<div class="bg-[#0F172A] text-white rounded-lg p-6 overflow-hidden relative">
+<div class="relative z-10">
+<h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Resource Utilization</h3>
+<div class="text-3xl font-extrabold tracking-tighter mb-4">84.2 <span class="text-sm font-normal text-slate-400">TFlops</span></div>
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[84%]"></div>
+</div>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-10">
+<span class="material-symbols-outlined text-9xl" style="font-variation-settings: 'FILL' 1;">memory</span>
+</div>
+</div>
+</div>
+<!-- Recent Activities Table -->
+<div class="lg:col-span-12 bg-surface-container-lowest border border-outline-variant/20 rounded-lg overflow-hidden">
+<div class="p-6 flex items-center justify-between">
+<h2 class="text-lg font-bold tracking-tight">Recent System Logs</h2>
+<button class="text-xs font-bold uppercase tracking-widest text-primary hover:underline">Export Full Log</button>
+</div>
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-high text-[10px] font-bold uppercase tracking-widest text-slate-600">
+<th class="px-6 py-3">Timestamp</th>
+<th class="px-6 py-3">Action</th>
+<th class="px-6 py-3">User</th>
+<th class="px-6 py-3">Entity</th>
+<th class="px-6 py-3">Status</th>
+</tr>
+</thead>
+<tbody class="text-sm divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-4 font-mono text-xs text-slate-500">2023-10-24 14:22:01</td>
+<td class="px-6 py-4 font-medium">Update Role Permissions</td>
+<td class="px-6 py-4">admin_root</td>
+<td class="px-6 py-4 text-xs font-mono">ROLE_SR_ARCHITECT</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider rounded">Success</span>
+</td>
+</tr>
+<tr class="bg-surface-container-low/30 hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-4 font-mono text-xs text-slate-500">2023-10-24 14:18:55</td>
+<td class="px-6 py-4 font-medium">Kernel Configuration</td>
+<td class="px-6 py-4">sys_automated</td>
+<td class="px-6 py-4 text-xs font-mono">ENV_PROD_CLUSTER</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded">Pending</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-4 font-mono text-xs text-slate-500">2023-10-24 14:15:12</td>
+<td class="px-6 py-4 font-medium">API Access Denial</td>
+<td class="px-6 py-4">ext_app_774</td>
+<td class="px-6 py-4 text-xs font-mono">AUTH_ENDPOINT_V2</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] font-bold uppercase tracking-wider rounded">Blocked</span>
+</td>
+</tr>
+<tr class="bg-surface-container-low/30 hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-4 font-mono text-xs text-slate-500">2023-10-24 14:10:04</td>
+<td class="px-6 py-4 font-medium">User Provisioning</td>
+<td class="px-6 py-4">hr_manager_dev</td>
+<td class="px-6 py-4 text-xs font-mono">USER_ID_90442</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider rounded">Success</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+</body></html>

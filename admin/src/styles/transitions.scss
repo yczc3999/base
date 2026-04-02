@@ -1,0 +1,13 @@
+// 页面切换
+.fade-slide-enter-active { transition: all var(--transition-base); }
+.fade-slide-leave-active { transition: all var(--transition-fast); }
+.fade-slide-enter-from { opacity: 0; transform: translateY(8px); }
+.fade-slide-leave-to { opacity: 0; transform: translateY(-4px); }
+
+// 淡入淡出
+.fade-enter-active, .fade-leave-active { transition: opacity var(--transition-fast); }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+// 侧边栏
+.sidebar-enter-active, .sidebar-leave-active { transition: transform var(--transition-slow); }
+.sidebar-enter-from, .sidebar-leave-to { transform: translateX(-100%); }
