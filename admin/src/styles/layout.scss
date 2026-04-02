@@ -1,0 +1,128 @@
+// ═══════════════════════════════════════════════
+// 页面布局通用样式
+// ═══════════════════════════════════════════════
+
+// ── 页面标题 ──
+.page-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  // 左侧色条装饰
+  &::before {
+    content: '';
+    width: 3px;
+    height: 18px;
+    background: var(--primary);
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+}
+
+// ── 页面副标题 ──
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  padding-left: 13px; // 和 page-title 的色条对齐
+}
+
+// ── 区块标题（卡片内部） ──
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: var(--primary);
+    border-radius: 1px;
+  }
+}
+
+// ── 统计卡片左色条 ──
+.stat-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: border-color var(--transition-fast);
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent, var(--primary));
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+
+  &:hover { border-color: var(--border-dark); }
+}
+
+// ── 空状态 ──
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-placeholder);
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+
+  .empty-text {
+    font-size: 14px;
+  }
+}
+
+// ── 内容卡片 ──
+.content-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  .card-header {
+    padding: 14px 20px;
+    font-weight: 600;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      &::before {
+        content: '';
+        width: 3px;
+        height: 14px;
+        background: var(--primary);
+        border-radius: 1px;
+      }
+    }
+  }
+
+  .card-body {
+    padding: 20px;
+  }
+}

@@ -6,8 +6,8 @@
       class="tag-item"
       :class="{ active: route.path === tag.path }"
       @click="router.push(tag.path)"
-      @contextmenu.prevent="showContextMenu($event, tag)"
     >
+      <span class="tag-icon">{{ getTagIcon(tag) }}</span>
       <span>{{ tag.title }}</span>
       <span v-if="!tag.affix" class="tag-close" @click.stop="closeTag(tag.path)">×</span>
     </div>
@@ -32,8 +32,17 @@ function closeTag(path: string) {
   }
 }
 
-function showContextMenu(e: MouseEvent, tag: any) {
-  // TODO: 右键菜单
+const iconMap: Record<string, string> = {
+  '/dashboard': '▦', '/profile': '◎', '/message': '🔔',
+  '/system/user': '👤', '/system/role': '🛡', '/system/menu': '☰',
+  '/system/setting': '⊞', '/system/log/operation': '◉', '/system/log/login': '→',
+  '/settings/site': '🌐', '/settings/sms': '💬', '/settings/storage': '💾',
+  '/settings/notify': '🔔', '/settings/payment': '💳',
+}
+
+function getTagIcon(tag: any): string {
+  if (tag.icon) return tag.icon
+  return iconMap[tag.path] || '·'
 }
 </script>
 
@@ -76,14 +85,16 @@ function showContextMenu(e: MouseEvent, tag: any) {
     border-color: var(--primary);
   }
 
+  .tag-icon { font-size: 11px; }
+
   .tag-close {
     font-size: 14px;
     line-height: 1;
-    border-radius: 50%;
     width: 14px; height: 14px;
     display: flex; align-items: center; justify-content: center;
+    margin-left: 2px;
 
-    &:hover { background: rgba(0,0,0,0.1); }
+    &:hover { background: rgba(0,0,0,0.15); border-radius: 1px; }
   }
 }
 </style>

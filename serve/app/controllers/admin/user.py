@@ -88,6 +88,17 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
         )
     )
 
+    # 操作日志补记用户名（中间件记录时还没 token）
+    from app.logics.admin_operation_log import admin_operation_log_logic
+    asyncio.create_task(
+        admin_operation_log_logic.record(
+            user_id=user["id"], username=user["username"],
+            module="user", action="login", method="POST",
+            url="/api/admin/user/login", params={"username": dto.username},
+            ip=ip, user_agent=ua, status_code=200, duration=0,
+        )
+    )
+
     return ok({**tokens, "user": safe_user})
 
 

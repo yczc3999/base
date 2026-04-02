@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
     <h2 class="page-title">仪表盘</h2>
-    <p style="color: var(--text-secondary); margin-top: 8px;">欢迎回来，{{ userStore.userInfo?.nickname || 'Admin' }}</p>
+    <p class="page-subtitle">欢迎回来，{{ userStore.userInfo?.nickname || 'Admin' }}</p>
 
     <!-- Stat Cards -->
     <div class="stat-cards">
@@ -15,8 +15,8 @@
     </div>
 
     <div class="dashboard-grid">
-      <div class="card">
-        <div class="card-header">系统信息</div>
+      <div class="content-card">
+        <div class="card-header"><span class="card-title">系统信息</span></div>
         <div class="card-body">
           <div class="info-row" v-for="item in sysInfo" :key="item.label">
             <span class="info-label">{{ item.label }}</span>
