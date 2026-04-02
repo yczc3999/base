@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
-import { ElMessage, ElLoading } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { getToken, getRefreshToken, setToken, clearTokens } from '@/utils/auth'
 import type { ApiResponse, RequestOptions } from './types'
 
@@ -12,14 +12,12 @@ const instance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// ── loading 管理 ──
+// ── loading：顶部进度条 ──
+import NProgress from '@/utils/nprogress'
 let loadingCount = 0
-let loadingInstance: any = null
 
 function showLoading() {
-  if (loadingCount === 0) {
-    loadingInstance = ElLoading.service({ fullscreen: true, background: 'rgba(0,0,0,0.1)' })
-  }
+  if (loadingCount === 0) NProgress.start()
   loadingCount++
 }
 
@@ -27,8 +25,7 @@ function hideLoading() {
   loadingCount--
   if (loadingCount <= 0) {
     loadingCount = 0
-    loadingInstance?.close()
-    loadingInstance = null
+    NProgress.done()
   }
 }
 

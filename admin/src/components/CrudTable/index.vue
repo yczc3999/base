@@ -258,7 +258,7 @@ const props = withDefaults(defineProps<{
   formFields: () => [],
   perms: '',
   showKeyword: true,
-  actionWidth: 140,
+  actionWidth: 180,
   dialogWidth: '560px',
 })
 

@@ -3,3 +3,12 @@
 @import './transitions.scss';
 @import './element-override.scss';
 @import './layout.scss';
+
+// NProgress 顶部进度条
+#nprogress .bar {
+  background: var(--primary) !important;
+  height: 2px !important;
+}
+#nprogress .peg {
+  box-shadow: 0 0 6px var(--primary), 0 0 2px var(--primary) !important;
+}

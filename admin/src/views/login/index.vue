@@ -3,11 +3,11 @@
     <!-- 左侧品牌 -->
     <div class="brand-panel">
       <div class="brand-content">
-        <div class="brand-logo">B</div>
-        <h1 class="brand-title">Base</h1>
-        <p class="brand-sub">Platform</p>
+        <img v-if="siteStore.logo" :src="siteStore.logo" class="brand-logo-img" />
+        <div v-else class="brand-logo">{{ siteStore.name?.charAt(0) || 'B' }}</div>
+        <h1 class="brand-title">{{ siteStore.name || 'Base Platform' }}</h1>
         <div class="brand-divider"></div>
-        <p class="brand-desc">企业级应用基础设施</p>
+        <p class="brand-desc">{{ siteStore.description || '企业级应用基础设施' }}</p>
       </div>
       <div class="brand-footer">
         <span class="status-dot"></span>
@@ -58,23 +58,27 @@
           </el-button>
         </el-form>
 
-        <p class="form-footer">© 2026 Base Platform · All rights reserved</p>
+        <p class="form-footer">{{ siteStore.copyright || '© 2026 Base Platform' }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, markRaw } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
 import { User as UserIcon, Lock as LockIcon } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const siteStore = useSiteStore()
 const formRef = ref()
 const loading = ref(false)
+
+onMounted(() => { siteStore.load() })
 
 const form = reactive({
   username: '',
@@ -132,6 +136,13 @@ async function handleLogin() {
   font-size: 24px; font-weight: 700;
   border-radius: var(--radius);
   margin: 0 auto 24px;
+}
+
+.brand-logo-img {
+  max-width: 180px;
+  max-height: 60px;
+  margin: 0 auto 24px;
+  object-fit: contain;
 }
 
 .brand-title {

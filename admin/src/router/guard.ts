@@ -2,6 +2,7 @@ import type { Router } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { isLoggedIn, clearTokens } from '@/utils/auth'
+import NProgress from '@/utils/nprogress'
 
 const WHITE_LIST = ['/login', '/404']
 let loadRetryCount = 0
@@ -9,6 +10,7 @@ const MAX_RETRY = 3
 
 export function setupGuard(router: Router) {
   router.beforeEach(async (to, _from, next) => {
+    NProgress.start()
     const title = to.meta?.title as string
     document.title = title ? `${title} - Base Admin` : 'Base Admin'
 
@@ -55,5 +57,9 @@ export function setupGuard(router: Router) {
       loadRetryCount = 0
       return next(`/login?redirect=${to.path}`)
     }
+  })
+
+  router.afterEach(() => {
+    NProgress.done()
   })
 }

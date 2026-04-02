@@ -2,9 +2,11 @@
   <div class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
     <!-- Logo -->
     <div class="sidebar-logo">
-      <div class="logo-icon">B</div>
+      <img v-if="siteStore.logo" :src="siteStore.logo" class="logo-img" />
+      <div v-else class="logo-icon">{{ siteStore.name?.charAt(0) || 'B' }}</div>
       <span v-show="!appStore.sidebarCollapsed" class="logo-text">
-        <strong>Base</strong> <span class="logo-sub">Platform</span>
+        <strong>{{ siteStore.name?.split(' ')[0] || 'Base' }}</strong>
+        <span class="logo-sub">{{ siteStore.name?.split(' ').slice(1).join(' ') || 'Platform' }}</span>
       </span>
     </div>
 
@@ -73,11 +75,15 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { usePermissionStore } from '@/stores/permission'
+import { useSiteStore } from '@/stores/site'
 import { useRoute } from 'vue-router'
 
 const appStore = useAppStore()
 const permStore = usePermissionStore()
+const siteStore = useSiteStore()
 const route = useRoute()
+
+onMounted(() => { siteStore.load() })
 
 const activeMenu = computed(() => route.path)
 
@@ -124,6 +130,13 @@ function getMenuIcon(icon?: string): string {
   padding: 0 16px;
   gap: 12px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.logo-img {
+  width: 32px; height: 32px;
+  object-fit: contain;
+  border-radius: var(--radius);
+  flex-shrink: 0;
 }
 
 .logo-icon {

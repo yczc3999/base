@@ -4,7 +4,7 @@
     <div v-if="extras.length" class="setting-section">
       <div class="section-header">通用配置</div>
       <div class="section-body">
-        <el-form label-width="120px">
+        <el-form label-width="140px">
           <el-form-item v-for="f in extras" :key="f.name" :label="f.label">
             <el-input v-if="!f.type || f.type === 'input'" v-model="extraData[f.name]" :placeholder="f.tip" />
             <el-input-number v-else-if="f.type === 'number'" v-model="extraData[f.name]" :min="0" />
@@ -58,7 +58,7 @@
 
             <div v-if="p.desc" class="provider-desc">{{ p.desc }}</div>
 
-            <el-form label-width="120px" style="max-width:600px">
+            <el-form label-width="140px" style="max-width:600px">
               <el-form-item
                 v-for="f in p.fields"
                 :key="f.name"

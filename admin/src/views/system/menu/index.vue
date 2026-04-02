@@ -5,8 +5,8 @@
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <el-table v-loading="loading" :data="treeData" row-key="id" border default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="label" label="名称" min-width="200" />
-        <el-table-column prop="slug" label="标识" width="160" />
+        <el-table-column prop="label" label="名称" min-width="140" />
+        <el-table-column prop="slug" label="标识" width="150" />
         <el-table-column prop="type" label="类型" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.type===0" size="small">目录</el-tag>
@@ -14,7 +14,12 @@
             <el-tag v-else type="warning" size="small">按钮</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="icon" label="图标" width="70" align="center" />
+        <el-table-column prop="icon" label="图标" width="60" align="center">
+          <template #default="{ row }">
+            <span v-if="row.icon" :title="row.icon">{{ menuIconMap[row.icon] || row.icon }}</span>
+            <span v-else style="color:#CBD5E1">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="perms" label="权限标识" min-width="180" />
         <el-table-column prop="sort" label="排序" width="70" align="center" />
         <el-table-column prop="status" label="状态" width="80" align="center">
@@ -64,6 +69,13 @@ import { Plus, Edit, Delete, Check } from "@element-plus/icons-vue"
 import IconPicker from "@/components/IconPicker/index.vue"
 import menuApi from '@/api/modules/menu'
 import { ElMessage, ElMessageBox } from 'element-plus'
+const menuIconMap: Record<string, string> = {
+  Settings: '⚙', Users: '👤', Shield: '🛡', Menu: '☰',
+  Sliders: '⊞', FileText: '📄', Activity: '◉', LogIn: '→',
+  LayoutDashboard: '▦', UserCircle: '◎', Bell: '🔔',
+  Globe: '🌐', MessageSquare: '💬', HardDrive: '💾',
+  CreditCard: '💳', Mail: '✉',
+}
 const loading = ref(false)
 const treeData = ref<any[]>([])
 const formVisible = ref(false)
