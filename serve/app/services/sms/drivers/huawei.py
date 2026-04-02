@@ -75,5 +75,5 @@ class HuaweiSmsDriver(BaseDriver):
                     return False
                 return True
         except Exception as e:
-            self.service._fail(f"华为云短信请求失败: {e}")
+            self.service._fail("华为云短信请求失败")
             return False

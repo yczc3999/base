@@ -119,7 +119,7 @@ class FileLogic(BaseLogic):
         config = await storage_service.get_config(db)
         platform = "local" if is_private else (config.get("default", "local"))
 
-        # 写入 DB
+        # 写入 DB，失败时尝试回删已上传的文件
         record = File(
             name=uuid_name,
             original_name=filename,
@@ -134,7 +134,15 @@ class FileLogic(BaseLogic):
             category=category,
         )
         db.add(record)
-        await db.commit()
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            try:
+                await driver.delete(path)
+            except Exception:
+                pass
+            raise BizError("文件记录保存失败")
         await db.refresh(record)
 
         # 隐私文件回填代理 URL

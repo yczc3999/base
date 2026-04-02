@@ -90,10 +90,10 @@ class AliyunIntlSmsDriver(BaseDriver):
         except HTTPError as e:
             try:
                 err = json.loads(e.read().decode())
-                self.service._fail(f"阿里云国际短信失败: {err.get('Message', str(e))}")
+                self.service._fail(f"阿里云国际短信失败: {err.get('Message', '未知错误')}")
             except Exception:
                 self.service._fail(f"阿里云国际短信请求失败: HTTP {e.code}")
             return False
         except Exception as e:
-            self.service._fail(f"阿里云国际短信请求失败: {e}")
+            self.service._fail("阿里云国际短信请求失败")
             return False

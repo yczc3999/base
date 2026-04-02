@@ -11,9 +11,20 @@ from app.services.base import BaseDriver
 
 class LocalDriver(BaseDriver):
 
+    def _safe_path(self, base: str, path: str) -> str:
+        """校验路径，防止路径穿越"""
+        full_path = os.path.join(base, path.lstrip("/"))
+        normalized = os.path.normpath(full_path)
+        if not normalized.startswith(os.path.normpath(base)):
+            self.service._fail("非法文件路径")
+            return ""
+        return normalized
+
     async def upload(self, path: str, content: bytes, visible: bool = True) -> str:
         base = self._get("path") or "/data/uploads"
-        full_path = os.path.join(base, path.lstrip("/"))
+        full_path = self._safe_path(base, path)
+        if not full_path:
+            return ""
         directory = os.path.dirname(full_path)
 
         try:
@@ -22,23 +33,27 @@ class LocalDriver(BaseDriver):
                 f.write(content)
             return self.get_url(path)
         except Exception as e:
-            self.service._fail(f"本地存储写入失败: {e}")
+            self.service._fail("本地存储写入失败")
             return ""
 
     async def delete(self, path: str) -> bool:
         base = self._get("path") or "/data/uploads"
-        full_path = os.path.join(base, path.lstrip("/"))
+        full_path = self._safe_path(base, path)
+        if not full_path:
+            return False
         try:
             if os.path.exists(full_path):
                 os.remove(full_path)
             return True
         except Exception as e:
-            self.service._fail(f"本地存储删除失败: {e}")
+            self.service._fail("本地存储删除失败")
             return False
 
     async def exists(self, path: str) -> bool:
         base = self._get("path") or "/data/uploads"
-        full_path = os.path.join(base, path.lstrip("/"))
+        full_path = self._safe_path(base, path)
+        if not full_path:
+            return False
         return os.path.exists(full_path)
 
     def get_url(self, path: str) -> str:

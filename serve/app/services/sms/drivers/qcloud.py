@@ -91,5 +91,5 @@ class QcloudSmsDriver(BaseDriver):
                     return False
                 return True
         except Exception as e:
-            self.service._fail(f"腾讯云短信请求失败: {e}")
+            self.service._fail("腾讯云短信请求失败")
             return False

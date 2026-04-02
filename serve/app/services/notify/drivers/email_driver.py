@@ -13,6 +13,7 @@ config:
 """
 
 import smtplib
+from html import escape
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -37,7 +38,7 @@ class EmailDriver(BaseDriver):
         msg["From"] = f"{from_name} <{from_addr}>"
         msg["To"] = to_addr
 
-        html = f"<h2>{title}</h2><div>{content}</div>"
+        html = f"<h2>{escape(title)}</h2><div>{escape(content)}</div>"
         msg.attach(MIMEText(html, "html", "utf-8"))
 
         try:
@@ -52,5 +53,5 @@ class EmailDriver(BaseDriver):
             server.quit()
             return True
         except Exception as e:
-            self.service._fail(f"邮件发送失败: {e}")
+            self.service._fail("邮件发送失败")
             return False

@@ -25,12 +25,10 @@ from app.services.base import BaseDriver
 class S3Driver(BaseDriver):
 
     async def upload(self, path: str, content: bytes, visible: bool = True) -> str:
-        url, headers = self._build_request("PUT", path, content)
+        extra = {"x-amz-acl": "public-read"} if visible else None
+        url, headers = self._build_request("PUT", path, content, extra_headers=extra)
         if self.service.failed:
             return ""
-
-        if visible:
-            headers["x-amz-acl"] = "public-read"
 
         req = Request(url, data=content, method="PUT")
         for k, v in headers.items():
@@ -44,7 +42,7 @@ class S3Driver(BaseDriver):
                 self.service._fail(f"S3 上传失败: HTTP {resp.status}")
                 return ""
         except Exception as e:
-            self.service._fail(f"S3 请求失败: {e}")
+            self.service._fail("S3 请求失败")
             return ""
 
     async def delete(self, path: str) -> bool:
@@ -61,7 +59,7 @@ class S3Driver(BaseDriver):
             with urlopen(req, timeout=10, context=ctx) as resp:
                 return resp.status in (200, 204)
         except Exception as e:
-            self.service._fail(f"S3 删除失败: {e}")
+            self.service._fail("S3 删除失败")
             return False
 
     async def exists(self, path: str) -> bool:
@@ -95,7 +93,7 @@ class S3Driver(BaseDriver):
             return f"{bucket}.{endpoint.lstrip('https://').lstrip('http://')}"
         return f"{bucket}.s3.{region}.amazonaws.com"
 
-    def _build_request(self, method: str, path: str, content: bytes = b"") -> tuple:
+    def _build_request(self, method: str, path: str, content: bytes = b"", extra_headers: dict | None = None) -> tuple:
         """构建签名请求"""
         ak = self._get("access_key", required=True)
         sk = self._get("secret_key", required=True)
@@ -113,11 +111,25 @@ class S3Driver(BaseDriver):
         amz_date = now.strftime("%Y%m%dT%H%M%SZ")
         payload_hash = hashlib.sha256(content).hexdigest()
 
+        # 合并额外头部（如 x-amz-acl）
+        amz_headers = {
+            "host": host,
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amz_date,
+        }
+        if extra_headers:
+            for k, v in extra_headers.items():
+                amz_headers[k.lower()] = v
+
+        sorted_keys = sorted(amz_headers.keys())
+        signed_headers = ";".join(sorted_keys)
+        canonical_headers = "".join(f"{k}:{amz_headers[k]}\n" for k in sorted_keys)
+
         # AWS4 签名
         canonical = (
             f"{method}\n{uri}\n\n"
-            f"host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n\n"
-            f"host;x-amz-content-sha256;x-amz-date\n{payload_hash}"
+            f"{canonical_headers}\n"
+            f"{signed_headers}\n{payload_hash}"
         )
 
         scope = f"{date_stamp}/{region}/s3/aws4_request"
@@ -129,7 +141,7 @@ class S3Driver(BaseDriver):
         signing_key = _hmac(_hmac(_hmac(_hmac(f"AWS4{sk}".encode(), date_stamp), region), "s3"), "aws4_request")
         signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
 
-        auth = f"AWS4-HMAC-SHA256 Credential={ak}/{scope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature={signature}"
+        auth = f"AWS4-HMAC-SHA256 Credential={ak}/{scope}, SignedHeaders={signed_headers}, Signature={signature}"
 
         headers = {
             "Host": host,
@@ -137,5 +149,7 @@ class S3Driver(BaseDriver):
             "x-amz-content-sha256": payload_hash,
             "Authorization": auth,
         }
+        if extra_headers:
+            headers.update(extra_headers)
 
         return url, headers

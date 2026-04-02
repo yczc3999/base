@@ -8,9 +8,9 @@ from app.deps import AuthInfo, require_admin
 router = APIRouter()
 
 
-# 公开（不加 Depends）
+# 需要管理员登录
 @router.get("/setting/get")
-async def get_settings(db: AsyncSession = Depends(get_db)):
+async def get_settings(auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     data = await setting_logic.get_all(db)
     return ok(data)
 

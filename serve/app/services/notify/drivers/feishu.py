@@ -36,7 +36,7 @@ class FeishuDriver(BaseDriver):
             timestamp = str(int(time.time()))
             sign_str = f"{timestamp}\n{secret}"
             sign = base64.b64encode(
-                hmac.new(sign_str.encode(), b"", hashlib.sha256).digest()
+                hmac.new(secret.encode(), sign_str.encode(), hashlib.sha256).digest()
             ).decode()
             payload_dict["timestamp"] = timestamp
             payload_dict["sign"] = sign
@@ -54,5 +54,5 @@ class FeishuDriver(BaseDriver):
                     return False
                 return True
         except Exception as e:
-            self.service._fail(f"飞书请求失败: {e}")
+            self.service._fail("飞书请求失败")
             return False
