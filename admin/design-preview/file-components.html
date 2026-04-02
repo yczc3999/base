@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base Admin — File Components Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-bg: #EFF6FF;
+  --success: #16A34A;
+  --success-bg: #DCFCE7;
+  --danger: #EF4444;
+  --danger-bg: #FEE2E2;
+  --warning: #F59E0B;
+  --warning-bg: #FEF3C7;
+  --text: #0F172A;
+  --text-2: #475569;
+  --text-3: #94A3B8;
+  --border: #E2E8F0;
+  --border-2: #CBD5E1;
+  --bg: #F1F5F9;
+  --surface: #FFFFFF;
+  --radius: 4px;
+  --font: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'Geist Mono', 'SF Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  padding: 40px;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 8px;
+}
+
+.subtitle { color: var(--text-2); font-size: 13px; margin-bottom: 40px; }
+
+.section {
+  margin-bottom: 48px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+/* ═══════════════════════════════════════
+   IMAGE UPLOAD
+   ═══════════════════════════════════════ */
+
+.img-upload-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.img-slot {
+  width: 120px;
+  height: 120px;
+  border: 2px dashed var(--border-2);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.img-slot:hover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.img-slot.img-slot-sm {
+  width: 100px;
+  height: 100px;
+}
+
+.img-slot .plus {
+  font-size: 28px;
+  color: var(--text-3);
+  font-weight: 300;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.img-slot:hover .plus { color: var(--primary); }
+
+.img-slot .upload-text {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.img-slot.filled {
+  border-style: solid;
+  border-color: var(--border);
+  background: #000;
+}
+
+.img-slot.filled img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.2s;
+}
+
+.img-slot.filled:hover img { opacity: 0.5; }
+
+.img-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.img-slot.filled:hover .img-overlay { opacity: 1; }
+
+.img-overlay button {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: transform 0.1s;
+}
+
+.img-overlay button:active { transform: scale(0.95); }
+
+.img-overlay .btn-replace {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.img-overlay .btn-del {
+  background: var(--danger);
+  color: white;
+}
+
+.browse-link {
+  font-size: 12px;
+  color: var(--primary);
+  cursor: pointer;
+  margin-top: 8px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+  transition: color 0.15s;
+}
+
+.browse-link:hover { color: var(--primary-hover); text-decoration: underline; }
+
+/* ═══════════════════════════════════════
+   FILE UPLOAD
+   ═══════════════════════════════════════ */
+
+.file-dropzone {
+  border: 2px dashed var(--border-2);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg);
+}
+
+.file-dropzone:hover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.file-dropzone.dragover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  border-style: solid;
+}
+
+.dropzone-icon {
+  font-size: 32px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+.dropzone-text {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dropzone-text span { color: var(--primary); font-weight: 500; }
+
+.file-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+
+.file-item:hover { border-color: var(--border-2); }
+
+.file-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.file-icon.pdf { background: var(--danger-bg); color: var(--danger); }
+.file-icon.xlsx { background: var(--success-bg); color: var(--success); }
+.file-icon.zip { background: #F1F5F9; color: #64748B; }
+.file-icon.doc { background: #DBEAFE; color: #2563EB; }
+.file-icon.img { background: #F3E8FF; color: #9333EA; }
+
+.file-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  flex-shrink: 0;
+  min-width: 60px;
+  text-align: right;
+}
+
+.file-progress {
+  width: 80px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.file-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.file-progress-bar.complete { background: var(--success); }
+.file-progress-bar.uploading {
+  background: var(--primary);
+  animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.file-delete {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+
+.file-delete:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.private-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--warning-bg);
+  color: #B45309;
+  border-radius: var(--radius);
+  margin-left: 8px;
+}
+
+/* ═══════════════════════════════════════
+   FILE MANAGER MODAL
+   ═══════════════════════════════════════ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal {
+  width: 900px;
+  max-height: 80vh;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  transform: scale(0.97) translateY(8px);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-backdrop.open .modal {
+  transform: scale(1) translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 14px;
+  transition: all 0.1s;
+}
+
+.modal-close:hover { background: var(--bg); color: var(--text); }
+
+.modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #FAFBFC;
+}
+
+.btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all 0.1s;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.btn:hover { border-color: var(--border-2); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+
+.search-input {
+  margin-left: auto;
+  padding: 6px 10px 6px 30px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font);
+  width: 200px;
+  outline: none;
+  transition: border-color 0.15s;
+  position: relative;
+}
+
+.search-input:focus { border-color: var(--primary); }
+
+.search-wrap {
+  position: relative;
+  margin-left: auto;
+}
+
+.search-wrap::before {
+  content: '⌕';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-tab {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.1s;
+  font-family: var(--font);
+}
+
+.filter-tab:hover { background: var(--bg); }
+
+.filter-tab.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.grid-item {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.grid-item:hover { border-color: var(--border-2); }
+
+.grid-item.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.grid-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.grid-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grid-thumb .placeholder {
+  font-size: 28px;
+  color: var(--text-3);
+}
+
+.grid-name {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 1px solid var(--border);
+  background: #FAFBFC;
+}
+
+.grid-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  background: var(--primary);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.15s;
+}
+
+.grid-item.selected .grid-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: #FAFBFC;
+}
+
+.selected-count {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.selected-count strong {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.modal-actions { display: flex; gap: 8px; }
+
+/* ═══════════════════════════════════════
+   VIEW TOGGLE
+   ═══════════════════════════════════════ */
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.view-btn {
+  width: 30px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: none;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 14px;
+  transition: all 0.1s;
+}
+
+.view-btn:not(:last-child) { border-right: 1px solid var(--border); }
+.view-btn:hover { color: var(--text); }
+.view-btn.active { background: var(--primary-bg); color: var(--primary); }
+
+/* ═══════════════════════════════════════
+   DEMO IMAGES (colored placeholders)
+   ═══════════════════════════════════════ */
+
+.demo-img {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: rgba(255,255,255,0.8);
+}
+
+.demo-img.c1 { background: linear-gradient(135deg, #667eea, #764ba2); }
+.demo-img.c2 { background: linear-gradient(135deg, #f093fb, #f5576c); }
+.demo-img.c3 { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+.demo-img.c4 { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+.demo-img.c5 { background: linear-gradient(135deg, #fa709a, #fee140); }
+.demo-img.c6 { background: linear-gradient(135deg, #a18cd1, #fbc2eb); }
+.demo-img.c7 { background: linear-gradient(135deg, #fccb90, #d57eeb); }
+.demo-img.c8 { background: linear-gradient(135deg, #e0c3fc, #8ec5fc); }
+.demo-img.c9 { background: linear-gradient(135deg, #f5576c, #ff6a00); }
+.demo-img.c10 { background: linear-gradient(135deg, #0ba360, #3cba92); }
+.demo-img.c11 { background: linear-gradient(135deg, #6a11cb, #2575fc); }
+.demo-img.c12 { background: linear-gradient(135deg, #ff9a9e, #fecfef); }
+.demo-img.c13 { background: linear-gradient(135deg, #a1c4fd, #c2e9fb); }
+.demo-img.c14 { background: linear-gradient(135deg, #fddb92, #d1fdff); }
+.demo-img.c15 { background: linear-gradient(135deg, #96e6a1, #d4fc79); }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+@media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>File Components</h1>
+<p class="subtitle">ImageUpload · FileUpload · FileManager — Base Admin Design System</p>
+
+<div class="two-col">
+<!-- ═══ SECTION 1: IMAGE UPLOAD ═══ -->
+<div class="section">
+  <div class="section-title">ImageUpload — 单图</div>
+  <div class="card">
+    <div class="label">用户头像</div>
+    <div class="img-upload-row">
+      <!-- Empty state -->
+      <div>
+        <div class="img-slot" onclick="this.querySelector('.plus').textContent='⟳'; setTimeout(()=>this.querySelector('.plus').textContent='+', 800)">
+          <span class="plus">+</span>
+          <span class="upload-text">点击上传</span>
+        </div>
+        <a class="browse-link" onclick="toggleModal()">从文件库选择</a>
+      </div>
+      <!-- Filled state -->
+      <div>
+        <div class="img-slot filled">
+          <div class="demo-img c1">800×800</div>
+          <div class="img-overlay">
+            <button class="btn-replace">替换</button>
+            <button class="btn-del">删除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hint">支持 JPG、PNG、WebP，不超过 2MB</div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 1b: IMAGE UPLOAD MULTI ═══ -->
+<div class="section">
+  <div class="section-title">ImageUpload — 多图</div>
+  <div class="card">
+    <div class="label">商品图集</div>
+    <div class="img-upload-row">
+      <div class="img-slot img-slot-sm filled">
+        <div class="demo-img c2">600×600</div>
+        <div class="img-overlay"><button class="btn-del">✕</button></div>
+      </div>
+      <div class="img-slot img-slot-sm filled">
+        <div class="demo-img c3">600×600</div>
+        <div class="img-overlay"><button class="btn-del">✕</button></div>
+      </div>
+      <div class="img-slot img-slot-sm filled">
+        <div class="demo-img c4">600×600</div>
+        <div class="img-overlay"><button class="btn-del">✕</button></div>
+      </div>
+      <div class="img-slot img-slot-sm filled">
+        <div class="demo-img c5">600×600</div>
+        <div class="img-overlay"><button class="btn-del">✕</button></div>
+      </div>
+      <div class="img-slot img-slot-sm">
+        <span class="plus">+</span>
+      </div>
+    </div>
+    <div class="hint">最多 5 张，单张不超过 2MB</div>
+  </div>
+</div>
+</div>
+
+<div class="two-col">
+<!-- ═══ SECTION 2: FILE UPLOAD ═══ -->
+<div class="section">
+  <div class="section-title">FileUpload — 文件上传</div>
+  <div class="card">
+    <div class="label">商品文档</div>
+    <div class="file-dropzone" id="dropzone"
+      ondragover="event.preventDefault();this.classList.add('dragover')"
+      ondragleave="this.classList.remove('dragover')"
+      ondrop="event.preventDefault();this.classList.remove('dragover')">
+      <div class="dropzone-icon">☁</div>
+      <div class="dropzone-text">拖拽文件到此处或 <span>点击上传</span></div>
+    </div>
+
+    <div class="file-list">
+      <div class="file-item">
+        <div class="file-icon pdf">PDF</div>
+        <span class="file-name">产品说明书_v3.2.pdf</span>
+        <span class="file-size">2.3 MB</span>
+        <div class="file-progress"><div class="file-progress-bar complete" style="width:100%"></div></div>
+        <button class="file-delete">✕</button>
+      </div>
+      <div class="file-item">
+        <div class="file-icon xlsx">XLS</div>
+        <span class="file-name">Q1_销售数据报表.xlsx</span>
+        <span class="file-size">856 KB</span>
+        <div class="file-progress"><div class="file-progress-bar complete" style="width:100%"></div></div>
+        <button class="file-delete">✕</button>
+      </div>
+      <div class="file-item">
+        <div class="file-icon zip">ZIP</div>
+        <span class="file-name">设计资源包_final.zip</span>
+        <span class="file-size">14.7 MB</span>
+        <div class="file-progress"><div class="file-progress-bar uploading" style="width:67%"></div></div>
+        <button class="file-delete">✕</button>
+      </div>
+    </div>
+    <div class="hint">支持 PDF、DOCX、XLSX、ZIP，单个不超过 50MB</div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 2b: FILE UPLOAD PRIVATE ═══ -->
+<div class="section">
+  <div class="section-title">FileUpload — 隐私文件</div>
+  <div class="card">
+    <div class="label">合同附件 <span class="private-badge">🔒 隐私文件 · 本地存储</span></div>
+    <div class="file-dropzone">
+      <div class="dropzone-icon">🔒</div>
+      <div class="dropzone-text">拖拽文件到此处或 <span>点击上传</span></div>
+    </div>
+    <div class="file-list">
+      <div class="file-item">
+        <div class="file-icon pdf">PDF</div>
+        <span class="file-name">合作协议_机密.pdf</span>
+        <span class="file-size">1.8 MB</span>
+        <div class="file-progress"><div class="file-progress-bar complete" style="width:100%"></div></div>
+        <button class="file-delete">✕</button>
+      </div>
+    </div>
+    <div class="hint">隐私文件强制存储在本地服务器，不上传到云存储</div>
+  </div>
+</div>
+</div>
+
+<!-- ═══ SECTION 3: OPEN MODAL BUTTON ═══ -->
+<div class="section">
+  <div class="section-title">FileManager — 文件管理器</div>
+  <button class="btn btn-primary" onclick="toggleModal()" style="margin-bottom:16px">打开文件管理器</button>
+</div>
+
+<!-- ═══ MODAL ═══ -->
+<div class="modal-backdrop" id="modal" onclick="if(event.target===this)toggleModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <span>文件管理器</span>
+      <button class="modal-close" onclick="toggleModal()">✕</button>
+    </div>
+
+    <div class="modal-toolbar">
+      <button class="btn btn-primary">⬆ 上传文件</button>
+      <div class="view-toggle">
+        <button class="view-btn active" title="网格">⊞</button>
+        <button class="view-btn" title="列表">☰</button>
+      </div>
+      <div class="search-wrap">
+        <input class="search-input" placeholder="搜索文件名..." />
+      </div>
+    </div>
+
+    <div class="filter-tabs">
+      <button class="filter-tab">全部</button>
+      <button class="filter-tab active">图片</button>
+      <button class="filter-tab">文档</button>
+      <button class="filter-tab">视频</button>
+      <button class="filter-tab">其他</button>
+    </div>
+
+    <div class="modal-grid" id="fileGrid"></div>
+
+    <div class="modal-footer">
+      <span class="selected-count">已选择 <strong id="selCount">0</strong> / 5</span>
+      <div class="modal-actions">
+        <button class="btn" onclick="toggleModal()">取消</button>
+        <button class="btn btn-primary" onclick="toggleModal()">确 定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── File grid data ──
+const files = [
+  { name: 'banner_hero.jpg', color: 'c1' },
+  { name: 'product_01.png', color: 'c2' },
+  { name: 'team_photo.jpg', color: 'c3' },
+  { name: 'screenshot_app.png', color: 'c4' },
+  { name: 'logo_dark.svg', color: 'c5' },
+  { name: 'background_01.jpg', color: 'c6' },
+  { name: 'icon_set.png', color: 'c7' },
+  { name: 'avatar_ceo.jpg', color: 'c8' },
+  { name: 'cover_mobile.png', color: 'c9' },
+  { name: 'chart_q2.jpg', color: 'c10' },
+  { name: 'mockup_web.png', color: 'c11' },
+  { name: 'texture_paper.jpg', color: 'c12' },
+  { name: 'gradient_bg.png', color: 'c13' },
+  { name: 'photo_office.jpg', color: 'c14' },
+  { name: 'pattern_geo.png', color: 'c15' },
+];
+
+const selected = new Set([1, 4]); // pre-selected indices
+const maxSelect = 5;
+
+function renderGrid() {
+  const grid = document.getElementById('fileGrid');
+  grid.innerHTML = files.map((f, i) => `
+    <div class="grid-item ${selected.has(i) ? 'selected' : ''}" onclick="toggleSelect(${i})">
+      <div class="grid-thumb"><div class="demo-img ${f.color}">${(i+1)*120}×${(i+1)*120}</div></div>
+      <div class="grid-name">${f.name}</div>
+      <div class="grid-check">✓</div>
+    </div>
+  `).join('');
+  document.getElementById('selCount').textContent = selected.size;
+}
+
+function toggleSelect(i) {
+  if (selected.has(i)) {
+    selected.delete(i);
+  } else if (selected.size < maxSelect) {
+    selected.add(i);
+  }
+  renderGrid();
+}
+
+function toggleModal() {
+  document.getElementById('modal').classList.toggle('open');
+}
+
+// Filter tabs
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+  });
+});
+
+// View toggle
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+renderGrid();
+</script>
+
+</body>
+</html>

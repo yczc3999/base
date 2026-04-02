@@ -1,0 +1,133 @@
+import os
+from fastapi import APIRouter, Request, Depends, UploadFile, File as FastAPIFile, Form
+from fastapi.responses import FileResponse, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.database import get_db
+from app.utils.response import ok, fail
+from app.logics.file import file_logic, ALLOWED_IMAGE_TYPES, ALLOWED_FILE_TYPES
+from app.logics.base import BizError
+from app.controllers.base import crud_router
+from app.deps import AuthInfo, require_admin
+
+router = APIRouter()
+
+# CRUD（文件列表/详情/删除）
+router.include_router(crud_router(
+    "file", file_logic,
+    tags=["admin-file"],
+    auth_dep=require_admin,
+    perms_prefix="admin:file",
+))
+
+
+@router.post("/file/upload")
+async def upload_file(
+    file: UploadFile = FastAPIFile(...),
+    category: str = Form(default="default"),
+    is_private: bool = Form(default=False),
+    auth: AuthInfo = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传文件"""
+    try:
+        result = await file_logic.upload(
+            db, file,
+            category=category,
+            is_private=is_private,
+            user_id=auth.user_id,
+        )
+        return ok(result)
+    except BizError as e:
+        return fail(e.msg, e.code)
+
+
+@router.post("/file/uploadImage")
+async def upload_image(
+    file: UploadFile = FastAPIFile(...),
+    category: str = Form(default="avatar"),
+    is_private: bool = Form(default=False),
+    auth: AuthInfo = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传图片（限制类型为图片）"""
+    try:
+        result = await file_logic.upload(
+            db, file,
+            category=category,
+            is_private=is_private,
+            user_id=auth.user_id,
+            max_size=5 * 1024 * 1024,  # 图片最大 5MB
+            allowed_types=ALLOWED_IMAGE_TYPES,
+        )
+        return ok(result)
+    except BizError as e:
+        return fail(e.msg, e.code)
+
+
+@router.post("/file/batchDelete")
+async def batch_delete(
+    request: Request,
+    auth: AuthInfo = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量删除文件（DB + 存储双删）"""
+    body = await request.json()
+    ids = body.get("ids", [])
+    if isinstance(ids, int):
+        ids = [ids]
+    if not ids:
+        return fail("缺少 ids")
+
+    await file_logic.delete_files(db, ids)
+    return ok(msg="删除成功")
+
+
+# ==================== 隐私文件代理 ====================
+# 注意：这个路由注册在 /api/file/{id}，不是 /api/admin/file/{id}
+
+from fastapi import APIRouter as _AR
+file_proxy_router = _AR()
+
+
+@file_proxy_router.get("/file/{file_id}")
+async def proxy_private_file(
+    file_id: int,
+    auth: AuthInfo = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """隐私文件代理访问"""
+    from sqlalchemy import select
+    from app.models import File
+
+    stmt = select(File).where(File.id == file_id)
+    result = await db.execute(stmt)
+    record = result.scalar_one_or_none()
+
+    if not record:
+        return fail("文件不存在")
+
+    if not record.is_private:
+        return fail("非隐私文件，请直接访问 URL")
+
+    # 权限校验：只能访问自己的文件，超管除外
+    if not auth.is_super_admin and record.user_id != auth.user_id:
+        return fail("无权限", 403)
+
+    # 读本地文件
+    from app.services.storage.drivers.local import LocalDriver
+    local_config = await storage_service.get_driver_config(db, "local")
+    base_path = local_config.get("path", "/data/uploads")
+    full_path = os.path.join(base_path, record.path.lstrip("/"))
+
+    if not os.path.exists(full_path):
+        return fail("文件不存在")
+
+    return FileResponse(
+        full_path,
+        media_type=record.mime_type or "application/octet-stream",
+        filename=record.original_name,
+    )
+
+
+# 需要在此 import，因为上面 proxy 用到了
+from app.services.storage import storage_service

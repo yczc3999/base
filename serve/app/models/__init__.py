@@ -9,10 +9,11 @@ from app.models.role import Role
 from app.models.role_menu import RoleMenu
 from app.models.admin_user_role import AdminUserRole
 from app.models.message import Message
+from app.models.file import File
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
     "AdminOperationLog", "AdminLoginLog",
     "Menu", "Role", "RoleMenu", "AdminUserRole",
-    "Message",
+    "Message", "File",
 ]
