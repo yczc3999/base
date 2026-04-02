@@ -5,8 +5,12 @@
       <el-form label-width="100px">
         <el-form-item label="站点名称"><el-input v-model="form.name" placeholder="Base Platform" /></el-form-item>
         <el-form-item label="站点描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="Logo URL"><el-input v-model="form.logo" placeholder="https://..." /></el-form-item>
-        <el-form-item label="Favicon"><el-input v-model="form.favicon" placeholder="https://..." /></el-form-item>
+        <el-form-item label="Logo">
+          <ImageUpload v-model="form.logo" category="site" hint="建议尺寸 200×60，支持 PNG / SVG" />
+        </el-form-item>
+        <el-form-item label="Favicon">
+          <ImageUpload v-model="form.favicon" category="site" hint="建议尺寸 32×32 或 64×64，ICO / PNG / SVG" accept="image/*,.ico" />
+        </el-form-item>
         <el-form-item label="ICP 备案"><el-input v-model="form.icp" placeholder="京ICP备xxxxxxxx号" /></el-form-item>
         <el-form-item label="版权信息"><el-input v-model="form.copyright" placeholder="© 2026 Base Platform" /></el-form-item>
         <el-form-item>
@@ -21,6 +25,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
 import { ElMessage } from 'element-plus'
+import ImageUpload from '@/components/ImageUpload/index.vue'
 
 const api = createSettingApi('site')
 const loading = ref(false)

@@ -202,6 +202,11 @@
                 :value="opt.value"
               />
             </el-select>
+            <ImageUpload
+              v-else-if="f.type === 'imageUpload'"
+              v-model="crud.formData.value[f.field]"
+              :category="f.placeholder || 'default'"
+            />
             <el-switch
               v-else-if="f.type === 'switch'"
               v-model="crud.formData.value[f.field]"
@@ -228,6 +233,7 @@ import { useCrud } from '@/hooks/useCrud'
 import { usePermission } from '@/hooks/usePermission'
 import type { CrudColumn, SearchField, FormField } from './types'
 import type { CrudApi } from '@/api/crud'
+import ImageUpload from '@/components/ImageUpload/index.vue'
 
 const props = withDefaults(defineProps<{
   /** API 路径（如 'admin/user'）或 CrudApi 对象 */

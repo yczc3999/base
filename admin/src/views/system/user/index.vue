@@ -46,10 +46,9 @@ const formFields: FormField[] = [
   { field: 'username', label: '用户名', rules: [{ required: true, message: '请输入用户名' }] },
   { field: 'password', label: '密码', type: 'password', rules: [{ required: true, message: '请输入密码' }], showOnCreate: true },
   { field: 'nickname', label: '昵称' },
+  { field: 'avatar', label: '头像', type: 'imageUpload', placeholder: 'avatar' },
   { field: 'email', label: '邮箱' },
   { field: 'phone', label: '手机号' },
-  {
-    field: 'status', label: '状态', type: 'switch', default: 1,
-  },
+  { field: 'status', label: '状态', type: 'switch', default: 1 },
 ]
 </script>
