@@ -1,7 +1,7 @@
 """
 阿里云国际短信驱动 — 纯 HTTP + ACS3-HMAC-SHA256 签名（V3）
 
-API: POST https://dysmsapi.ap-southeast-1.aliyuncs.com
+API: POST https://dysmsapi.ap-southeast-1.aliyuncs.com/?{params}
 文档: https://help.aliyun.com/zh/sdk/product-overview/v3-request-structure-and-signature
 
 config:
@@ -20,6 +20,8 @@ import time
 import uuid
 import ssl
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.parse import quote, urlencode
 
 from app.services.base import BaseDriver
 
@@ -37,20 +39,21 @@ class AliyunIntlSmsDriver(BaseDriver):
 
         template_id = template_id or self._get("template_code")
 
-        body = json.dumps({
+        query_params = {
             "PhoneNumbers": phone,
             "SignName": sign_name,
             "TemplateCode": template_id,
             "TemplateParam": json.dumps(params, ensure_ascii=False),
-        }, ensure_ascii=False)
+        }
+        query_string = urlencode(sorted(query_params.items()), quote_via=quote)
 
         nonce = str(uuid.uuid4())
         date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        body_hash = hashlib.sha256(body.encode()).hexdigest()
+        body_hash = hashlib.sha256(b"").hexdigest()
 
         signed_headers = "host;x-acs-action;x-acs-content-sha256;x-acs-date;x-acs-signature-nonce;x-acs-version"
         canonical = (
-            f"POST\n/\n\n"
+            f"POST\n/\n{query_string}\n"
             f"host:{self.HOST}\n"
             f"x-acs-action:SendSms\n"
             f"x-acs-content-sha256:{body_hash}\n"
@@ -63,16 +66,11 @@ class AliyunIntlSmsDriver(BaseDriver):
 
         hashed_canonical = hashlib.sha256(canonical.encode()).hexdigest()
         string_to_sign = f"ACS3-HMAC-SHA256\n{hashed_canonical}"
-
-        signature = hmac.new(
-            ak_secret.encode(), string_to_sign.encode(), hashlib.sha256
-        ).hexdigest()
-
+        signature = hmac.new(ak_secret.encode(), string_to_sign.encode(), hashlib.sha256).hexdigest()
         auth = f"ACS3-HMAC-SHA256 Credential={ak_id},SignedHeaders={signed_headers},Signature={signature}"
 
-        url = f"https://{self.HOST}"
-        req = Request(url, data=body.encode(), method="POST")
-        req.add_header("Content-Type", "application/json; charset=utf-8")
+        url = f"https://{self.HOST}/?{query_string}"
+        req = Request(url, data=b"", method="POST")
         req.add_header("Host", self.HOST)
         req.add_header("x-acs-action", "SendSms")
         req.add_header("x-acs-version", "2017-05-25")
@@ -89,6 +87,13 @@ class AliyunIntlSmsDriver(BaseDriver):
                     self.service._fail(f"阿里云国际短信失败: {result.get('Message', result.get('Code', '未知'))}")
                     return False
                 return True
+        except HTTPError as e:
+            try:
+                err = json.loads(e.read().decode())
+                self.service._fail(f"阿里云国际短信失败: {err.get('Message', str(e))}")
+            except Exception:
+                self.service._fail(f"阿里云国际短信请求失败: HTTP {e.code}")
+            return False
         except Exception as e:
             self.service._fail(f"阿里云国际短信请求失败: {e}")
             return False
