@@ -1,90 +1,157 @@
-# Base Serve - 后台服务端
+# Base Platform — 后端服务
 
-基于 NestJS 重写的后台管理系统服务端，从 PHP 项目迁移而来。提供完整的 CRUD 基础架构、JWT 认证、RBAC 权限体系、Redis 缓存等能力。
+基于 **FastAPI + SQLAlchemy 2 + PostgreSQL + Redis** 的通用后台基础平台。
 
 ## 技术栈
 
-- **运行时**: Node.js + TypeScript
-- **框架**: NestJS 11
-- **ORM**: Prisma 7（PostgreSQL 适配器）
-- **缓存**: Redis（ioredis）
-- **认证**: JWT（jsonwebtoken）
-- **验证**: class-validator + class-transformer
+- Python 3.12 + FastAPI + uvicorn（异步高性能）
+- SQLAlchemy 2（async，Mapped 类型注解）
+- PostgreSQL（asyncpg 驱动）
+- Redis（异步，缓存 + token_version 校验）
+- JWT 认证（python-jose）
+- bcrypt 密码加密
 
-## 目录结构
+## 项目结构
 
 ```
-src/
-├── controllers/          # 控制器层
-│   ├── BaseController.ts   # 基础控制器（统一响应格式）
-│   ├── CurdController.ts   # CRUD 控制器（注入 Logic 即拥有增删改查）
-│   ├── admin/              # 管理后台控制器
-│   └── client/             # 用户端控制器
-├── logics/               # 逻辑层
-│   └── BaseLogic.ts        # 基础逻辑类（CRUD + 缓存 + 格式化 + 生命周期钩子）
-├── models/               # 模型扩展 & 类型定义
-├── routes/               # 路由分组
-│   ├── admin.ts            # 管理后台路由（/api/admin）
-│   └── client.ts           # 用户端路由（/api/client）
-├── guards/               # 守卫
-│   └── AuthGuard.ts        # JWT 认证守卫
-├── decorators/           # 自定义装饰器
-│   ├── Public.ts           # @Public() 免认证标记
-│   └── Actions.ts          # @Actions() 操作类型映射
-├── interceptors/         # 拦截器
-│   └── ResponseInterceptor.ts  # 统一响应格式包装
-├── filters/              # 异常过滤器
-│   └── GlobalExceptionFilter.ts  # 全局异常处理
-├── services/             # 基础服务
-│   ├── PrismaService.ts    # 数据库服务
-│   ├── RedisService.ts     # Redis 缓存服务
-│   └── services.module.ts  # 服务模块注册
-├── utils/                # 工具类
-│   └── Token.ts            # JWT 签发 & 验证
-├── app.module.ts         # 根模块
-└── main.ts               # 入口文件
+serve/
+├── app/
+│   ├── main.py                         # FastAPI 入口 + 全局异常处理
+│   ├── config.py                       # 配置（Pydantic Settings，读 .env）
+│   ├── models/                         # 数据模型（每表一个文件）
+│   │   ├── base.py                     #   DeclarativeBase
+│   │   ├── admin_user.py               #   管理员用户
+│   │   ├── user.py                     #   前端用户
+│   │   ├── setting.py                  #   系统配置
+│   │   ├── admin_operation_log.py      #   操作日志
+│   │   └── admin_login_log.py          #   登录日志
+│   ├── logics/                         # 业务逻辑层
+│   │   ├── base.py                     #   BaseLogic（CRUD + 缓存 + 钩子 + 断言 + 事务）
+│   │   ├── admin_user.py              #   管理员逻辑（登录/改密/token 管理）
+│   │   ├── user.py                    #   前端用户逻辑
+│   │   ├── setting.py                 #   配置逻辑（get/set/get_all/set_many）
+│   │   ├── admin_operation_log.py     #   操作日志（异步写入）
+│   │   └── admin_login_log.py         #   登录日志（异步写入）
+│   ├── controllers/                    # 路由层
+│   │   ├── base.py                    #   crud_router() — 自动生成 CRUD 四接口
+│   │   └── admin/                     #   admin 端路由
+│   │       ├── user.py                #     登录/改密/登出 + CRUD
+│   │       └── setting.py             #     配置读写
+│   ├── middleware/                      # 中间件
+│   │   ├── auth.py                    #   JWT 鉴权（Redis 缓存 token_version）
+│   │   └── operation_log.py           #   操作日志自动记录
+│   ├── services/                       # 基础服务
+│   │   ├── database.py                #   SQLAlchemy async engine + session
+│   │   └── redis.py                   #   Redis 连接 + 缓存工具函数
+│   └── utils/                          # 工具
+│       ├── query.py                   #   QueryHelper — 查询 DSL（19 操作符 + $or/$and 嵌套）
+│       ├── response.py                #   ok() / fail()
+│       ├── token.py                   #   JWT 签发/验证
+│       └── password.py                #   bcrypt hash/verify
+├── databases/
+│   └── migrations/                     # SQL 迁移文件
+├── docs/
+│   ├── api-convention.md              # 前后端接口约定（含完整 Filters DSL 文档）
+│   └── architecture.md                # 架构说明
+├── .env.example                        # 环境变量模板
+├── requirements.txt                    # Python 依赖
+└── README.md                           # 本文件
 ```
 
-## 开发 & 运行
+## 架构分层
+
+```
+Request → AuthMiddleware → OperationLogMiddleware → Router → Logic → Model → DB
+                                                              ↕
+                                                            Redis（缓存）
+```
+
+| 层 | 职责 | 对应目录 |
+|----|------|----------|
+| Router | 接收请求，参数校验，返回响应 | `controllers/` |
+| Logic | 业务逻辑，CRUD，缓存，钩子 | `logics/` |
+| Model | 数据结构定义，字段约束 | `models/` |
+| Service | 数据库/Redis 连接管理 | `services/` |
+| Middleware | 鉴权，操作日志 | `middleware/` |
+
+## 核心设计
+
+### BaseLogic — 零代码 CRUD
+
+继承 `BaseLogic` 并配置类属性，即可获得完整的 CRUD + 缓存 + 查询能力：
+
+```python
+class AdminUserLogic(BaseLogic):
+    model = AdminUser
+    cache_prefix = "admin_user"
+    cache_fields = ["username"]
+    except_keys = ["password"]
+
+    def allowed_filters(self):
+        return ["id", "username", "status", "created_at"]
+
+    def allowed_sorts(self):
+        return ["id", "created_at", "updated_at"]
+
+    def keyword_fields(self):
+        return ["username", "nickname", "email"]
+```
+
+自动获得：
+- `get_list()` — 分页列表（Filters DSL + keyword + 排序）
+- `get_detail()` — 详情查询（主键缓存）
+- `create()` / `modify()` / `save()` — 创建/编辑
+- `do_delete()` — 删除（自动识别软删除）
+- 多字段 Redis 缓存（主键 + 自定义字段）
+- 生命周期钩子（before_create / before_edit / before_delete / after_delete）
+- 业务断言 `assert_true()`
+- 事务包装 `transaction()`
+
+### QueryHelper — 查询 DSL
+
+19 个操作符 + `$or`/`$and` 任意嵌套 + keyword 多字段搜索。
+
+详见 [docs/api-convention.md](docs/api-convention.md) 第四章。
+
+### Model 状态枚举
+
+每个 Model 通过内部 `IntEnum` 定义状态，代码中使用枚举而非魔法数字：
+
+```python
+class AdminUser(Base):
+    class Status(IntEnum):
+        DISABLED = 0   # 禁用
+        ACTIVE = 1     # 正常
+
+# 使用
+if user.status != AdminUser.Status.ACTIVE:
+    ...
+```
+
+## 快速开始
 
 ```bash
-# 安装依赖
-npm install
+# 1. 安装依赖
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# 开发模式（热重载）
-npm run start:dev
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入数据库、Redis、JWT 配置
 
-# 生产构建
-npm run build
-npm run start:prod
+# 3. 创建数据库表
+# 执行 databases/migrations/ 下的 SQL 文件
+
+# 4. 启动
+uvicorn app.main:app --host 0.0.0.0 --port 3000
+
+# 5. 访问
+# API 文档：http://localhost:3000/docs（仅 APP_DEBUG=true 时可用）
+# 健康检查：http://localhost:3000/health
 ```
 
-## TODO 进度
+## 文档
 
-### 基础架构
-
-- [x] 项目初始化（NestJS + TypeScript + Prisma 7）
-- [x] 目录结构搭建
-- [x] BaseController + CurdController
-- [x] BaseLogic（CRUD + 缓存 + 格式化）
-- [x] RedisService + PrismaService
-- [x] AuthGuard + @Public + @Actions 装饰器
-- [x] ResponseInterceptor + GlobalExceptionFilter
-- [x] 路由分组（admin / client）
-
-### 核心模块
-
-- [ ] SettingLogic（系统配置 + 全量缓存）
-- [ ] User 模块（登录/注册/用户管理）
-- [ ] RBAC 权限体系（Menu / Role / Permission）
-- [ ] PermissionGuard（操作级权限校验）
-
-### 业务功能
-
-- [ ] 数据导出
-- [ ] 操作日志
-- [ ] 文件管理
-
-### 前端后台
-
-- [ ] Admin 前端搭建
+- [前后端接口约定](docs/api-convention.md) — CRUD 接口规范 + Filters DSL 完整文档
+- [架构说明](docs/architecture.md) — 分层设计 + 缓存策略

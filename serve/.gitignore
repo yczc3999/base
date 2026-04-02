@@ -1,34 +1,29 @@
-# 依赖
-node_modules/
-
-# 编译输出
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
 dist/
+build/
+.eggs/
 
-# 环境变量（敏感信息）
+# 虚拟环境
+.venv/
+venv/
+
+# 环境变量
 .env
-!.env.example
 
-# Prisma 生成文件
-src/models/generated/
-
-# 日志
-logs/
-*.log
-npm-debug.log*
-
-# 编辑器
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
 
-# 系统文件
+# 测试 / 覆盖率
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 系统
 .DS_Store
 Thumbs.db
-
-# 测试覆盖率
-coverage/
-
-# PM2
-ecosystem.config.cjs
