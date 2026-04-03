@@ -1,5 +1,5 @@
 <template>
-  <CrudTable api="admin/operationLog" perms="admin:log:operation" :columns="columns" :show-keyword="true" :action-width="0" />
+  <CrudTable api="admin/operationLog" perms="admin:log:operation" :columns="columns" :show-keyword="true" :action-width="0" exportable />
 </template>
 <script setup lang="ts">
 import CrudTable from '@/components/CrudTable/index.vue'

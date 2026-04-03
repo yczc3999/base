@@ -1,5 +1,6 @@
 """清理过期数据（每小时）"""
 
+import os
 import logging
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import delete
@@ -25,3 +26,24 @@ class CleanupExpiredTask(BaseTask):
 
             if result.rowcount > 0:
                 logger.info(f"Cleaned {result.rowcount} old operation logs")
+
+        # 清理过期导出文件（超过 2 小时的）
+        self._cleanup_export_files()
+
+    @staticmethod
+    def _cleanup_export_files():
+        import tempfile
+        export_dir = os.path.join(tempfile.gettempdir(), "base_exports")
+        if not os.path.isdir(export_dir):
+            return
+
+        cutoff = datetime.now().timestamp() - 7200  # 2 小时前
+        cleaned = 0
+        for f in os.listdir(export_dir):
+            fp = os.path.join(export_dir, f)
+            if os.path.isfile(fp) and os.path.getmtime(fp) < cutoff:
+                os.remove(fp)
+                cleaned += 1
+
+        if cleaned > 0:
+            logger.info(f"Cleaned {cleaned} expired export files")

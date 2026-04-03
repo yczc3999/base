@@ -17,6 +17,20 @@ class AdminOperationLogLogic(BaseLogic):
     def keyword_fields(self):
         return ["username", "module", "action", "url", "ip"]
 
+    def export_header_map(self):
+        return {
+            "id": "ID",
+            "username": "操作用户",
+            "module": "模块",
+            "action": "操作",
+            "method": "方法",
+            "url": "URL",
+            "ip": "IP 地址",
+            "status_code": "状态码",
+            "duration": "耗时(ms)",
+            "created_at": "操作时间",
+        }
+
     async def record(
         self,
         user_id: int,

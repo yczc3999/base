@@ -16,6 +16,21 @@ class AdminLoginLogLogic(BaseLogic):
     def keyword_fields(self):
         return ["username", "ip", "remark"]
 
+    def export_header_map(self):
+        return {
+            "id": "ID",
+            "username": "用户名",
+            "ip": "IP 地址",
+            "status": "状态",
+            "remark": "备注",
+            "created_at": "登录时间",
+        }
+
+    def format_export_row(self, row, context=None):
+        status = row.get("status")
+        row["status"] = "成功" if status == 1 or status == "1" else "失败"
+        return row
+
     async def record(
         self,
         user_id: int,

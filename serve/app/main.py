@@ -14,6 +14,7 @@ from app.controllers.admin import role as admin_role
 from app.controllers.admin import message as admin_message
 from app.controllers.admin.file import router as admin_file_router, file_proxy_router
 from app.controllers.admin import dashboard as admin_dashboard
+from app.controllers.admin import export as admin_export
 from app.controllers.client import user as client_user
 
 
@@ -62,6 +63,7 @@ app.include_router(admin_role.router, prefix="/api/admin")
 app.include_router(admin_message.router, prefix="/api/admin")
 app.include_router(admin_file_router, prefix="/api/admin")
 app.include_router(admin_dashboard.router, prefix="/api/admin")
+app.include_router(admin_export.router, prefix="/api/admin")
 
 # 隐私文件代理（不走 /api/admin 前缀）
 app.include_router(file_proxy_router, prefix="/api")

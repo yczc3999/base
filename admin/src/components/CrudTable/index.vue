@@ -60,9 +60,24 @@
         >
           删除
         </el-button>
+        <el-button
+          v-if="exportable && (perms ? hasPerms(`${perms}:export`) : true)"
+          :icon="DownloadIcon"
+          :loading="exportState.exporting.value"
+          @click="handleExportClick"
+        >
+          导出
+        </el-button>
         <slot name="toolbar" />
       </div>
       <div class="toolbar-right">
+        <el-progress
+          v-if="exportState.exporting.value"
+          :percentage="exportState.progress.value"
+          :stroke-width="16"
+          :text-inside="true"
+          style="width: 160px; margin-right: 8px;"
+        />
         <span class="total-text">共 {{ crud.total.value }} 条</span>
         <el-button :icon="RefreshIcon" @click="crud.getList" title="刷新" />
       </div>
@@ -235,7 +250,8 @@ import { usePermission } from '@/hooks/usePermission'
 import type { CrudColumn, SearchField, FormField } from './types'
 import type { CrudApi } from '@/api/crud'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon } from '@element-plus/icons-vue'
+import { useExport } from '@/hooks/useExport'
+import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon, Download as DownloadIcon } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{
   /** API 路径（如 'admin/user'）或 CrudApi 对象 */
@@ -254,6 +270,8 @@ const props = withDefaults(defineProps<{
   actionWidth?: number
   /** 弹窗宽度 */
   dialogWidth?: string | number
+  /** 是否支持导出 */
+  exportable?: boolean
 }>(), {
   searchFields: () => [],
   formFields: () => [],
@@ -261,12 +279,19 @@ const props = withDefaults(defineProps<{
   showKeyword: true,
   actionWidth: 180,
   dialogWidth: '560px',
+  exportable: false,
 })
 
 const { hasPerms } = usePermission()
 const formRef = ref()
 
 const crud = useCrud({ api: props.api })
+const exportState = useExport(crud.api)
+
+function handleExportClick() {
+  const filters = Object.keys(crud.queryParams.filters).length ? crud.queryParams.filters : undefined
+  exportState.handleExport(filters)
+}
 
 // 根据模式过滤表单字段
 const visibleFormFields = computed(() => {

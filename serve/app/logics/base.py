@@ -444,6 +444,85 @@ class BaseLogic:
         if self.cache_prefix:
             await cache_del_pattern(f"{self.cache_prefix}:*")
 
+    # ==================== 导出（子类覆写） ====================
+
+    def export_fields(self) -> list[str]:
+        """导出的字段列表（默认：所有列 - except_keys）"""
+        all_cols = [c.key for c in self.model.__table__.columns]
+        return [f for f in all_cols if f not in self.except_keys]
+
+    def export_header_map(self) -> dict[str, str]:
+        """
+        导出表头映射：{字段名: 显示名}
+
+        子类必须覆写此方法以启用导出功能。
+        返回空 dict 时导出接口会返回"该模块不支持导出"。
+
+        示例：
+            return {"id": "ID", "username": "用户名", "created_at": "创建时间"}
+        """
+        return {}
+
+    def format_export_row(self, row: dict, context: dict | None = None) -> dict:
+        """
+        格式化导出行（子类覆写）
+
+        在写入 XLSX 前对每行数据做格式化，如状态码→文字、ID→名称等。
+        context 由 get_export_context() 提供，用于传递预加载的映射数据。
+        """
+        return row
+
+    def get_export_context(self) -> dict:
+        """
+        导出格式化上下文（子类覆写）
+
+        在导出开始前调用一次，返回的 dict 会传给每次 format_export_row() 调用。
+        用于预加载 ID→名称映射等数据，避免逐行查询。
+
+        示例：
+            return {"status_map": {0: "禁用", 1: "正常"}}
+        """
+        return {}
+
+    async def do_export(self, db: AsyncSession, params: dict) -> str:
+        """
+        执行数据导出
+
+        :param db:     数据库 Session
+        :param params: 导出参数 {file_key, filters, show_fields}
+        :return:       生成的文件路径
+        """
+        from app.utils.export_helper import ExportHelper
+
+        header_map = self.export_header_map()
+        fields = self.export_fields()
+
+        # show_fields 过滤（前端可选择显示哪些列）
+        show_fields = params.get("show_fields")
+        if show_fields:
+            header_map = {k: v for k, v in header_map.items() if k in show_fields}
+            fields = [f for f in fields if f in show_fields or f == self.pk_name]
+
+        # 确保导出字段都在 header_map 中
+        fields = [f for f in fields if f in header_map]
+
+        helper = ExportHelper(
+            model=self.model,
+            fields=fields,
+            header_map=header_map,
+            file_key=params["file_key"],
+            allowed_filters=self.allowed_filters(),
+        )
+
+        context = self.get_export_context()
+
+        return await helper.export(
+            db=db,
+            filters=params.get("filters", {}),
+            row_formatter=self.format_export_row,
+            format_context=context,
+        )
+
     async def cache_rebuild(self, db: AsyncSession, pk_value: Any):
         """
         重建单条记录的缓存

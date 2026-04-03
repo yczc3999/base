@@ -44,6 +44,7 @@ DEFAULT_ACTIONS = {
     "read": ["getList", "getDetail"],
     "write": ["doEdit"],
     "delete": ["doDelete"],
+    "export": ["doExport"],
 }
 
 
@@ -215,5 +216,44 @@ def crud_router(
         except BizError as e:
             return fail(e.msg, e.code)
         return ok(msg="删除成功")
+
+    # ==================== doExport ====================
+
+    _perm_export = require_perms(f"{perms_prefix}:export") if perms_prefix else None
+    _logic_path = f"{type(logic).__module__}.{type(logic).__name__}"
+
+    if _needs_auth("doExport"):
+        if _perm_export:
+            @router.post("/doExport")
+            async def do_export(request: Request, auth: AuthInfo = Depends(_perm_export)):
+                return await _do_export(request, auth.user_id)
+        else:
+            @router.post("/doExport")
+            async def do_export(request: Request, auth: AuthInfo = Depends(_auth_dep)):
+                return await _do_export(request, auth.user_id)
+    else:
+        @router.post("/doExport")
+        async def do_export_public(request: Request):
+            return await _do_export(request, 0)
+
+    async def _do_export(request: Request, user_id: int):
+        # 检查 Logic 是否支持导出
+        if not logic.export_header_map():
+            return fail("该模块不支持导出")
+
+        from app.utils.export_helper import generate_export_key
+        from app.queue import Queue
+
+        file_key = generate_export_key(user_id)
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+
+        await Queue.push("handle_export", {
+            "file_key": file_key,
+            "logic_path": _logic_path,
+            "filters": body.get("filters", {}),
+            "show_fields": body.get("showFields"),
+        })
+
+        return ok({"key": file_key})
 
     return router

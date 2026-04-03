@@ -17,6 +17,7 @@ export interface CrudApi {
   getDetail: (id: number) => Promise<any>
   doEdit: (data: any) => Promise<any>
   doDelete: (ids: number | number[] | string) => Promise<any>
+  doExport: (data?: any) => Promise<any>
 }
 
 export function createCrudApi(prefix: string): CrudApi {
@@ -26,5 +27,6 @@ export function createCrudApi(prefix: string): CrudApi {
     getDetail: (id: number)   => get(`${base}/getDetail`, { id }),
     doEdit:    (data: any)    => post(`${base}/doEdit`, data),
     doDelete:  (ids: any)     => post(`${base}/doDelete`, { ids }),
+    doExport:  (data?: any)   => post(`${base}/doExport`, data),
   }
 }
