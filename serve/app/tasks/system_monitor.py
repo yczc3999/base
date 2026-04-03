@@ -11,10 +11,9 @@ class SystemMonitorTask(BaseTask):
     async def run(self):
         from app.services.redis import cache_set
 
-        # 采集系统指标
         try:
             load_1, load_5, load_15 = os.getloadavg()
-        except OSError:
+        except (OSError, AttributeError):
             load_1 = load_5 = load_15 = 0
 
         metrics = {
@@ -24,12 +23,9 @@ class SystemMonitorTask(BaseTask):
             "cpu_count": os.cpu_count(),
         }
 
-        # 存入 Redis（Dashboard 可读取）
         await cache_set("system:metrics", metrics, ttl=120)
 
-        # CPU 负载过高告警
         cpu_count = os.cpu_count() or 1
         if load_1 > cpu_count * 0.9:
             import logging
             logging.getLogger("task").warning(f"High CPU load: {load_1} (cores: {cpu_count})")
-            # 可接入 NotifyService 发告警

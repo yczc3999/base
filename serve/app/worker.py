@@ -4,9 +4,6 @@
 启动：
     python -m app.worker              # 生产
     python -m app.worker --reload     # 开发（热重载）
-
-多 Worker：
-    python -m app.worker --workers 4
 """
 
 import asyncio
@@ -14,6 +11,7 @@ import importlib
 import inspect
 import json
 import logging
+import signal
 import sys
 import time
 from pathlib import Path
@@ -25,13 +23,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("worker")
 
+# 最大并发任务数（防止 OOM）
+MAX_CONCURRENT = 10
+shutdown_event = asyncio.Event()
+
 
 # ==================== 扫描 ====================
 
 def scan_tasks():
-    """扫描 app/tasks/ 目录，自动发现所有 Task 类"""
     from app.tasks.base import BaseTask
-
     tasks = []
     task_dir = Path(__file__).parent / "tasks"
     for file in sorted(task_dir.glob("*.py")):
@@ -49,9 +49,7 @@ def scan_tasks():
 
 
 def scan_jobs():
-    """扫描 app/jobs/ 目录，自动发现所有 Job 类"""
     from app.jobs.base import BaseJob
-
     jobs = {}
     job_dir = Path(__file__).parent / "jobs"
     for file in sorted(job_dir.glob("*.py")):
@@ -76,21 +74,24 @@ class TaskScheduler:
 
     async def start(self):
         if not self.tasks:
-            logger.info("No tasks registered")
             return
         for task in self.tasks:
             asyncio.create_task(self._loop(task))
         logger.info(f"TaskScheduler started ({len(self.tasks)} tasks)")
 
     async def _loop(self, task):
-        # 首次启动延迟 5 秒（等 Redis 连接就绪）
         await asyncio.sleep(5)
-        while True:
+        while not shutdown_event.is_set():
             try:
                 await task.execute()
             except Exception as e:
                 logger.error(f"Task {task.name} error: {e}")
-            await asyncio.sleep(task.interval)
+            # 用 wait 代替 sleep，支持优雅关闭
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=task.interval)
+                break  # 收到关闭信号
+            except asyncio.TimeoutError:
+                pass  # 正常超时，继续循环
 
 
 # ==================== 队列消费者 ====================
@@ -98,6 +99,8 @@ class TaskScheduler:
 class QueueConsumer:
     def __init__(self, jobs):
         self.jobs = jobs
+        self.semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        self.running_tasks = set()
 
     async def start(self):
         from app.services.redis import get_redis
@@ -105,49 +108,71 @@ class QueueConsumer:
 
         r = await get_redis()
         prefix = settings.APP_NAME
-        queues = [f"{prefix}:queue:default"]
+        queue_key = f"{prefix}:queue:default"
+        processing_key = f"{prefix}:queue:processing"
 
-        logger.info(f"QueueConsumer started (listening: {', '.join(queues)})")
+        logger.info(f"QueueConsumer started (max_concurrent={MAX_CONCURRENT})")
 
-        while True:
+        while not shutdown_event.is_set():
             try:
-                # BRPOP 阻塞等待
-                result = await r.brpop(queues, timeout=1)
-                if result:
-                    _, raw = result
+                # BRPOPLPUSH：取出并移入 processing 队列（原子操作，crash 不丢）
+                raw = await r.brpoplpush(queue_key, processing_key, timeout=1)
+                if raw:
                     payload = json.loads(raw)
-                    asyncio.create_task(self._handle(payload))
+                    # 信号量限流
+                    await self.semaphore.acquire()
+                    task = asyncio.create_task(self._handle(payload, raw, r, processing_key))
+                    self.running_tasks.add(task)
+                    task.add_done_callback(self.running_tasks.discard)
 
                 # 检查延迟队列
                 await self._check_delayed(r, prefix)
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Consumer error: {e}")
                 await asyncio.sleep(1)
 
-    async def _handle(self, payload):
+        # 优雅关闭：等待所有正在执行的任务完成
+        if self.running_tasks:
+            logger.info(f"Waiting for {len(self.running_tasks)} running jobs to finish...")
+            await asyncio.gather(*self.running_tasks, return_exceptions=True)
+
+    async def _handle(self, payload, raw, r, processing_key):
         job_name = payload.get("job")
         data = payload.get("data", {})
 
         job = self.jobs.get(job_name)
         if not job:
             logger.warning(f"Unknown job: {job_name}")
+            await r.lrem(processing_key, 1, raw)
+            self.semaphore.release()
             return
 
         try:
-            logger.info(f"Executing job: {job_name}")
+            logger.info(f"Executing: {job_name}")
             await job.handle(data)
-            logger.info(f"Job {job_name} done")
+            logger.info(f"Done: {job_name}")
         except Exception as e:
-            logger.error(f"Job {job_name} failed: {e}")
+            logger.error(f"Failed: {job_name} — {e}")
+            # TODO: 可以在这里推入死信队列
+        finally:
+            # ACK：从 processing 队列移除
+            await r.lrem(processing_key, 1, raw)
+            self.semaphore.release()
 
     async def _check_delayed(self, r, prefix):
-        """到期的延迟任务移入默认队列"""
         delayed_key = f"{prefix}:queue:delayed"
+        default_key = f"{prefix}:queue:default"
         now = time.time()
-        items = await r.zrangebyscore(delayed_key, 0, now, start=0, num=10)
-        for item in items:
-            await r.zrem(delayed_key, item)
-            await r.lpush(f"{prefix}:queue:default", item)
+        # 用 pipeline 保证原子性
+        pipe = r.pipeline()
+        items = await r.zrangebyscore(delayed_key, 0, now, start=0, num=20)
+        if items:
+            for item in items:
+                pipe.zrem(delayed_key, item)
+                pipe.lpush(default_key, item)
+            await pipe.execute()
 
 
 # ==================== 入口 ====================
@@ -157,37 +182,42 @@ async def main():
     logger.info("Base Platform Worker starting...")
     logger.info("=" * 50)
 
+    # 信号处理
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: shutdown_event.set())
+
     logger.info("Scanning tasks...")
     tasks = scan_tasks()
-
     logger.info("Scanning jobs...")
     jobs = scan_jobs()
 
-    # 启动调度器
     scheduler = TaskScheduler(tasks)
     asyncio.create_task(scheduler.start())
 
-    # 启动消费者（阻塞）
     consumer = QueueConsumer(jobs)
     await consumer.start()
+
+    logger.info("Worker stopped.")
 
 
 def run():
     import argparse
     parser = argparse.ArgumentParser(description="Base Platform Worker")
-    parser.add_argument("--reload", action="store_true", help="Enable hot reload (dev only)")
+    parser.add_argument("--reload", action="store_true", help="Hot reload (dev)")
     args = parser.parse_args()
 
     if args.reload:
         try:
             import watchfiles
-            logger.info("Hot reload enabled (watching app/tasks/ and app/jobs/)")
+            app_dir = Path(__file__).parent
+            logger.info("Hot reload enabled")
             watchfiles.run_process(
-                "app/tasks/", "app/jobs/",
+                str(app_dir / "tasks"), str(app_dir / "jobs"),
                 target=lambda: asyncio.run(main()),
             )
         except ImportError:
-            logger.warning("watchfiles not installed, running without reload")
+            logger.warning("watchfiles not installed, no reload")
             asyncio.run(main())
     else:
         asyncio.run(main())

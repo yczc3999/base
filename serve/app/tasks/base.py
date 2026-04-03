@@ -2,20 +2,14 @@
 定时任务基类
 
 新建任务：在 app/tasks/ 下新建 .py 文件，继承 BaseTask，实现 run()
-
-示例：
-    class CleanupTask(BaseTask):
-        name = "清理过期文件"
-        interval = 3600  # 每小时
-
-        async def run(self):
-            ...
 """
 
 import logging
 from app.services.redis import get_redis
+from app.config import settings
 
 logger = logging.getLogger("task")
+PREFIX = settings.APP_NAME
 
 
 class BaseTask:
@@ -28,11 +22,12 @@ class BaseTask:
 
     async def execute(self):
         """执行入口（带防重复 + 错误处理）"""
-        cache_key = f"task:running:{self.__class__.__name__}"
+        cache_key = f"{PREFIX}:task:lock:{self.__class__.__name__}"
         r = await get_redis()
 
-        # 防重复（SET NX，过期时间 = interval）
-        locked = await r.set(cache_key, "1", ex=max(self.interval - 1, 5), nx=True)
+        # 锁 TTL = interval * 2（防止任务执行超时导致锁提前过期）
+        lock_ttl = max(self.interval * 2, 30)
+        locked = await r.set(cache_key, "1", ex=lock_ttl, nx=True)
         if not locked:
             return
 
