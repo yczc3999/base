@@ -66,8 +66,9 @@ async def create_token_pair(
     access_token = _gen_token()
     refresh_token = _gen_token()
 
-    token_data = json.dumps({"user_id": user_id, "scope": scope, **(user_info or {})}, default=str)
-    refresh_data = json.dumps({"user_id": user_id, "scope": scope, "access_token": access_token}, default=str)
+    full_info = {"user_id": user_id, "scope": scope, **(user_info or {})}
+    token_data = json.dumps(full_info, default=str)
+    refresh_data = json.dumps({**full_info, "access_token": access_token}, default=str)
 
     ut_key = _user_tokens_key(scope, user_id)
     ur_key = _user_refreshes_key(scope, user_id)
@@ -118,7 +119,10 @@ async def refresh_access_token(refresh_token: str) -> dict | None:
     old_access_token = refresh_data.get("access_token")
 
     new_access_token = _gen_token()
-    token_data = json.dumps({"user_id": user_id, "scope": scope}, default=str)
+
+    # 从 refresh_data 恢复完整 user_info（登录时已存入）
+    user_info = {k: v for k, v in refresh_data.items() if k != "access_token"}
+    token_data = json.dumps(user_info, default=str)
 
     # 更新 refresh_data 中的 access_token 引用
     refresh_data["access_token"] = new_access_token
