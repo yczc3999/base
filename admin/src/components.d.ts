@@ -46,6 +46,7 @@ declare module 'vue' {
     FileUpload: typeof import('./components/FileUpload/index.vue')['default']
     IconPicker: typeof import('./components/IconPicker/index.vue')['default']
     ImageUpload: typeof import('./components/ImageUpload/index.vue')['default']
+    JsonEditor: typeof import('./components/JsonEditor/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingForm: typeof import('./components/SettingForm/index.vue')['default']

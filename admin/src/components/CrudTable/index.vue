@@ -47,13 +47,12 @@
     <!-- 工具栏 -->
     <div class="crud-toolbar">
       <div class="toolbar-left">
-        <el-button v-if="perms ? hasPerms(`${perms}:create`) : true" type="primary" :icon="PlusIcon" @click="crud.handleAdd">
+        <el-button v-if="hasCreate && (perms ? hasPerms(`${perms}:create`) : true)" type="primary" :icon="PlusIcon" @click="crud.handleAdd">
           新增
         </el-button>
         <el-button
-          v-if="perms ? hasPerms(`${perms}:delete`) : true"
+          v-if="hasDelete && (perms ? hasPerms(`${perms}:delete`) : true)"
           type="danger"
-          plain
           :icon="DeleteIcon"
           :disabled="!crud.selections.value.length"
           @click="crud.handleBatchDelete"
@@ -125,6 +124,15 @@
             <template v-else-if="col.type === 'time'">
               {{ formatTime(row[col.field]) }}
             </template>
+            <!-- 列表 switch -->
+            <template v-else-if="col.type === 'switch'">
+              <el-switch
+                :model-value="row[col.field]"
+                :active-value="col.activeValue ?? 1"
+                :inactive-value="col.inactiveValue ?? 0"
+                :before-change="() => handleColumnSwitch(row, col.field, row[col.field] === (col.activeValue ?? 1) ? (col.inactiveValue ?? 0) : (col.activeValue ?? 1))"
+              />
+            </template>
             <!-- 自定义 formatter -->
             <template v-else-if="col.formatter">
               {{ col.formatter(row, row[col.field]) }}
@@ -139,12 +147,12 @@
           <template #default="{ row }">
             <slot name="actions" :row="row">
               <el-button
-                v-if="perms ? hasPerms(`${perms}:edit`) : true"
+                v-if="hasEdit && (perms ? hasPerms(`${perms}:edit`) : true)"
                 type="primary" link size="small" :icon="EditIcon"
                 @click="crud.handleEdit(row)"
               >编辑</el-button>
               <el-button
-                v-if="perms ? hasPerms(`${perms}:delete`) : true"
+                v-if="hasDelete && (perms ? hasPerms(`${perms}:delete`) : true)"
                 type="danger" link size="small" :icon="DeleteIcon"
                 @click="crud.handleDelete(row)"
               >删除</el-button>
@@ -182,33 +190,61 @@
       >
         <template v-for="f in visibleFormFields" :key="f.field">
           <el-form-item :label="f.label" :prop="f.field" :rules="f.rules">
+            <!-- 普通输入 -->
             <el-input
               v-if="!f.type || f.type === 'input'"
               v-model="crud.formData.value[f.field]"
               :placeholder="f.placeholder || `请输入${f.label}`"
+              :disabled="f.disabled"
             />
+            <!-- 密码 -->
             <el-input
               v-else-if="f.type === 'password'"
               v-model="crud.formData.value[f.field]"
               type="password"
               show-password
               :placeholder="f.placeholder || `请输入${f.label}`"
+              :disabled="f.disabled"
             />
+            <!-- 多行文本 -->
             <el-input
               v-else-if="f.type === 'textarea'"
               v-model="crud.formData.value[f.field]"
               type="textarea"
               :rows="3"
+              :placeholder="f.placeholder"
+              :disabled="f.disabled"
             />
+            <!-- JSON -->
+            <JsonEditor
+              v-else-if="f.type === 'json'"
+              v-model="crud.formData.value[f.field]"
+              :placeholder="f.placeholder"
+            />
+            <!-- 数字（带后缀） -->
+            <el-input
+              v-else-if="f.type === 'number' && f.suffix"
+              v-model.number="crud.formData.value[f.field]"
+              :disabled="f.disabled"
+              :placeholder="f.placeholder"
+            >
+              <template #append>{{ f.suffix }}</template>
+            </el-input>
+            <!-- 数字 -->
             <el-input-number
               v-else-if="f.type === 'number'"
               v-model="crud.formData.value[f.field]"
               :min="0"
+              :disabled="f.disabled"
+              :placeholder="f.placeholder"
+              style="width: 100%"
             />
+            <!-- 下拉选择 -->
             <el-select
               v-else-if="f.type === 'select'"
               v-model="crud.formData.value[f.field]"
               :placeholder="f.placeholder || `请选择${f.label}`"
+              :disabled="f.disabled"
               style="width: 100%"
             >
               <el-option
@@ -218,16 +254,66 @@
                 :value="opt.value"
               />
             </el-select>
+            <!-- 单选按钮组 -->
+            <el-radio-group
+              v-else-if="f.type === 'radio'"
+              v-model="crud.formData.value[f.field]"
+              :disabled="f.disabled"
+            >
+              <el-radio
+                v-for="opt in f.options"
+                :key="opt.value"
+                :value="opt.value"
+              >{{ opt.label }}</el-radio>
+            </el-radio-group>
+            <!-- 图片上传 -->
             <ImageUpload
               v-else-if="f.type === 'imageUpload'"
               v-model="crud.formData.value[f.field]"
               :category="f.placeholder || 'default'"
             />
+            <!-- 开关 -->
             <el-switch
               v-else-if="f.type === 'switch'"
               v-model="crud.formData.value[f.field]"
-              :active-value="1"
-              :inactive-value="0"
+              :active-value="f.options?.[0]?.value ?? 1"
+              :inactive-value="f.options?.[1]?.value ?? 0"
+              :disabled="f.disabled"
+            />
+            <!-- 日期选择 -->
+            <el-date-picker
+              v-else-if="f.type === 'date'"
+              v-model="crud.formData.value[f.field]"
+              type="date"
+              value-format="YYYY-MM-DD"
+              :placeholder="f.placeholder || `请选择${f.label}`"
+              :disabled="f.disabled"
+              style="width: 100%"
+            />
+            <!-- 日期时间选择 -->
+            <el-date-picker
+              v-else-if="f.type === 'dateTime'"
+              v-model="crud.formData.value[f.field]"
+              type="datetime"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              :placeholder="f.placeholder || `请选择${f.label}`"
+              :disabled="f.disabled"
+              style="width: 100%"
+            />
+            <!-- 颜色选择 -->
+            <el-color-picker
+              v-else-if="f.type === 'color'"
+              v-model="crud.formData.value[f.field]"
+              :disabled="f.disabled"
+            />
+            <!-- 富文本（暂用 textarea 代替） -->
+            <el-input
+              v-else-if="f.type === 'editor'"
+              v-model="crud.formData.value[f.field]"
+              type="textarea"
+              :rows="8"
+              :placeholder="f.placeholder || 'Markdown 内容'"
+              :disabled="f.disabled"
             />
           </el-form-item>
         </template>
@@ -250,6 +336,7 @@ import { usePermission } from '@/hooks/usePermission'
 import type { CrudColumn, SearchField, FormField } from './types'
 import type { CrudApi } from '@/api/crud'
 import ImageUpload from '@/components/ImageUpload/index.vue'
+import JsonEditor from '@/components/JsonEditor/index.vue'
 import { useExport } from '@/hooks/useExport'
 import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon, Download as DownloadIcon } from '@element-plus/icons-vue'
 
@@ -272,6 +359,12 @@ const props = withDefaults(defineProps<{
   dialogWidth?: string | number
   /** 是否支持导出 */
   exportable?: boolean
+  /** 是否显示新增按钮 */
+  hasCreate?: boolean
+  /** 是否显示编辑按钮 */
+  hasEdit?: boolean
+  /** 是否显示删除按钮 */
+  hasDelete?: boolean
 }>(), {
   searchFields: () => [],
   formFields: () => [],
@@ -280,6 +373,9 @@ const props = withDefaults(defineProps<{
   actionWidth: 180,
   dialogWidth: '560px',
   exportable: false,
+  hasCreate: true,
+  hasEdit: true,
+  hasDelete: true,
 })
 
 const { hasPerms } = usePermission()
@@ -322,6 +418,17 @@ async function submitForm() {
 function formatTime(val: string) {
   if (!val) return '—'
   return val.replace('T', ' ').substring(0, 19)
+}
+
+// 列表内 switch 切换（before-change 模式，返回 Promise）
+async function handleColumnSwitch(row: any, field: string, newVal: any): Promise<boolean> {
+  try {
+    await crud.api.doEdit({ id: row.id, [field]: newVal })
+    row[field] = newVal
+    return true
+  } catch {
+    return false
+  }
 }
 
 // 暴露 crud 给父组件

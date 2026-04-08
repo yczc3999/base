@@ -3,10 +3,9 @@
     <!-- Logo -->
     <div class="sidebar-logo">
       <img v-if="siteStore.logo" :src="siteStore.logo" class="logo-img" />
-      <div v-else class="logo-icon">{{ siteStore.name?.charAt(0) || 'B' }}</div>
+      <div v-else class="logo-icon">{{ siteStore.name?.charAt(0) || 'G' }}</div>
       <span v-show="!appStore.sidebarCollapsed" class="logo-text">
-        <strong>{{ siteStore.name?.split(' ')[0] || 'Base' }}</strong>
-        <span class="logo-sub">{{ siteStore.name?.split(' ').slice(1).join(' ') || 'Platform' }}</span>
+        <strong>{{ siteStore.name || 'Base' }}</strong>
       </span>
     </div>
 
@@ -101,6 +100,10 @@ const iconMap: Record<string, string> = {
   'Cloud': '☁', 'Package': '📦', 'ShoppingCart': '🛒', 'Store': '🏪',
   'BarChart3': '📊', 'PieChart': '◔', 'Tag': '🏷', 'Folder': '📁',
   'Image': '🖼', 'Camera': '📷', 'Phone': '📞', 'Cpu': '⚡',
+  // gui-tu 业务
+  'User': '👤', 'ShieldOff': '🚫', 'Receipt': '🧾', 'RefreshCw': '🔄',
+  'Ticket': '🎫', 'Target': '🎯', 'ArrowRightLeft': '⇄', 'Link': '🔗',
+  'Terminal': '⌨', 'BookOpen': '📖', 'Tags': '🏷', 'BarChart': '📊',
 }
 
 function getMenuIcon(icon?: string): string {

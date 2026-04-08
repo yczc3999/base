@@ -12,7 +12,8 @@ export function setupGuard(router: Router) {
   router.beforeEach(async (to, _from, next) => {
     NProgress.start()
     const title = to.meta?.title as string
-    document.title = title ? `${title} - Base Admin` : 'Base Admin'
+    const appTitle = import.meta.env.VITE_APP_TITLE || 'Base Admin'
+    document.title = title ? `${title} - ${appTitle}` : appTitle
 
     if (WHITE_LIST.includes(to.path)) {
       loadRetryCount = 0

@@ -13,7 +13,7 @@ export interface CrudColumn {
   /** 是否可排序 */
   sortable?: boolean | 'custom'
   /** 渲染类型 */
-  type?: 'text' | 'tag' | 'status' | 'time' | 'image'
+  type?: 'text' | 'tag' | 'status' | 'time' | 'image' | 'switch'
   /** 状态映射（type=status 时） */
   statusMap?: Record<string | number, { label: string; type: string }>
   /** tag 映射（type=tag 时） */
@@ -22,6 +22,10 @@ export interface CrudColumn {
   fixed?: 'left' | 'right'
   /** 自定义格式化 */
   formatter?: (row: any, value: any) => string
+  /** switch 列的激活值 */
+  activeValue?: any
+  /** switch 列的非激活值 */
+  inactiveValue?: any
 }
 
 /** 搜索字段配置 */
@@ -45,7 +49,7 @@ export interface FormField {
   /** 显示名 */
   label: string
   /** 类型 */
-  type?: 'input' | 'password' | 'textarea' | 'select' | 'switch' | 'number' | 'radio' | 'imageUpload' | 'treeSelect'
+  type?: 'input' | 'password' | 'textarea' | 'select' | 'switch' | 'number' | 'radio' | 'imageUpload' | 'treeSelect' | 'json' | 'date' | 'dateTime' | 'color' | 'editor'
   /** 校验规则 */
   rules?: any[]
   /** 选项 */
@@ -60,4 +64,8 @@ export interface FormField {
   showOnEdit?: boolean
   /** 列宽占比（1=整行，0.5=半行） */
   span?: number
+  /** 禁用（只读展示） */
+  disabled?: boolean
+  /** 输入框后缀文字 */
+  suffix?: string
 }
