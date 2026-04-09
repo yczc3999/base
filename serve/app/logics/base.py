@@ -226,7 +226,7 @@ class BaseLogic:
 
         data = self._to_dict(record, with_sensitive=True)
         await self._set_cache(data)
-        return self._strip_sensitive(data)
+        return self.format_data(record)
 
     # ==================== 按字段查询（走缓存，含敏感字段） ====================
 
