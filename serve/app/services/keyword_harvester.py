@@ -1,11 +1,13 @@
-"""SEO 关键词采集器 — Google Suggest + DuckDuckGo Suggest 递归扩展
+"""SEO 关键词采集器 — Suggest API 递归扩展.
 
-策略：种子关键词 → Suggest API 拿补全 → 补全结果再作为种子递归 → 去重入库
+策略: 种子 → Suggest API 拿补全 → 补全再作种子递归 → 去重
 
-Google Suggest API 是 Chrome 地址栏的自动补全接口，稳定可用、不被反爬。
-比抓 Google 搜索结果页底部"相关搜索"更可靠。
+支持引擎 (engine_map 第二位是 source_code 字符串, 与 DB keywords.source_code 对齐):
+    google / duckduckgo / yandex      (西方)
+    baidu / sogou                     (国内, 对汽车/VIN 等业务效果更好)
+
+Google Suggest 是 Chrome 地址栏的自动补全接口, 稳定不被反爬, 优于抓搜索结果页.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -35,7 +37,7 @@ def _headers() -> dict:
 
 
 async def suggest_google(seed: str, hl: str = "zh-CN") -> list[str]:
-    """Google 自动补全建议（Chrome Suggest API）"""
+    """Google 自动补全 (Chrome Suggest API)."""
     url = (
         f"https://suggestqueries.google.com/complete/search"
         f"?client=chrome&q={quote_plus(seed)}&hl={hl}"
@@ -51,7 +53,7 @@ async def suggest_google(seed: str, hl: str = "zh-CN") -> list[str]:
 
 
 async def suggest_duckduckgo(seed: str) -> list[str]:
-    """DuckDuckGo 自动补全建议"""
+    """DuckDuckGo 自动补全."""
     url = f"https://duckduckgo.com/ac/?q={quote_plus(seed)}&type=list"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
@@ -68,7 +70,7 @@ async def suggest_duckduckgo(seed: str) -> list[str]:
 
 
 async def suggest_yandex(seed: str) -> list[str]:
-    """Yandex 自动补全建议"""
+    """Yandex 自动补全."""
     url = f"https://suggest.yandex.com/suggest-ff.cgi?part={quote_plus(seed)}&uil=en&lid=84"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
@@ -80,6 +82,53 @@ async def suggest_yandex(seed: str) -> list[str]:
         return []
 
 
+async def suggest_baidu(seed: str) -> list[str]:
+    """百度下拉 — opensearch 格式: [seed, [suggestions...]]."""
+    url = (
+        f"https://suggestion.baidu.com/su"
+        f"?wd={quote_plus(seed)}&action=opensearch"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(url, headers=_headers())
+            data = json.loads(r.text)
+            return data[1] if len(data) > 1 and isinstance(data[1], list) else []
+    except Exception as e:
+        logger.warning("baidu suggest '%s': %s", seed, e)
+        return []
+
+
+async def suggest_sogou(seed: str) -> list[str]:
+    """搜狗下拉 — suggnew/ajajjson 接口,返回 JSON 数组第二位是补全."""
+    url = (
+        f"https://www.sogou.com/suggnew/ajajjson"
+        f"?type=web&key={quote_plus(seed)}"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(url, headers=_headers())
+            txt = r.text.strip()
+            start = txt.find("[")
+            end = txt.rfind("]")
+            if start == -1 or end == -1:
+                return []
+            data = json.loads(txt[start : end + 1])
+            return data[1] if len(data) > 1 and isinstance(data[1], list) else []
+    except Exception as e:
+        logger.warning("sogou suggest '%s': %s", seed, e)
+        return []
+
+
+# engine_name → (fetch_func, source_code 字符串), source_code 写入 keywords.source_code
+ENGINE_MAP: dict[str, tuple] = {
+    "google":     (suggest_google,     "google"),
+    "duckduckgo": (suggest_duckduckgo, "ddg"),
+    "yandex":     (suggest_yandex,     "yandex"),
+    "baidu":      (suggest_baidu,      "baidu"),
+    "sogou":      (suggest_sogou,      "sogou"),
+}
+
+
 async def harvest_recursive(
     seeds: list[str],
     engines: list[str] | None = None,
@@ -88,38 +137,18 @@ async def harvest_recursive(
     max_total: int = 200,
     delay_sec: float = 1.0,
 ) -> list[dict]:
-    """递归采集，带层数 + 每层数量 + 总量三重限制。
+    """递归采集. 返回 [{keyword, source_code, seed_keyword}, ...].
 
-    参数：
-        seeds: 初始种子关键词
-        engines: 搜索引擎列表
-        depth: 最大递归层数（1=只采种子的直接补全，2=补全的补全，以此类推）
-        max_per_level: 每层最多处理多少个种子词（控制扇出，避免指数爆炸）
-        max_total: 总共最多采集多少个新关键词（达到后立即停止）
-        delay_sec: 每次请求之间的基础延迟（±50% 抖动）
-
-    扇出估算（Google Suggest 通常返回 5-10 个）：
-        depth=1, max_per_level=20 → 最多 ~200 个
-        depth=2, max_per_level=10 → 最多 ~10×10×8 = ~800 个（受 max_total 限制）
-        depth=3, max_per_level=5  → 最多 ~5×5×5×8 = ~1000 个（受 max_total 限制）
-
-    返回 [{"keyword": str, "source": int, "seed_keyword": str}, ...]
+    engines 默认 ["baidu", "google", "duckduckgo"] — 国内业务优先百度.
     """
     if engines is None:
-        engines = ["google", "duckduckgo"]
+        engines = ["baidu", "google", "duckduckgo"]
 
     seen: set[str] = set()
     results: list[dict] = []
     current_seeds = list(seeds)
 
-    engine_map = {
-        "google": (suggest_google, 1),
-        "duckduckgo": (suggest_duckduckgo, 3),
-        "yandex": (suggest_yandex, 2),
-    }
-
     for level in range(depth):
-        # 每层只取前 max_per_level 个种子
         batch = current_seeds[:max_per_level]
         next_seeds: list[str] = []
         logger.info(
@@ -141,9 +170,10 @@ async def harvest_recursive(
                 if len(results) >= max_total:
                     break
 
-                func, source = engine_map.get(engine_name, (None, 0))
-                if not func:
+                func_src = ENGINE_MAP.get(engine_name)
+                if not func_src:
                     continue
+                func, source_code = func_src
 
                 suggestions = await func(seed)
                 for kw in suggestions:
@@ -156,7 +186,7 @@ async def harvest_recursive(
                     seen.add(kw_lower)
                     results.append({
                         "keyword": kw_clean,
-                        "source": source,
+                        "source_code": source_code,
                         "seed_keyword": seed,
                     })
                     next_seeds.append(kw_clean)

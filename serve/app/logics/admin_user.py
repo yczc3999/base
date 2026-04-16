@@ -72,8 +72,8 @@ class AdminUserLogic(BaseLogic):
             return False
         if not verify_password(old_password, user["password"]):
             return False
-        hashed = hash_password(new_password)
-        await self.save(db, {"id": user_id, "password": hashed})
+        # 传明文, before_edit 会 hash
+        await self.save(db, {"id": user_id, "password": new_password})
         return True
 
     # ==================== 角色管理 ====================

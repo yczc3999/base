@@ -16,6 +16,7 @@
         → 删 DB 记录
 """
 
+import os
 import uuid
 from datetime import date
 from sqlalchemy import select, delete as sql_delete
@@ -104,20 +105,23 @@ class FileLogic(BaseLogic):
 
         # 上传到存储
         if is_private:
-            driver = await storage_service.get_specific_driver(db, "local")
+            # private 文件只存本地 storage/private，不走 OSS
+            private_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "storage", "private")
+            full_path = os.path.join(private_root, path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "wb") as f:
+                f.write(content)
+            url = f"/api/file/preview/{path}"
+            platform = "local"
         else:
             driver = await storage_service.get_driver(db)
-
-        if storage_service.failed:
-            raise BizError(storage_service.error)
-
-        url = await driver.upload(path, content, visible=not is_private)
-        if storage_service.failed:
-            raise BizError(storage_service.error)
-
-        # 获取平台名
-        config = await storage_service.get_config(db)
-        platform = "local" if is_private else (config.get("default", "local"))
+            if storage_service.failed:
+                raise BizError(storage_service.error)
+            url = await driver.upload(path, content, visible=True)
+            if storage_service.failed:
+                raise BizError(storage_service.error)
+            config = await storage_service.get_config(db)
+            platform = config.get("default", "local")
 
         # 写入 DB，失败时尝试回删已上传的文件
         record = File(

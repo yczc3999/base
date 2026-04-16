@@ -186,12 +186,14 @@ async def gen_from_tags_stream(dto: TagGenDto, _=Depends(require_admin)):
     前端零业务逻辑 — 只接收 start/generating/created/error/done 事件并渲染。
     """
     from app.services import ai_content
-    from app.logics.tag import tag_logic
+    from app.logics.keyword import keyword_logic
     from sqlalchemy import text as sql_text
 
     async def event_stream():
         async with async_session() as db:
-            tags = await tag_logic.get_names_by_ids(db, dto.tag_ids)
+            rows = await keyword_logic.get_names_by_ids(db, dto.tag_ids)
+            # 适配老代码: 字段名 keyword → name
+            tags = [{"id": r["id"], "name": r["keyword"]} for r in rows]
 
         total = len(tags)
         if not total:

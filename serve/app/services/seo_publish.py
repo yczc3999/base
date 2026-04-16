@@ -18,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logics.article import article_logic
-from app.logics.article_tag import article_tag_logic
+from app.logics.article_keyword import article_keyword_logic
 from app.logics.publish_log import publish_log_logic
 from app.logics.setting import setting_logic
 from app.services.seo_phase import seo_phase_service
@@ -73,13 +73,13 @@ class SeoPublishService:
         if nearest is not None and nearest < max_ham:
             return False, "similarity", f"hamming {nearest} < {max_ham}"
 
-        # 同 tag 7 天限次
+        # 同 keyword 7 天限次
         max_tag_repeat = int(await setting_logic.get(db, "seo", "quality_max_tag_repeat_7d", "2") or 2)
-        tags = await article_tag_logic.get_tags_for_article(db, article_id)
-        for t in tags:
-            cnt = await article_tag_logic.count_published_for_tag_recent(db, t["id"], days=7)
+        kws = await article_keyword_logic.get_keywords_for_article(db, article_id)
+        for k in kws:
+            cnt = await article_keyword_logic.count_published_for_keyword_recent(db, k["id"], days=7)
             if cnt >= max_tag_repeat:
-                return False, "tag_repeat", f"标签『{t['name']}』7 天内已发 {cnt} 篇"
+                return False, "tag_repeat", f"关键词『{k['name']}』7 天内已发 {cnt} 篇"
 
         return True, None, None
 
