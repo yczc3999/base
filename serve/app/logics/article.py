@@ -14,6 +14,8 @@ class ArticleLogic(BaseLogic):
     model = Article
     cache_prefix = "article"
     except_keys = ["updated_at"]
+    # 允许前端显式传 null 清空的字段（支持"取消定时"、"重置发布时间"等场景）
+    nullable_fields = {"scheduled_at", "published_at"}
 
     def allowed_filters(self):
         return ["id", "status", "source", "ai_processed"]
@@ -24,11 +26,20 @@ class ArticleLogic(BaseLogic):
     def keyword_fields(self):
         return ["title", "slug", "summary"]
 
-    def _auto_publish_at(self, data: dict) -> dict:
-        """发布时若 published_at 为空，自动填当前时间；允许用户手动指定（穿越时空）。"""
-        status = data.get("status")
-        if status is not None and int(status) == 1 and not data.get("published_at"):
-            data["published_at"] = datetime.utcnow()
+    def _publish_time_semantics(self, data: dict) -> dict:
+        """v2 语义统一处理：
+        - status=1 立即发布：未传 published_at 则填 NOW，同时清 scheduled_at
+        - status=0 + scheduled_at 未来：保持草稿 + 等 worker publisher 到点发
+        - status=0 + scheduled_at 为 None：纯草稿
+        """
+        if "status" not in data:
+            return data
+        status = int(data.get("status") or 0)
+        if status == 1:
+            if not data.get("published_at"):
+                data["published_at"] = datetime.utcnow()
+            # 立即发布必须清计划时间（避免语义混乱）
+            data["scheduled_at"] = None
         return data
 
     def _maybe_simhash(self, data: dict) -> dict:
@@ -45,10 +56,10 @@ class ArticleLogic(BaseLogic):
         return data
 
     def before_create(self, data: dict) -> dict:
-        return self._maybe_simhash(self._auto_publish_at(data))
+        return self._maybe_simhash(self._publish_time_semantics(data))
 
     def before_edit(self, data: dict) -> dict:
-        return self._maybe_simhash(self._auto_publish_at(data))
+        return self._maybe_simhash(self._publish_time_semantics(data))
 
     async def import_collected(
         self,

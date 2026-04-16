@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="editor-backdrop" @click.self="$emit('close')">
+  <div v-if="visible" class="editor-backdrop">
     <div class="editor-layout">
       <!-- ===== 左面板：文章编辑 ===== -->
       <main class="editor-main">
@@ -54,15 +54,15 @@
         <!-- 底栏 -->
         <div class="bottom-bar">
           <div class="bar-left">
-            <div class="status-indicator" :class="`s-${statusKind}`">{{ statusLabel }}</div>
+            <!-- 状态 indicator：草稿/定时(含时间,可点)/已发布 -->
+            <div class="status-indicator" :class="[`s-${statusKind}`, statusKind === 'scheduled' ? 'clickable' : '']"
+              @click="statusKind === 'scheduled' && openScheduleDialog()"
+              :title="statusKind === 'scheduled' ? '点击修改定时时间' : ''">
+              {{ statusLabel }}
+            </div>
             <div class="sort-field">
               <span>排序</span>
               <input v-model.number="form.sort" type="number" min="0" />
-            </div>
-            <div class="sort-field published-field">
-              <span>发布时间</span>
-              <input v-model="publishedLocal" type="datetime-local" step="60"
-                title="留空 + 立即发布 = 后端自动填当前时间" />
             </div>
           </div>
           <div class="bar-right">
@@ -73,8 +73,8 @@
             </label>
             <button class="btn-cancel" @click="$emit('close')">取消</button>
             <button class="btn-save btn-draft" :disabled="saving" @click="saveAs('draft')">存草稿</button>
-            <button class="btn-save btn-schedule" :disabled="saving || !isFutureScheduled"
-              @click="saveAs('schedule')" :title="isFutureScheduled ? '' : '先在左侧填一个未来的发布时间'">
+            <button class="btn-save btn-schedule" :disabled="saving"
+              @click="openScheduleDialog" title="定时发布：点击选择时间">
               定时发布
             </button>
             <button class="btn-save" :class="{ loading: saving }" :disabled="saving" @click="saveAs('publish')">
@@ -83,6 +83,28 @@
           </div>
         </div>
       </main>
+
+      <!-- ===== 定时发布 Dialog ===== -->
+      <div v-if="scheduleDialogVisible" class="schedule-modal" @click.self="scheduleDialogVisible = false">
+        <div class="schedule-card">
+          <div class="schedule-title">⏰ 定时发布</div>
+          <div class="schedule-hint">选择发布时间，到点系统会自动发布。此前保持草稿状态。</div>
+          <input v-model="scheduleDraft" type="datetime-local" step="60" class="schedule-input" />
+          <div v-if="scheduleDraftPreview" class="schedule-preview">
+            将在 <strong>{{ scheduleDraftPreview }}</strong> 自动发布
+          </div>
+          <div class="schedule-footer">
+            <button v-if="form.scheduled_at" class="btn-cancel btn-danger-text"
+              :disabled="saving" @click="cancelSchedule">取消定时</button>
+            <div class="schedule-footer-right">
+              <button class="btn-cancel" @click="scheduleDialogVisible = false">关闭</button>
+              <button class="btn-save" :disabled="saving || !isDraftFuture" @click="confirmSchedule">
+                {{ saving && lastAction === 'schedule' ? '保存中...' : '确定' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- ===== 右面板：AI 助手 ===== -->
       <aside class="ai-aside">
@@ -95,12 +117,16 @@
           <div class="ai-zone">
             <label class="zone-label"><i class="dot"></i>关键词</label>
             <div class="kw-row">
-              <el-select v-model="topic.tagId" placeholder="选标签（可空）" size="small"
-                filterable clearable :loading="tagsLoading"
+              <el-select v-model="topic.tagId" placeholder="搜索/选上线标签" size="small"
+                filterable remote clearable
+                :remote-method="searchTags" :loading="tagSearchLoading"
                 popper-class="ai-kw-popper"
-                @change="onTagSelect" @visible-change="v => v && $emit('load-tags')"
+                @change="onTagSelect" @visible-change="onTagDropdownOpen"
                 style="flex:0 0 40%">
-                <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
+                <el-option v-for="t in tagSearchResults" :key="t.id" :label="t.name" :value="t.id" />
+                <template #empty>
+                  <div class="tag-empty">{{ tagSearchLoading ? '搜索中...' : '未找到上线标签' }}</div>
+                </template>
               </el-select>
               <input v-model="topic.keyword" placeholder="关键词（可手动编辑）" />
             </div>
@@ -171,19 +197,10 @@ const form = reactive({
   id: null as number | null,
   title: '', slug: '', summary: '', cover_image: '', content: '',
   status: 0, sort: 0, is_pinned: false,
-  published_at: null as string | null,
+  published_at: null as string | null,  // 实际发布时间（只读展示，后端 status=1 钩子自动填）
+  scheduled_at: null as string | null,  // 计划发布时间（status=0 + 未来 = 定时）
 })
-
-// datetime-local 用 'YYYY-MM-DDTHH:mm'，后端用 'YYYY-MM-DD HH:mm:ss'
-const publishedLocal = computed({
-  get() {
-    const v = form.published_at
-    return v ? String(v).replace(' ', 'T').slice(0, 16) : ''
-  },
-  set(v: string) {
-    form.published_at = v ? v.replace('T', ' ') + ':00' : null
-  },
-})
+const lastAction = ref<'draft' | 'publish' | 'schedule' | null>(null)
 
 const _resetForm = (d: any) => {
   if (d) {
@@ -191,7 +208,10 @@ const _resetForm = (d: any) => {
     form.status = Number(form.status) || 0
     form.sort = Number(form.sort) || 0
   } else {
-    Object.assign(form, { id: null, title: '', slug: '', summary: '', cover_image: '', content: '', status: 0, sort: 0, is_pinned: false, published_at: null })
+    Object.assign(form, {
+      id: null, title: '', slug: '', summary: '', cover_image: '', content: '',
+      status: 0, sort: 0, is_pinned: false, published_at: null, scheduled_at: null,
+    })
   }
 }
 watch(() => props.data, _resetForm, { immediate: true })
@@ -199,43 +219,92 @@ watch(() => props.visible, (v) => {
   if (v) { _resetForm(props.data); result.value = ''; resultHtml.value = '' }
 })
 
-// 状态识别（用于底栏标签与按钮可用性）
-const isFutureScheduled = computed(() => {
-  if (!form.published_at) return false
-  return new Date(String(form.published_at).replace(' ', 'T')).getTime() > Date.now()
-})
+// 状态识别（v2 语义：scheduled_at 是真相源）
+function toTs(s: string | null): number {
+  return s ? new Date(String(s).replace(' ', 'T')).getTime() : 0
+}
+function formatDate(s: string | null): string {
+  return s ? String(s).replace('T', ' ').slice(0, 16) : ''
+}
+
 const statusKind = computed<'draft' | 'scheduled' | 'live'>(() => {
-  if (+form.status === 0) return 'draft'
-  return isFutureScheduled.value ? 'scheduled' : 'live'
+  if (+form.status === 1) return 'live'
+  if (form.scheduled_at && toTs(form.scheduled_at) > Date.now()) return 'scheduled'
+  return 'draft'
 })
 const statusLabel = computed(() => ({
   draft: '📝 草稿',
-  scheduled: `⏰ 定时发布（${form.published_at}）`,
-  live: '✅ 已发布',
+  scheduled: `⏰ 定时 ${formatDate(form.scheduled_at)}`,
+  live: `✅ 已发布 ${formatDate(form.published_at)}`,
 }[statusKind.value]))
 
-async function saveAs(action: 'draft' | 'publish' | 'schedule') {
-  if (!form.title) return ElMessage.warning('请输入标题')
+// ---- 定时 Dialog ----
+const scheduleDialogVisible = ref(false)
+const scheduleDraft = ref<string>('')  // datetime-local 格式 YYYY-MM-DDTHH:mm
 
+const isDraftFuture = computed(() => {
+  if (!scheduleDraft.value) return false
+  return toTs(scheduleDraft.value) > Date.now()
+})
+const scheduleDraftPreview = computed(() => {
+  if (!isDraftFuture.value) return ''
+  return formatDate(scheduleDraft.value)
+})
+
+function openScheduleDialog() {
+  // 预填：若已有 scheduled_at 用它；否则默认明天 09:00
+  if (form.scheduled_at) {
+    scheduleDraft.value = String(form.scheduled_at).replace(' ', 'T').slice(0, 16)
+  } else {
+    const t = new Date()
+    t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0)
+    scheduleDraft.value = t.toISOString().slice(0, 16)
+  }
+  scheduleDialogVisible.value = true
+}
+
+async function confirmSchedule() {
+  if (!isDraftFuture.value) return ElMessage.warning('请选未来的时间')
+  if (!form.title) return ElMessage.warning('请先输入标题')
+  if (!form.content) return ElMessage.warning('请先输入正文')
+  form.status = 0
+  // datetime-local 'YYYY-MM-DDTHH:mm' → 后端 'YYYY-MM-DD HH:mm:ss'
+  form.scheduled_at = scheduleDraft.value.replace('T', ' ') + ':00'
+  lastAction.value = 'schedule'
+  await _doSave('schedule')
+  scheduleDialogVisible.value = false
+}
+
+async function cancelSchedule() {
+  form.scheduled_at = null
+  form.status = 0
+  lastAction.value = 'draft'
+  await _doSave('draft')
+  scheduleDialogVisible.value = false
+}
+
+// ---- 保存 ----
+async function saveAs(action: 'draft' | 'publish') {
+  if (!form.title) return ElMessage.warning('请输入标题')
   if (action === 'draft') {
     form.status = 0
+    // 存草稿保留 scheduled_at（不偷偷取消定时）
   } else if (action === 'publish') {
     form.status = 1
-    // 立即发布：清空 published_at，让后端钩子自动填 NOW
-    form.published_at = null
-  } else if (action === 'schedule') {
-    if (!isFutureScheduled.value) {
-      return ElMessage.warning('请先填一个未来的发布时间')
-    }
-    form.status = 1
+    form.published_at = null   // 让后端钩子填 NOW
+    form.scheduled_at = null   // 立即发布清计划时间
   }
+  lastAction.value = action
+  await _doSave(action)
+}
 
+async function _doSave(action: 'draft' | 'publish' | 'schedule') {
   saving.value = true
   try {
     await post('/admin/article/doEdit', form)
     const msg = action === 'draft' ? '已存为草稿'
       : action === 'publish' ? '已发布'
-      : `已定时发布（${form.published_at}）`
+      : `已定时：${formatDate(form.scheduled_at)} 自动发布`
     ElMessage.success(msg)
     emit('saved')
     emit('close')
@@ -297,8 +366,42 @@ const chatInput = ref('')
 // 生成永远以 keyword 输入框为准（允许手动编辑覆盖标签选择）
 const currentKeyword = computed(() => topic.keyword.trim())
 
+// ---- 标签远程搜索（只搜 status=1 上线标签，支持任意规模）----
+const tagSearchResults = ref<any[]>([])
+const tagSearchLoading = ref(false)
+let _tagSearchTimer: any = null
+let _tagSearchSeq = 0
+
+async function _fetchTags(keyword: string) {
+  const seq = ++_tagSearchSeq
+  tagSearchLoading.value = true
+  try {
+    const params: any = {
+      pageSize: 30,
+      filters: JSON.stringify({ status: 1 }),
+    }
+    if (keyword) params.keyword = keyword
+    const res = await get('/admin/tag/getList', params)
+    // 防竞态：只采用最新请求的结果
+    if (seq !== _tagSearchSeq) return
+    tagSearchResults.value = res?.list || []
+  } finally {
+    if (seq === _tagSearchSeq) tagSearchLoading.value = false
+  }
+}
+
+function searchTags(keyword: string) {
+  clearTimeout(_tagSearchTimer)
+  _tagSearchTimer = setTimeout(() => _fetchTags(keyword.trim()), 250)
+}
+
+function onTagDropdownOpen(visible: boolean) {
+  // 首次展开且结果为空时加载 Top-30 上线标签（按默认排序）
+  if (visible && tagSearchResults.value.length === 0) _fetchTags('')
+}
+
 function onTagSelect() {
-  const t = props.tags.find((x: any) => x.id === topic.tagId)
+  const t = tagSearchResults.value.find((x: any) => x.id === topic.tagId)
   if (t) topic.keyword = t.name
 }
 
@@ -473,16 +576,6 @@ details[open] .chevron { transform: rotate(180deg); }
   background: #edeeef; font-size: 12px; outline: none;
 }
 .sort-field input:focus { background: #e0eaff; }
-/* 发布时间沿用 sort-field 外壳，只调宽度 + 左对齐 */
-.published-field input[type="datetime-local"] {
-  width: auto; min-width: 170px; padding: 0 8px; text-align: left;
-  font-family: inherit; color: #191c1d;
-  color-scheme: light;
-}
-.published-field input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  opacity: 0.55; cursor: pointer;
-}
-.published-field input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 .pin-toggle {
   display: flex; align-items: center; gap: 6px; cursor: pointer;
   font-size: 12px; font-weight: 600; color: #5a5f68;
@@ -523,10 +616,48 @@ details[open] .chevron { transform: rotate(180deg); }
 .status-indicator {
   padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 .status-indicator.s-draft { background: #f3f4f5; color: #5a5f68; }
 .status-indicator.s-live { background: #e7f7ee; color: #1fa25a; }
 .status-indicator.s-scheduled { background: #fff7ec; color: #e67e22; border-color: #f5c78e; }
+.status-indicator.clickable { cursor: pointer; transition: filter 0.15s; }
+.status-indicator.clickable:hover { filter: brightness(0.96); }
+
+/* ===== 定时发布 Dialog ===== */
+.schedule-modal {
+  position: fixed; inset: 0; z-index: 2100;
+  background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.15s ease-out;
+}
+.schedule-card {
+  background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+  width: 420px; max-width: calc(100vw - 32px); padding: 24px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.schedule-title { font-size: 16px; font-weight: 600; color: #191c1d; }
+.schedule-hint { font-size: 13px; color: #5a5f68; line-height: 1.6; }
+.schedule-input {
+  width: 100%; height: 40px; padding: 0 12px;
+  border: 1px solid #e1e3e4; border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: #191c1d;
+  outline: none; transition: border-color 0.2s;
+  color-scheme: light;
+}
+.schedule-input:focus { border-color: #409eff; }
+.schedule-preview {
+  font-size: 13px; color: #0060a9; background: #e8f3ff;
+  padding: 8px 12px; border-radius: 8px;
+}
+.schedule-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-top: 4px;
+}
+.schedule-footer-right { display: flex; gap: 8px; }
+.btn-danger-text { color: #d9534f; border-color: #f5c1bf; }
+.btn-danger-text:hover { background: #fef2f2; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ===== 右面板 ===== */
 .ai-aside {
@@ -556,6 +687,7 @@ details[open] .chevron { transform: rotate(180deg); }
   transition: all 0.2s; box-sizing: border-box;
 }
 .kw-row select:focus, .kw-row input:focus { background: #e0eaff; }
+.tag-empty { padding: 12px; text-align: center; color: #94a3b8; font-size: 12px; }
 
 /* el-select trigger 对齐右侧 input 的灰底圆角风格 */
 .kw-row :deep(.el-select) { flex: 0 0 40%; }
