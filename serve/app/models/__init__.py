@@ -13,11 +13,13 @@ from app.models.file import File
 # 内容模块（可选，按需启用）
 from app.models.article import Article
 from app.models.article_tag import ArticleTag
+from app.models.tag import Tag
+from app.models.search_keyword import SearchKeyword
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
     "AdminOperationLog", "AdminLoginLog",
     "Menu", "Role", "RoleMenu", "AdminUserRole",
     "Message", "File",
-    "Article", "ArticleTag",
+    "Article", "ArticleTag", "Tag", "SearchKeyword",
 ]

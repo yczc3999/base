@@ -16,6 +16,8 @@ from app.controllers.admin.file import router as admin_file_router, file_proxy_r
 from app.controllers.admin import dashboard as admin_dashboard
 from app.controllers.admin import export as admin_export
 from app.controllers.admin import article as admin_article
+from app.controllers.admin import tag as admin_tag
+from app.controllers.admin import search_keyword as admin_search_keyword
 from app.controllers.client import user as client_user
 
 
@@ -66,6 +68,8 @@ app.include_router(admin_file_router, prefix="/api/admin")
 app.include_router(admin_dashboard.router, prefix="/api/admin")
 app.include_router(admin_export.router, prefix="/api/admin")
 app.include_router(admin_article.router, prefix="/api/admin")
+app.include_router(admin_tag.router, prefix="/api/admin")
+app.include_router(admin_search_keyword.router, prefix="/api/admin")
 
 # 隐私文件代理（不走 /api/admin 前缀）
 app.include_router(file_proxy_router, prefix="/api")
