@@ -15,6 +15,8 @@ from app.models.article import Article
 from app.models.article_tag import ArticleTag
 from app.models.tag import Tag
 from app.models.search_keyword import SearchKeyword
+# SEO 模块
+from app.models.publish_log import PublishLog
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
@@ -22,4 +24,5 @@ __all__ = [
     "Menu", "Role", "RoleMenu", "AdminUserRole",
     "Message", "File",
     "Article", "ArticleTag", "Tag", "SearchKeyword",
+    "PublishLog",
 ]
