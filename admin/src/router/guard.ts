@@ -2,6 +2,7 @@ import type { Router } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { isLoggedIn, clearTokens } from '@/utils/auth'
+import { useSiteStore } from '@/stores/site'
 import NProgress from '@/utils/nprogress'
 
 const WHITE_LIST = ['/login', '/404']
@@ -11,9 +12,11 @@ const MAX_RETRY = 3
 export function setupGuard(router: Router) {
   router.beforeEach(async (to, _from, next) => {
     NProgress.start()
+    const siteStore = useSiteStore()
+    if (!siteStore.loaded) await siteStore.load()
+    const appName = siteStore.name || 'Admin'
     const title = to.meta?.title as string
-    const appTitle = import.meta.env.VITE_APP_TITLE || 'Base Admin'
-    document.title = title ? `${title} - ${appTitle}` : appTitle
+    document.title = title ? `${title} - ${appName}` : appName
 
     if (WHITE_LIST.includes(to.path)) {
       loadRetryCount = 0
@@ -50,7 +53,9 @@ export function setupGuard(router: Router) {
       }
 
       loadRetryCount = 0
-      return next({ ...to, replace: true })
+      // 用 fullPath 强制重新匹配新增的动态路由；
+      // 传 { ...to } 会带上初次失败时的空 matched，vue-router 可能落回父路由被 redirect 吃到 /dashboard
+      return next({ path: to.fullPath, replace: true })
     } catch {
       userStore.resetState()
       permStore.resetState()
