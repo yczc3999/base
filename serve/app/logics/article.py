@@ -32,20 +32,16 @@ class ArticleLogic(BaseLogic):
         return data
 
     def _maybe_simhash(self, data: dict) -> dict:
-        """文章内容变更时同步算 simhash（内容指纹）。
-        若未装 SEO 模块（services/seo_simhash.py 不存在），优雅降级 skip，
-        不影响 article 主流程。
+        """文章内容变更时同步算 simhash。
+        simhash 是文章内在属性（内容指纹），与 published_at/updated_at 同等地位，
+        由 article_logic 全权维护。SEO 模块只读不写。
         """
         content = data.get("content")
-        if not content:
-            return data
-        try:
+        if content:
             from app.services.seo_simhash import simhash64
             sh = simhash64(content)
             # PostgreSQL BIGINT 是 signed，正确转换正数到 signed 表示
             data["simhash"] = sh - (1 << 64) if sh >= (1 << 63) else sh
-        except ImportError:
-            pass  # SEO 模块未装
         return data
 
     def before_create(self, data: dict) -> dict:
@@ -64,13 +60,10 @@ class ArticleLogic(BaseLogic):
         date: str | None = None,
     ) -> int | None:
         """采集入库（ON CONFLICT 去重）"""
+        from app.services.seo_simhash import simhash64
         slug = _to_slug(title)
-        try:
-            from app.services.seo_simhash import simhash64
-            sh = simhash64(content)
-            sh_signed = sh - (1 << 64) if sh >= (1 << 63) else sh
-        except ImportError:
-            sh_signed = None  # SEO 模块未装，simhash 留 NULL，不影响入库
+        sh = simhash64(content)
+        sh_signed = sh - (1 << 64) if sh >= (1 << 63) else sh
         r = await db.execute(
             text(
                 "INSERT INTO articles "
@@ -92,6 +85,34 @@ class ArticleLogic(BaseLogic):
         return r.scalar()
 
     # ===== v2 SEO 状态查询封装（外部不直接 WHERE，避免 scheduled_at 语义重载出错）=====
+
+    async def list_missing_simhash(self, db: AsyncSession, limit: int = 50) -> list[dict]:
+        """SEO pipeline 用：simhash IS NULL 的文章，补指纹。"""
+        r = await db.execute(text(
+            "SELECT id, title, content FROM articles "
+            "WHERE simhash IS NULL AND deleted_at IS NULL "
+            "ORDER BY id DESC LIMIT :n"
+        ), {"n": limit})
+        return [dict(row) for row in r.mappings().all()]
+
+    async def insert_ai_generated(
+        self, db: AsyncSession,
+        title: str, slug: str | None, summary: str, content: str,
+        simhash: int | None = None,
+    ) -> int | None:
+        """pipeline AI 生成文章入库。status=0 草稿，ai_processed=TRUE。
+        slug 冲突时返 None 不插入。
+        """
+        r = await db.execute(text(
+            "INSERT INTO articles "
+            "(title, slug, summary, content, source, ai_processed, status, sort, simhash) "
+            "VALUES (:title, :slug, :summary, :content, 0, TRUE, 0, 0, :sh) "
+            "ON CONFLICT (slug) DO NOTHING "
+            "RETURNING id"
+        ), {"title": title[:200], "slug": slug or None,
+            "summary": (summary or "")[:500], "content": content, "sh": simhash})
+        await db.commit()
+        return r.scalar()
 
     async def get_drafts(self, db: AsyncSession, limit: int = 20) -> list[dict]:
         """status=0 + scheduled_at IS NULL + 未删除 + 未排期"""
@@ -189,13 +210,10 @@ class ArticleLogic(BaseLogic):
         summary: str,
         slug: str,
     ) -> None:
-        """AI 润色后更新文章 —— content 变了同步算 simhash（如装了 SEO 模块）。"""
-        try:
-            from app.services.seo_simhash import simhash64
-            sh = simhash64(content)
-            sh_signed = sh - (1 << 64) if sh >= (1 << 63) else sh
-        except ImportError:
-            sh_signed = None
+        """AI 润色后更新文章 —— content 变了同步算 simhash。"""
+        from app.services.seo_simhash import simhash64
+        sh = simhash64(content)
+        sh_signed = sh - (1 << 64) if sh >= (1 << 63) else sh
         await db.execute(
             text(
                 "UPDATE articles SET "

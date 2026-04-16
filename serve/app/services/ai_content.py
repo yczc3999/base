@@ -12,15 +12,13 @@ from app.services import ai as ai_service
 
 logger = logging.getLogger(__name__)
 
-"""默认 prompt 是通用占位，建议每个项目在
-settings.ai.system_editor / system_rewrite 里覆盖为自己的业务设定。
-"""
 SYSTEM_EDITOR = (
-    "你是 SEO 内容编辑。\n"
-    "直接给方案，像博主写攻略，Markdown 格式。"
+    "你是「归途」回国加速平台的内容编辑。\n"
+    "业务：帮海外华人/留学生访问国内网站和视频平台。\n"
+    "直接给方案，可以提 VPN/加速器，像博主写攻略。Markdown 格式。"
 )
 
-SYSTEM_REWRITE = "你是 SEO 内容编辑。重构时像老司机分享经验。"
+SYSTEM_REWRITE = "你是「归途」回国加速平台的内容编辑。重构时像老司机分享经验。"
 
 
 # ---- 文章相关 ----
@@ -122,18 +120,30 @@ async def gen_seeds(topic: str, count: int) -> list[str]:
 
 DEFAULT_TAG_REVIEW_SYSTEM = "你是 SEO 关键词严审员，只返回 JSON。宁严勿宽。"
 
-# ⚠️ base 框架默认是通用骨架。具体业务必须在
-# settings.ai_review.tag_user_template 配置。
-# 前端 /content/tag 页面的"审核规则"按钮 + AI 辅助生成可帮用户填。
 DEFAULT_TAG_REVIEW_USER_TEMPLATE = (
-    "你是 SEO 关键词审核员。\n"
-    "⚠️ 注意：当前是【base 框架默认骨架】，未配置具体业务，AI 只能做粗糙判定。\n"
-    "请到后台『内容管理 → 标签 → 审核规则』按钮，描述你的业务让 AI 生成专属规则。\n\n"
-    "默认判定（兜底逻辑）：\n"
-    "✅ approve：明确是 SEO 友好的中长尾关键词（5-30 字，有具体意图，能做落地页）\n"
-    "❌ reject：URL、新闻标题整句、纯品牌名、过度宽泛词（如『视频』、『VPN』）、\n"
-    "        明显违规/敏感内容、与任何业务都无关的话题\n"
-    "⚠️ uncertain：其他情况（默认偏保守）\n\n"
+    "你是 SEO 关键词审核员。业务是『帮海外华人回国加速 / 访问国内视频（B站/爱奇艺/腾讯视频/抖音等）/ 解除地区限制』。\n"
+    "流量方向严格为：用户在墙外 → 访问墙内内容。\n\n"
+    "★ 关键判断：『谁在搜这个词？想干嘛？』\n"
+    "如果搜索者是『海外用户想访问/下载/看中国内容』→ approve；其他情况看规则判断。\n\n"
+    "✅ approve（这些都是我们的目标用户在搜）：\n"
+    "  - 直接表达：`回国VPN`、`海外看B站`、`watch iqiyi overseas`、`overseas chinese vpn`\n"
+    "  - 『海外版 / 国际版 / english version / overseas / abroad』+ 中国产品：\n"
+    "    例：`海外版爱奇艺下载`、`海外版爱奇艺官网`、`bilibili english version`、\n"
+    "    `bilibili 海外版`、`腾讯视频 海外版会员`、`youku overseas`\n"
+    "    —— 这些是海外用户在找中国产品的海外发行版/下载入口，正是目标人群\n"
+    "  - 海外地区 + 中国产品：`在美国看B站`、`加拿大看腾讯视频`、`日本 爱奇艺`\n"
+    "  - 设备 + 回国场景：`回国VPN apple tv`、`海外 smart tv 看B站`\n\n"
+    "❌ reject（明确无关或反方向）：\n"
+    "  - 港/澳/台 相关（搜索者在港澳台，不是我们的用户）：\n"
+    "    例：`bilibili港澳台`、`港澳版bilibili`、`b站港澳台番剧列表`\n"
+    "  - 与地区无关的纯设备/平台 how-to：\n"
+    "    例：`bilibili on firestick`、`how to stream on bilibili`、`bilibili tv for pc`\n"
+    "  - 翻墙出海（方向反：墙内→墙外）：`翻墙去美国`、`VPN to Japan`\n"
+    "  - 纯产品对比/评测、纯内容/番剧列表：`腾讯视频 爱奇艺 会员对比 知乎`、`b站番剧排行`\n"
+    "  - URL、新闻标题整句、纯品牌名（如 `https://xxx`、`腾讯`）\n"
+    "  - 过度宽泛无法做落地页的词（如 `视频`、`VPN`）\n\n"
+    "⚠️ uncertain：只有真正需要查资料判断时才用。默认宁收勿放 —— 『海外/overseas/english/abroad』\n"
+    "+ 中国产品 的组合一律 approve。\n\n"
     "待审关键词：\n"
     "{keywords}\n\n"
     '只返回 JSON 数组，每项 {"keyword":"...","decision":"approve|reject|uncertain"}。'
@@ -244,7 +254,13 @@ async def gen_article_for_tag(tag_name: str) -> dict:
 
 
 def _fallback_seeds(count: int) -> list[str]:
-    """AI 生成种子词失败时的兜底 —— base 框架仅提供占位说明。
-    项目应在 settings.ai.seed_topic 配置自己的业务，让 gen_seeds 用 AI 生成。
-    """
-    return [f"种子词占位 {i+1}（请到 AI 配置填业务描述让 AI 生成）" for i in range(count)]
+    base = [
+        "海外看国内视频", "回国VPN推荐", "海外党翻墙回国",
+        "在美国看B站", "留学生看爱奇艺", "海外腾讯视频加速",
+        "回国加速器哪个好", "overseas chinese vpn", "watch bilibili abroad",
+        "best vpn back to china", "海外看抖音", "国外听QQ音乐",
+        "how to watch youku outside china", "海外华人追剧",
+        "回国加速 免费", "翻墙回国 教程", "华人回国网络",
+        "iqiyi overseas access", "留学生网易云音乐", "unblock chinese websites",
+    ]
+    return base[:count]
