@@ -10,10 +10,14 @@ from app.models.role_menu import RoleMenu
 from app.models.admin_user_role import AdminUserRole
 from app.models.message import Message
 from app.models.file import File
+# 内容模块（可选，按需启用）
+from app.models.article import Article
+from app.models.article_tag import ArticleTag
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
     "AdminOperationLog", "AdminLoginLog",
     "Menu", "Role", "RoleMenu", "AdminUserRole",
     "Message", "File",
+    "Article", "ArticleTag",
 ]

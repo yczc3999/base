@@ -15,6 +15,7 @@ from app.controllers.admin import message as admin_message
 from app.controllers.admin.file import router as admin_file_router, file_proxy_router
 from app.controllers.admin import dashboard as admin_dashboard
 from app.controllers.admin import export as admin_export
+from app.controllers.admin import article as admin_article
 from app.controllers.client import user as client_user
 
 
@@ -64,12 +65,21 @@ app.include_router(admin_message.router, prefix="/api/admin")
 app.include_router(admin_file_router, prefix="/api/admin")
 app.include_router(admin_dashboard.router, prefix="/api/admin")
 app.include_router(admin_export.router, prefix="/api/admin")
+app.include_router(admin_article.router, prefix="/api/admin")
 
 # 隐私文件代理（不走 /api/admin 前缀）
 app.include_router(file_proxy_router, prefix="/api")
 
 # client 端
 app.include_router(client_user.router, prefix="/api/client")
+
+
+# ---- 静态文件（public 存储，外网直接访问）----
+import os
+from fastapi.staticfiles import StaticFiles
+_storage_public = os.path.join(os.path.dirname(os.path.dirname(__file__)), "storage", "public")
+os.makedirs(_storage_public, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_storage_public), name="uploads")
 
 
 # ---- 健康检查 ----
