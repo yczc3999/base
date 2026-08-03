@@ -16,6 +16,10 @@ from app.models.keyword import Keyword
 from app.models.article_keyword import ArticleKeyword
 # SEO 模块
 from app.models.publish_log import PublishLog
+# 交易 bot 模块
+from app.models.trading import (
+    RbTrade, RbPosition, RbStrategy, RbHeartbeat, RbExecution,
+)
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
@@ -24,4 +28,5 @@ __all__ = [
     "Message", "File",
     "Article", "Keyword", "ArticleKeyword",
     "PublishLog",
+    "RbTrade", "RbPosition", "RbStrategy", "RbHeartbeat", "RbExecution",
 ]

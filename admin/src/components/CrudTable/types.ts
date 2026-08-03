@@ -34,8 +34,8 @@ export interface SearchField {
   field: string
   /** 显示名 */
   label: string
-  /** 类型 */
-  type: 'input' | 'select' | 'dateRange' | 'date'
+  /** 类型（缺省按 input 渲染） */
+  type?: 'input' | 'select' | 'dateRange' | 'date' | 'number'
   /** placeholder */
   placeholder?: string
   /** 选项（select 类型） */

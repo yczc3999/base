@@ -22,7 +22,7 @@ export function generateRoutes(menus: MenuItem[]): RouteRecordRaw[] {
       if (item.type === 1 && item.path && item.template_path) {
         // 菜单页面 → 生成路由
         const componentPath = `/src/views/${item.template_path}.vue`
-        const component = viewModules[componentPath]
+        const component = viewModules[componentPath] as (() => Promise<unknown>) | undefined
 
         if (component) {
           routes.push({
