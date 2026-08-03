@@ -95,20 +95,3 @@ app.mount("/uploads", StaticFiles(directory=_storage_public), name="uploads")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# ---- 生产前端（admin/dist SPA，API 之外的 GET 全部回落 index.html）----
-from starlette.responses import FileResponse
-
-_admin_dist = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), os.pardir, "admin", "dist")
-)
-if os.path.isdir(_admin_dist):
-    app.mount("/assets", StaticFiles(directory=os.path.join(_admin_dist, "assets")), name="admin-assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def admin_spa(full_path: str):
-        candidate = os.path.normpath(os.path.join(_admin_dist, full_path))
-        if full_path and candidate.startswith(_admin_dist) and os.path.isfile(candidate):
-            return FileResponse(candidate)
-        return FileResponse(os.path.join(_admin_dist, "index.html"))
