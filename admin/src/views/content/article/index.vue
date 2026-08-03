@@ -176,7 +176,7 @@ import { ref, computed, onMounted, reactive, defineAsyncComponent } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, MagicStick, Plus } from '@element-plus/icons-vue'
 import CrudTable from '@/components/CrudTable/index.vue'
-import type { CrudColumn, SearchField, FormField } from '@/components/CrudTable/types'
+import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
 import { get, post } from '@/api/request'
 
 const ArticleEditor = defineAsyncComponent(() => import('@/components/ArticleEditor/index.vue'))

@@ -73,7 +73,7 @@ const fileList = computed<any[]>(() => {
     if (typeof url === 'object') return url
     const parts = url.split('/')
     const name = parts[parts.length - 1] || url
-    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+    const ext = name.includes('.') ? name.rsplit('.', 1)[1] : ''
     return { url, name, original_name: name, ext, size: 0 }
   })
 })

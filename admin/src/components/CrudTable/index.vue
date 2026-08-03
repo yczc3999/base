@@ -16,7 +16,7 @@
         <!-- 自定义搜索字段 -->
         <el-form-item v-for="f in searchFields" :key="f.field" :label="f.label">
           <el-input
-            v-if="!f.type || f.type === 'input' || f.type === 'number'"
+            v-if="f.type === 'input'"
             v-model="crud.queryParams.filters[f.field]"
             :placeholder="f.placeholder || `请输入${f.label}`"
             clearable
@@ -116,7 +116,7 @@
             </template>
             <!-- tag -->
             <template v-else-if="col.type === 'tag' && col.tagMap">
-              <el-tag :type="(col.tagMap[row[col.field]]?.type || 'info') as any" size="small">
+              <el-tag :type="col.tagMap[row[col.field]]?.type || 'info'" size="small">
                 {{ col.tagMap[row[col.field]]?.label || row[col.field] }}
               </el-tag>
             </template>
