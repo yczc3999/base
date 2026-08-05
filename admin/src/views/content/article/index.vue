@@ -178,6 +178,7 @@ import { Download, MagicStick, Plus } from '@element-plus/icons-vue'
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
 import { get, post } from '@/api/request'
+import { useSSE } from '@/hooks/useSSE'
 
 const ArticleEditor = defineAsyncComponent(() => import('@/components/ArticleEditor/index.vue'))
 
@@ -255,46 +256,17 @@ async function doTagGen() {
   tagGenRunning.value = true
   tagGenDone.value = false
   tagGenLog.value = []
-  await runSSE('/api/admin/article/gen-from-tags-stream',
-    { tag_ids: tagGenIds.value },
-    tagGenLog,
-    () => {
+  const { run } = useSSE({
+    url: '/api/admin/article/gen-from-tags-stream',
+    onEvent: (evt) => { tagGenLog.value.push(evt) },
+    onDone: () => {
       tagGenDone.value = true
       const d = tagGenLog.value.find((e: any) => e.type === 'done')
       ElMessage.success(`生成完成：${d?.created ?? 0}/${d?.total ?? 0} 篇`)
     },
-  )
-  tagGenRunning.value = false
-}
-
-// ---- SSE 通用 ----
-
-async function runSSE(url: string, body: any, log: any, onDone: () => void) {
-  const token = localStorage.getItem('access_token') || ''
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify(body),
   })
-  if (!resp.ok || !resp.body) { ElMessage.error('请求失败'); return }
-  const reader = resp.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      try {
-        const evt = JSON.parse(line.slice(6))
-        log.value.push(evt)
-        if (evt.type === 'done') onDone()
-      } catch {}
-    }
-  }
+  await run({ tag_ids: tagGenIds.value })
+  tagGenRunning.value = false
 }
 
 // ---- 采集 ----
@@ -312,10 +284,15 @@ async function doCollect() {
   if (f.mode === 'keyword' && !f.keyword) return ElMessage.warning('请输入关键词')
   if (f.mode === 'url' && !f.url) return ElMessage.warning('请输入 URL')
   collecting.value = true; collectDone.value = false; collectLog.value = []; collectSaved.value = 0
-  await runSSE('/api/admin/article/collect-stream', f, collectLog, () => {
-    collectDone.value = true
-    collectSaved.value = collectLog.value.find(e => e.type === 'done')?.saved || 0
+  const { run } = useSSE({
+    url: '/api/admin/article/collect-stream',
+    onEvent: (evt) => { collectLog.value.push(evt) },
+    onDone: () => {
+      collectDone.value = true
+      collectSaved.value = collectLog.value.find(e => e.type === 'done')?.saved || 0
+    },
   })
+  await run(f)
   collecting.value = false
 }
 
@@ -336,15 +313,16 @@ async function aiRewrite() {
   rewriting.value = true
   rewriteDone.value = false
   rewriteLog.value = []
-  await runSSE('/api/admin/article/ai-rewrite-stream',
-    { ids: rows.map((r: any) => r.id) },
-    rewriteLog,
-    () => {
+  const { run } = useSSE({
+    url: '/api/admin/article/ai-rewrite-stream',
+    onEvent: (evt) => { rewriteLog.value.push(evt) },
+    onDone: () => {
       rewriteDone.value = true
       const d = rewriteLog.value.find((e: any) => e.type === 'done')
       ElMessage.success(`润色完成：${d?.processed ?? 0}/${d?.total ?? 0} 篇`)
     },
-  )
+  })
+  await run({ ids: rows.map((r: any) => r.id) })
   rewriting.value = false
 }
 </script>

@@ -239,6 +239,7 @@ import { createSettingApi } from '@/api/settings'
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField, FormField } from '@/components/CrudTable/types'
 import { get, post } from '@/api/request'
+import { useSSE } from '@/hooks/useSSE'
 
 const crudRef = ref()
 
@@ -471,7 +472,7 @@ async function pollHarvest() {
   showHarvest.value = true
   try {
     // max_total=5000 + batch_size=20：持续滚动到池空或 5000 上限
-    await startSSE('/api/admin/keyword/poll-harvest-stream', { batch_size: 20, max_total: 5000 })
+    await runHarvestSSE('/api/admin/keyword/poll-harvest-stream', { batch_size: 20, max_total: 5000 })
   } finally {
     polling.value = false
     refresh()
@@ -513,7 +514,7 @@ async function doHarvest() {
   harvestTotal.value = 0
 
   try {
-    await startSSE('/api/admin/keyword/harvest-stream', {
+    await runHarvestSSE('/api/admin/keyword/harvest-stream', {
       seeds, engines: harvestForm.value.engines,
     })
   } finally {
@@ -522,42 +523,23 @@ async function doHarvest() {
   }
 }
 
-async function startSSE(url: string, body: any) {
-  const token = localStorage.getItem('access_token') || ''
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify(body),
-  })
-  if (!resp.ok || !resp.body) {
-    ElMessage.error('采集请求失败')
-    return
-  }
-  const reader = resp.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+// ---- 采集 SSE 统一入口（复用手动/轮询） ----
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      try {
-        const evt = JSON.parse(line.slice(6))
-        harvestLog.value.push(evt)
-        if (evt.total !== undefined) harvestTotal.value = evt.total
-        if (evt.type === 'done') {
-          harvestDone.value = true
-          ElMessage.success(`采集完成：${evt.imported} 个新标签入库`)
-        }
-        // 自动滚到底部
-        nextTick(() => { logBody.value?.scrollTo(0, logBody.value.scrollHeight) })
-      } catch {}
-    }
-  }
+async function runHarvestSSE(url: string, body: any) {
+  const { run } = useSSE({
+    url,
+    onEvent: (evt) => {
+      harvestLog.value.push(evt)
+      if (evt.total !== undefined) harvestTotal.value = evt.total
+      if (evt.type === 'done') {
+        harvestDone.value = true
+        ElMessage.success(`采集完成：${evt.imported} 个新标签入库`)
+      }
+      // 自动滚到底部
+      nextTick(() => { logBody.value?.scrollTo(0, logBody.value.scrollHeight) })
+    },
+  })
+  await run(body)
 }
 
 // ---- AI 种子词 ----
@@ -608,43 +590,21 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   aiLog.value = []
   aiSummary.value = null
 
-  const token = localStorage.getItem('access_token') || ''
-  try {
-    const resp = await fetch('/api/admin/keyword/ai-review-stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ scope }),
-    })
-    if (!resp.ok || !resp.body) {
-      ElMessage.error('AI 审核请求失败')
-      return
-    }
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        try {
-          const evt = JSON.parse(line.slice(6))
-          aiLog.value.push(evt)
-          if (evt.type === 'done') {
-            aiSummary.value = evt
-            const demoted = evt.demoted_total ? `，降回待审 ${evt.demoted_total}` : ''
-            ElMessage.success(`审核完成：上线 ${evt.approved_total}，删除 ${evt.rejected_total}${demoted}，保留 ${evt.uncertain_total}`)
-          }
-          nextTick(() => { aiLogBody.value?.scrollTo(0, aiLogBody.value.scrollHeight) })
-        } catch {}
+  const { run } = useSSE({
+    url: '/api/admin/keyword/ai-review-stream',
+    onEvent: (evt) => {
+      aiLog.value.push(evt)
+      if (evt.type === 'done') {
+        aiSummary.value = evt
+        const demoted = evt.demoted_total ? `，降回待审 ${evt.demoted_total}` : ''
+        ElMessage.success(`审核完成：上线 ${evt.approved_total}，删除 ${evt.rejected_total}${demoted}，保留 ${evt.uncertain_total}`)
       }
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || 'AI 审核异常')
+      nextTick(() => { aiLogBody.value?.scrollTo(0, aiLogBody.value.scrollHeight) })
+    },
+    onError: (msg) => ElMessage.error(msg),
+  })
+  try {
+    await run({ scope })
   } finally {
     aiReviewing.value = false
     refresh()
