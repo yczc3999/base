@@ -25,15 +25,15 @@
 
 ### B1 · 数据库定时备份
 
-- **目标**：`pg_dump` 定时全库备份 → `storage/backups/`，自动保留 + 后台管理（列表 / 手动备份 / 下载 / 恢复确认）
+- **目标**：`pg_dump` 定时全库备份 → `storage/backups/`，自动保留 + 后台管理（列表 / 手动备份 / 下载）
 - **现状态**：无任何备份机制。`init.sql` + migrations 只在装库时用，运行期数据无保护
 - **设计要点**：
   - pg_dump 命令：`PGPASSWORD=$password pg_dump -h $host -p $port -U $user -d $dbname --format=custom --file=$output`（custom 格式支持 pg_restore 选择性恢复；需 PostgreSQL client 工具）
   - 密码通过环境变量 `PGPASSWORD` 传入（不出现于命令行 ps 输出）
-  - 保留策略：保留最近 7 天每日 + 最近 4 周每周（`keep_daily=7, keep_weekly=4`），旧文件自动清理（删文件 + DB 记录）
+  - 保留策略：保留最近 7 天每日 + 最近 4 周每周，旧文件自动清理（删文件 + DB 记录）
   - db_backups 表字段：`id / filename / file_size / status(ok|failed) / started_at / finished_at / error_msg / created_at`
-  - 恢复：后台列出备份 → 点击「恢复」→ 二次确认弹窗 → 调 `pg_restore`（**不可逆，必须二次确认**）
-  - 备份验证：备份完成后可选 `pg_restore --list` 校验 dump 完整性（只读 dump 文件头，不实际恢复）
+  - 备份验证：备份完成后可选 `pg_restore --list` 校验 dump 完整性（只读 dump 文件头，不实际恢复；pg_restore 缺失则跳过）
+  - 恢复：**用户决策 2026-08-05 挂起**——只做备份不做恢复。`pg_restore` 恢复 UI 待后续决策
 - **涉及文件**：
   - `serve/app/tasks/db_backup.py` — 新建 BaseTask(interval=86400, name="数据库备份")
   - `serve/app/models/db_backup.py` — 新建：DbBackup(id/filename/file_size/status/started_at/finished_at/error_msg)
@@ -47,7 +47,7 @@
   - 后台可看列表、手动触发、下载文件
   - 恢复操作要求二次确认弹窗
   - `pytest` 新增备份逻辑测试（mock subprocess，验证命令构造）
-- **阻塞项**：**涉及生产数据安全——恢复不可逆，动手前须 tri-consensus-gate 审计**
+- **阻塞项**：~~恢复不可逆需 gate 审计~~ → 用户决策只做备份不做恢复，阻塞解除。恢复功能后续独立决策
 - **风险/回滚**：pg_dump 只读不破坏；恢复二次确认做最后防线。回滚：删 migration + task + 页面
 - **最后更新**：2026-08-05
 
@@ -206,7 +206,7 @@
 
 | 项 | 状态 | 预计工作量 | 依赖 | 完成 |
 |---|---|---|---|---|
-| B1 · 数据库定时备份 | 待执行，需 gate | ~4h | tri-consensus-gate | — |
+| B1 · 数据库定时备份 | ✅ 完成 (164f3d4) | ~4h | 用户决策: 只备份不恢复 | 2026-08-05 |
 | B2 · 数据字典 | ✅ 完成 (93e91cc) | ~3h | — | 2026-08-05 |
 | B3 · 前端用户管理 | ✅ 完成 (8bc80d6) | ~2h | — | 2026-08-05 |
 | B4 · 任务/队列监控 | ✅ 完成 (ee5a855) | ~3h | — | 2026-08-05 |
