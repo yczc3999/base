@@ -24,6 +24,8 @@ from app.controllers.admin import dict as admin_dict
 from app.controllers.admin import client_user as admin_client_user
 from app.controllers.admin import task_monitor as admin_task_monitor
 from app.controllers.admin import db_backup as admin_db_backup
+from app.controllers.admin import migration as admin_migration
+from app.controllers.admin import monitor as admin_monitor
 from app.controllers import dict as dict_public
 
 
@@ -80,6 +82,8 @@ app.include_router(admin_dict.router, prefix="/api/admin")
 app.include_router(admin_client_user.router, prefix="/api/admin")
 app.include_router(admin_task_monitor.router, prefix="/api/admin")
 app.include_router(admin_db_backup.router, prefix="/api/admin")
+app.include_router(admin_migration.router, prefix="/api/admin")
+app.include_router(admin_monitor.router, prefix="/api/admin")
 app.include_router(web_seo.router)  # /sitemap.xml /robots.txt /{key}.txt 根路径
 
 # 隐私文件代理 + 数据字典公开端点（不走 /api/admin 前缀）

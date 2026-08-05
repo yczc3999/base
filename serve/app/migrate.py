@@ -132,6 +132,28 @@ async def run_migrations(verbose: bool = True, url: str = None) -> int:
     return applied_count
 
 
+async def get_status_list(url: str = None) -> list[dict]:
+    """返回迁移状态列表 [{version, applied, applied_at}]（供 admin UI / 测试）."""
+    engine = create_async_engine(url or settings.database_url)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with Session() as db:
+            await _ensure_schema_table(db)
+            await db.commit()
+            rows = await db.execute(text(f"SELECT version, applied_at FROM {SCHEMA_TABLE}"))
+            applied_map = {version: str(applied_at) for version, applied_at in rows.all()}
+            result = []
+            for file in list_migration_files():
+                result.append({
+                    "version": file.name,
+                    "applied": file.name in applied_map,
+                    "applied_at": applied_map.get(file.name, ""),
+                })
+            return result
+    finally:
+        await engine.dispose()
+
+
 async def list_status() -> None:
     """列出已应用/待应用迁移"""
     engine = create_async_engine(settings.database_url)
