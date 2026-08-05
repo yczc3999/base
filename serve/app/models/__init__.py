@@ -18,6 +18,8 @@ from app.models.article_keyword import ArticleKeyword
 from app.models.publish_log import PublishLog
 # 数据字典
 from app.models.dict import Dict, DictItem
+# 数据库备份
+from app.models.db_backup import DbBackup
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
@@ -27,4 +29,5 @@ __all__ = [
     "Article", "Keyword", "ArticleKeyword",
     "PublishLog",
     "Dict", "DictItem",
+    "DbBackup",
 ]

@@ -224,6 +224,8 @@ def mock_redis(monkeypatch):
     monkeypatch.setattr(queue_mod, "get_redis", _get_redis)
     import app.logics.task_monitor as tm_mod
     monkeypatch.setattr(tm_mod, "get_redis", _get_redis)
+    import app.logics.db_backup as dbb_mod
+    monkeypatch.setattr(dbb_mod, "get_redis", _get_redis)
     return fr
 
 
