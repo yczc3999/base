@@ -143,6 +143,45 @@ class FakeRedis:
         # 简化：TTL 不强制生效，仅存在即可
         return True
 
+    # ---- list ----
+    async def lpush(self, key, *values):
+        self._data.setdefault(key, "[]")
+        import json as _json
+        lst = _json.loads(self._data.get(key, "[]"))
+        for v in reversed(values):
+            lst.insert(0, v)
+        self._data[key] = _json.dumps(lst)
+        return len(lst)
+
+    async def llen(self, key):
+        import json as _json
+        return len(_json.loads(self._data.get(key, "[]")))
+
+    async def lrange(self, key, start, end):
+        import json as _json
+        lst = _json.loads(self._data.get(key, "[]"))
+        if end == -1:
+            return lst[start:]
+        return lst[start:end + 1]
+
+    # ---- zset ----
+    async def zadd(self, key, mapping):
+        import json as _json
+        z = self._data.get(key)
+        if z is None:
+            z = {}
+            self._data[key] = _json.dumps(z)
+        else:
+            z = _json.loads(z)
+        for member, score in mapping.items():
+            z[member] = score
+        self._data[key] = _json.dumps(z)
+        return len(z)
+
+    async def zcard(self, key):
+        import json as _json
+        return len(_json.loads(self._data.get(key, "{}")))
+
     # ---- pipeline ----
     def pipeline(self):
         return FakePipeline(self)
@@ -176,11 +215,15 @@ def mock_redis(monkeypatch):
 
     # 覆盖 app.services.redis.get_redis（token/task/cache 都从这里拿连接）
     monkeypatch.setattr(redis_mod, "get_redis", _get_redis)
-    # 也覆盖 utils/token.py 的导入（它 from app.services.redis import ... 后直接用 get_redis）
+    # 模块级 `from app.services.redis import get_redis` 的导入点也需逐个覆盖
     import app.utils.token as token_mod
     monkeypatch.setattr(token_mod, "get_redis", _get_redis)
     import app.tasks.base as task_mod
     monkeypatch.setattr(task_mod, "get_redis", _get_redis)
+    import app.queue as queue_mod
+    monkeypatch.setattr(queue_mod, "get_redis", _get_redis)
+    import app.logics.task_monitor as tm_mod
+    monkeypatch.setattr(tm_mod, "get_redis", _get_redis)
     return fr
 
 

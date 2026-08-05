@@ -22,6 +22,7 @@ from app.controllers.web import seo as web_seo
 from app.controllers.client import user as client_user
 from app.controllers.admin import dict as admin_dict
 from app.controllers.admin import client_user as admin_client_user
+from app.controllers.admin import task_monitor as admin_task_monitor
 from app.controllers import dict as dict_public
 
 
@@ -76,6 +77,7 @@ app.include_router(admin_keyword.router, prefix="/api/admin")
 app.include_router(admin_seo.router, prefix="/api/admin")
 app.include_router(admin_dict.router, prefix="/api/admin")
 app.include_router(admin_client_user.router, prefix="/api/admin")
+app.include_router(admin_task_monitor.router, prefix="/api/admin")
 app.include_router(web_seo.router)  # /sitemap.xml /robots.txt /{key}.txt 根路径
 
 # 隐私文件代理 + 数据字典公开端点（不走 /api/admin 前缀）

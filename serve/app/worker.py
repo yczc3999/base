@@ -48,6 +48,14 @@ def scan_tasks():
     return tasks
 
 
+def find_task_by_class(class_name: str):
+    """按类名查任务实例（仅启用的任务；不存在返回 None）"""
+    for t in scan_tasks():
+        if t.__class__.__name__ == class_name:
+            return t
+    return None
+
+
 def scan_jobs():
     from app.jobs.base import BaseJob
     jobs = {}
