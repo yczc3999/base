@@ -9,23 +9,35 @@
 set -e
 cd "$(dirname "$0")"
 
-API_PORT_BASE=9000
-ADMIN_PORT_BASE=9200
+API_PORT=9000
+ADMIN_PORT=9200
 
-pick_port() {
+# ---- 端口被占就杀掉占用进程（保证固定端口可用）----
+free_port() {
   local p=$1
-  while ss -lnt "sport = :$p" 2>/dev/null | grep -q LISTEN; do
-    p=$((p + 1))
+  local pids
+  pids=$(ss -lntp "sport = :$p" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u)
+  [ -z "$pids" ] && return 0
+  echo "[port] $p 被占（PID: $(echo "$pids" | tr '\n' ' ')），终止后重用" >&2
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  local i=0
+  while [ $i -lt 10 ] && ss -lnt "sport = :$p" 2>/dev/null | grep -q LISTEN; do
+    sleep 0.3; i=$((i+1))
   done
-  echo "$p"
+  if ss -lnt "sport = :$p" 2>/dev/null | grep -q LISTEN; then
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+    sleep 0.5
+  fi
 }
 
 lan_ip() {
   hostname -I 2>/dev/null | awk '{print $1}' || echo "0.0.0.0"
 }
 
-API_PORT=$(pick_port $API_PORT_BASE)
-ADMIN_PORT=$(pick_port $ADMIN_PORT_BASE)
+free_port "$API_PORT"
+free_port "$ADMIN_PORT"
 IP=$(lan_ip)
 
 echo ""

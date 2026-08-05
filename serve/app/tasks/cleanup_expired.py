@@ -2,7 +2,7 @@
 
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from sqlalchemy import delete
 from app.tasks.base import BaseTask
 from app.services.database import async_session
@@ -16,7 +16,8 @@ class CleanupExpiredTask(BaseTask):
     interval = 3600
 
     async def run(self):
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        # admin_operation_logs.created_at 是 TIMESTAMP WITHOUT TIME ZONE，cutoff 必须 naive UTC
+        cutoff = datetime.utcnow() - timedelta(days=30)
 
         async with async_session() as db:
             result = await db.execute(

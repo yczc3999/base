@@ -15,8 +15,7 @@ export const useSiteStore = defineStore('site', {
     async load() {
       if (this.loaded) return
       try {
-        const all = await settingApi.get()
-        const site = all?.site || {}
+        const site = await settingApi.getSite() || {}
         if (site.name) this.name = site.name
         if (site.logo) this.logo = site.logo
         if (site.favicon) this.favicon = site.favicon

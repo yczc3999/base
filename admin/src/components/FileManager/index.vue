@@ -3,6 +3,9 @@
     <!-- 工具栏 -->
     <div class="fm-toolbar">
       <el-button type="primary" size="small" :icon="Upload" @click="triggerUpload">上传</el-button>
+      <el-button type="danger" size="small" :icon="Delete" :disabled="!selectedIds.size" @click="handleDelete">
+        删除 ({{ selectedIds.size }})
+      </el-button>
       <input ref="fileInputRef" type="file" :accept="accept" :multiple="multiple" style="display:none" @change="handleFileSelect" />
       <div class="fm-toolbar-right">
         <el-input v-model="keyword" placeholder="搜索文件名..." size="small" clearable style="width:200px" @input="handleSearch" />
@@ -44,7 +47,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { Upload, Check } from "@element-plus/icons-vue"
+import { Upload, Check, Delete } from "@element-plus/icons-vue"
 import fileApi from '@/api/modules/file'
 import { ElMessage } from 'element-plus'
 
@@ -150,6 +153,22 @@ async function handleFileSelect(e: Event) {
 
   input.value = ''
   loadFiles()
+}
+
+// 删除
+async function handleDelete() {
+  if (!selectedIds.size) return
+  const { ElMessageBox } = await import('element-plus')
+  await ElMessageBox.confirm(`确认删除 ${selectedIds.size} 个文件？删除后不可恢复。`, '删除文件', { type: 'warning' })
+  try {
+    await fileApi.doDelete(Array.from(selectedIds))
+    ElMessage.success(`已删除 ${selectedIds.size} 个文件`)
+    selectedIds.clear()
+    selectedMap.clear()
+    loadFiles()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  }
 }
 
 // 工具

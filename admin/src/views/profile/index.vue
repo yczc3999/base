@@ -11,24 +11,53 @@
       </el-form>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:16px">
-      <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">修改密码</h3>
-      <el-form :model="pwdForm" label-width="80px">
-        <el-form-item label="原密码"><el-input v-model="pwdForm.oldPassword" type="password" show-password /></el-form-item>
-        <el-form-item label="新密码"><el-input v-model="pwdForm.newPassword" type="password" show-password /></el-form-item>
-        <el-form-item><el-button type="primary" :icon="Check" @click="changePassword">提交</el-button></el-form-item>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:600">修改密码</h3>
+        <el-button v-if="!showPwdForm" type="primary" link @click="showPwdForm = true">修改</el-button>
+      </div>
+      <el-form v-if="showPwdForm" :model="pwdForm" label-width="80px">
+        <el-form-item label="原密码">
+          <el-input ref="oldPwdRef" v-model="pwdForm.oldPassword" type="text" show-password autocomplete="off"
+            :style="{ '-webkit-text-security': 'disc' }" />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="pwdForm.newPassword" type="text" show-password autocomplete="off"
+            :style="{ '-webkit-text-security': 'disc' }" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :icon="Check" @click="changePassword">提交</el-button>
+          <el-button @click="showPwdForm = false; pwdForm.oldPassword = ''; pwdForm.newPassword = ''">取消</el-button>
+        </el-form-item>
       </el-form>
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { reactive, onMounted } from 'vue'
 import { Check } from "@element-plus/icons-vue"
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 import authApi from '@/api/modules/auth'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 const userStore = useUserStore()
+const router = useRouter()
 const form = reactive({ nickname: '', email: '', phone: '' })
 const pwdForm = reactive({ oldPassword: '', newPassword: '' })
+const showPwdForm = ref(false)
+const oldPwdRef = ref()
+
+// 展开密码表单后, 等一帧清掉 Chrome 自动填充
+watch(showPwdForm, (v) => {
+  if (v) {
+    nextTick(() => {
+      setTimeout(() => {
+        pwdForm.oldPassword = ''
+        pwdForm.newPassword = ''
+      }, 50)
+    })
+  }
+})
+
 onMounted(() => {
   const u = userStore.userInfo
   if (u) { form.nickname = u.nickname || ''; form.email = u.email || ''; form.phone = u.phone || '' }
@@ -39,7 +68,16 @@ async function saveProfile() {
   ElMessage.success('保存成功')
 }
 async function changePassword() {
+  if (!pwdForm.oldPassword || !pwdForm.newPassword) {
+    ElMessage.warning('请填写原密码和新密码')
+    return
+  }
   await authApi.changePassword(pwdForm)
-  ElMessage.success('密码修改成功，请重新登录')
+  ElMessage.success('密码修改成功，即将跳转登录页')
+  setTimeout(async () => {
+    await userStore.logout()
+    usePermissionStore().resetState()
+    router.replace('/login')
+  }, 800)
 }
 </script>
