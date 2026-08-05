@@ -1,0 +1,89 @@
+<template>
+  <div>
+    <div class="cache-header">
+      <el-button type="primary" :icon="Refresh" @click="load">刷新</el-button>
+      <span class="tip">Redis 总 key 数：<b>{{ stats?.dbsize ?? '—' }}</b></span>
+    </div>
+
+    <div class="cache-grid">
+      <div class="cache-card" v-for="m in stats?.modules || []" :key="m.prefix">
+        <div class="cache-info">
+          <div class="cache-label">{{ m.label }}</div>
+          <div class="cache-prefix"><code>{{ m.prefix }}</code></div>
+        </div>
+        <div class="cache-keys">
+          <span class="keys-num">{{ m.keys }}</span>
+          <span class="keys-label">个 key</span>
+        </div>
+        <el-button type="warning" plain size="small" :icon="Delete"
+          :loading="clearing === m.prefix" @click="clearModule(m)">
+          清空
+        </el-button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Delete } from '@element-plus/icons-vue'
+import { get, post } from '@/api/request'
+
+const stats = ref<any>(null)
+const clearing = ref('')
+
+async function load() {
+  try {
+    stats.value = await get('/admin/cache/stats')
+  } catch {}
+}
+
+async function clearModule(m: any) {
+  await ElMessageBox.confirm(
+    `确认清空「${m.label}」的 ${m.keys} 个缓存 key？清空后相关数据会重新从数据库读取。`,
+    '清空缓存', { type: 'warning' },
+  )
+  clearing.value = m.prefix
+  try {
+    await post('/admin/cache/clear', { prefix: m.prefix })
+    ElMessage.success('已清空')
+    load()
+  } catch {} finally { clearing.value = '' }
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.cache-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.tip { font-size: 13px; }
+.cache-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.cache-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 16px;
+}
+.cache-label { font-size: 14px; font-weight: 600; }
+.cache-prefix code {
+  font-size: 12px;
+  background: var(--el-fill-color-light);
+  padding: 1px 6px; border-radius: 3px;
+}
+.cache-keys { display: flex; align-items: baseline; gap: 6px; }
+.keys-num { font-size: 24px; font-weight: 700; color: var(--el-color-primary); }
+.keys-label { font-size: 12px; color: var(--el-text-color-secondary); }
+</style>

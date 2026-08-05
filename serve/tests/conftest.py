@@ -111,6 +111,9 @@ class FakeRedis:
             if k in self._data:
                 del self._data[k]
                 n += 1
+            if k in self._sets:
+                del self._sets[k]
+                n += 1
         return n
 
     async def ttl(self, key):
@@ -188,8 +191,13 @@ class FakeRedis:
 
     # ---- scan ----
     async def scan(self, cursor=0, match="*", count=1000):
+        # 同时搜 string 库(_data) 与 set 库(_sets), 模拟真 Redis 全局扫描
         keys = [k for k in self._data if self._match(match, k)]
+        keys += [k for k in self._sets if k not in keys and self._match(match, k)]
         return 0, keys[:count]
+
+    async def dbsize(self):
+        return len(self._data)
 
     @staticmethod
     def _match(pattern: str, key: str) -> bool:

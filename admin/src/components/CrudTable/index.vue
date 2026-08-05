@@ -67,6 +67,13 @@
         >
           导出
         </el-button>
+        <el-button
+          v-if="importable && importModule && (perms ? hasPerms(`${perms}:create`) : true)"
+          :icon="UploadIcon"
+          @click="importVisible = true"
+        >
+          导入
+        </el-button>
         <slot name="toolbar" />
       </div>
       <div class="toolbar-right">
@@ -326,6 +333,10 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 数据导入 -->
+    <ImportModal v-if="importable && importModule" v-model="importVisible"
+      :module="importModule" @success="crud.getList()" />
   </div>
 </template>
 
@@ -337,8 +348,9 @@ import type { CrudColumn, SearchField, FormField } from './types'
 import type { CrudApi } from '@/api/crud'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import JsonEditor from '@/components/JsonEditor/index.vue'
+import ImportModal from '@/components/ImportModal/index.vue'
 import { useExport } from '@/hooks/useExport'
-import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon, Download as DownloadIcon } from '@element-plus/icons-vue'
+import { Search as SearchIcon, RefreshRight as RefreshIcon, Plus as PlusIcon, Delete as DeleteIcon, Edit as EditIcon, Check as CheckIcon, Download as DownloadIcon, Upload as UploadIcon } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{
   /** API 路径（如 'admin/user'）或 CrudApi 对象 */
@@ -359,6 +371,10 @@ const props = withDefaults(defineProps<{
   dialogWidth?: string | number
   /** 是否支持导出 */
   exportable?: boolean
+  /** 是否支持导入（显示导入按钮） */
+  importable?: boolean
+  /** 导入的目标逻辑模块名（如 keyword / dict） */
+  importModule?: string
   /** 是否显示新增按钮 */
   hasCreate?: boolean
   /** 是否显示编辑按钮 */
@@ -373,6 +389,8 @@ const props = withDefaults(defineProps<{
   actionWidth: 180,
   dialogWidth: '560px',
   exportable: false,
+  importable: false,
+  importModule: '',
   hasCreate: true,
   hasEdit: true,
   hasDelete: true,
@@ -383,6 +401,7 @@ const formRef = ref()
 
 const crud = useCrud({ api: props.api })
 const exportState = useExport(crud.api)
+const importVisible = ref(false)
 
 function handleExportClick() {
   const filters = Object.keys(crud.queryParams.filters).length ? crud.queryParams.filters : undefined
