@@ -20,6 +20,8 @@ from app.controllers.admin import keyword as admin_keyword
 from app.controllers.admin import seo as admin_seo
 from app.controllers.web import seo as web_seo
 from app.controllers.client import user as client_user
+from app.controllers.admin import dict as admin_dict
+from app.controllers import dict as dict_public
 
 
 @asynccontextmanager
@@ -71,10 +73,12 @@ app.include_router(admin_export.router, prefix="/api/admin")
 app.include_router(admin_article.router, prefix="/api/admin")
 app.include_router(admin_keyword.router, prefix="/api/admin")
 app.include_router(admin_seo.router, prefix="/api/admin")
+app.include_router(admin_dict.router, prefix="/api/admin")
 app.include_router(web_seo.router)  # /sitemap.xml /robots.txt /{key}.txt 根路径
 
-# 隐私文件代理（不走 /api/admin 前缀）
+# 隐私文件代理 + 数据字典公开端点（不走 /api/admin 前缀）
 app.include_router(file_proxy_router, prefix="/api")
+app.include_router(dict_public.router, prefix="/api")
 
 # client 端
 app.include_router(client_user.router, prefix="/api/client")

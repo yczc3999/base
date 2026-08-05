@@ -16,6 +16,8 @@ from app.models.keyword import Keyword
 from app.models.article_keyword import ArticleKeyword
 # SEO 模块
 from app.models.publish_log import PublishLog
+# 数据字典
+from app.models.dict import Dict, DictItem
 
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
@@ -24,4 +26,5 @@ __all__ = [
     "Message", "File",
     "Article", "Keyword", "ArticleKeyword",
     "PublishLog",
+    "Dict", "DictItem",
 ]

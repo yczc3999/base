@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     ArticleEditor: typeof import('./components/ArticleEditor/index.vue')['default']
     CrudTable: typeof import('./components/CrudTable/index.vue')['default']
+    DictTag: typeof import('./components/DictTag/index.vue')['default']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
     ElBreadcrumbItem: typeof import('element-plus/es')['ElBreadcrumbItem']
     ElButton: typeof import('element-plus/es')['ElButton']
