@@ -119,9 +119,34 @@ class ExportHelper:
     # ==================== 单文件导出 ====================
 
     async def _export_single(self, db, conditions, row_formatter, format_context) -> str:
+        """单文件导出：逐 chunk 写入（常量内存，不累积全量行）"""
         path = self._make_xlsx_path()
-        rows = await self._fetch_all_chunks(db, conditions)
-        self._write_xlsx(path, rows, row_formatter, format_context)
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("Sheet1")
+
+        headers = list(self.header_map.values())
+        fields = list(self.header_map.keys())
+        ws.append(headers)
+
+        last_id = 0
+        while True:
+            chunk = await self._fetch_chunk_batch(db, conditions, last_id, self.chunk_size)
+            if not chunk:
+                break
+            last_id = chunk[-1].get("id", 0)
+
+            for row in chunk:
+                if row_formatter:
+                    row = row_formatter(row, format_context)
+                ws.append([row.get(f, "") for f in fields])
+                self.written_rows += 1
+
+            # 进度（查询+写入阶段占 0~80%）
+            progress = min(80, int(self.written_rows / self.total_rows * 80))
+            await self._set_progress(progress)
+
+        wb.save(path)
+        logger.info(f"XLSX saved: {path} ({self.written_rows} rows)")
         return path
 
     # ==================== 多文件 ZIP 导出 ====================
@@ -153,24 +178,6 @@ class ExportHelper:
         return zip_path
 
     # ==================== 数据查询 ====================
-
-    async def _fetch_all_chunks(self, db, conditions) -> list[dict]:
-        """游标分块读取所有数据"""
-        all_rows = []
-        last_id = 0
-
-        while True:
-            chunk = await self._fetch_chunk_batch(db, conditions, last_id, self.chunk_size)
-            if not chunk:
-                break
-            all_rows.extend(chunk)
-            last_id = chunk[-1].get("id", 0)
-
-            # 更新进度（查询阶段占 0~80%）
-            progress = min(80, int(len(all_rows) / self.total_rows * 80))
-            await self._set_progress(progress)
-
-        return all_rows
 
     async def _fetch_chunk_batch(self, db, conditions, last_id: int, limit: int) -> list[dict]:
         """单次分块查询（整行读取，从 Model 实例取字段）"""

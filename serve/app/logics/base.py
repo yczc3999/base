@@ -6,6 +6,7 @@ from app.services.redis import cache_get, cache_set, cache_del, cache_del_patter
 from app.utils.query import apply_filters, apply_keyword
 
 DEFAULT_TTL = 3600
+MAX_PAGE = 100000  # 分页深度上限，防止恶意深翻 offset 扫全表
 
 
 class BizError(Exception):
@@ -121,6 +122,8 @@ class BaseLogic:
             page = max(1, int(query.get("page", 1)))
         except (ValueError, TypeError):
             page = 1
+        if page > MAX_PAGE:
+            raise BizError("超出分页上限", 1)
         try:
             page_size = min(100, max(1, int(query.get("pageSize", 20))))
         except (ValueError, TypeError):
