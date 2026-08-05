@@ -28,11 +28,12 @@
 - **目标**：`pg_dump` 定时全库备份 → `storage/backups/`，自动保留 + 后台管理（列表 / 手动备份 / 下载 / 恢复确认）
 - **现状态**：无任何备份机制。`init.sql` + migrations 只在装库时用，运行期数据无保护
 - **设计要点**：
-  - pg_dump 命令：`PGPASSWORD=$password pg_dump -h $host -p $port -U $user -d $dbname --format=custom --file=$output`（custom 格式支持 pg_restore 选择性恢复）
+  - pg_dump 命令：`PGPASSWORD=$password pg_dump -h $host -p $port -U $user -d $dbname --format=custom --file=$output`（custom 格式支持 pg_restore 选择性恢复；需 PostgreSQL client 工具）
   - 密码通过环境变量 `PGPASSWORD` 传入（不出现于命令行 ps 输出）
-  - 保留策略：保留最近 7 天每日 + 最近 4 周每周（`keep_daily=7, keep_weekly=4`）
+  - 保留策略：保留最近 7 天每日 + 最近 4 周每周（`keep_daily=7, keep_weekly=4`），旧文件自动清理（删文件 + DB 记录）
   - db_backups 表字段：`id / filename / file_size / status(ok|failed) / started_at / finished_at / error_msg / created_at`
   - 恢复：后台列出备份 → 点击「恢复」→ 二次确认弹窗 → 调 `pg_restore`（**不可逆，必须二次确认**）
+  - 备份验证：备份完成后可选 `pg_restore --list` 校验 dump 完整性（只读 dump 文件头，不实际恢复）
 - **涉及文件**：
   - `serve/app/tasks/db_backup.py` — 新建 BaseTask(interval=86400, name="数据库备份")
   - `serve/app/models/db_backup.py` — 新建：DbBackup(id/filename/file_size/status/started_at/finished_at/error_msg)
@@ -57,17 +58,18 @@
 - **表设计**：
   - `dicts`：`id / type_name(VARCHAR 50 UNIQUE) / description / status / created_at / updated_at`
   - `dict_items`：`id / dict_id(FK→dicts.id CASCADE) / value(VARCHAR 100) / label(VARCHAR 100) / sort(INT) / status / created_at`，UNIQUE(dict_id, value)
-  - 对外 API：`GET /api/admin/dict/items?type=gender` → `[{value:"1",label:"男"},{value:"2",label:"女"}]`（公开接口，无需登录）
+  - 对外 API：`GET /api/dict/items?type=gender` → `[{value:"1",label:"男"},{value:"2",label:"女"}]`——挂在根路径（非 admin 前缀），不加 `Depends(require_auth)`，天然公开
 - **涉及文件**：
   - `serve/databases/migrations/021_dicts.sql` — 新建：dicts + dict_items 两表
   - `serve/app/models/dict.py` — 新建：Dict / DictItem（FK + CASCADE）
-  - `serve/app/logics/dict.py` — 新建：CRUD + `get_items_by_type(type_name)`（Redis 缓存 1h）
-  - `serve/app/controllers/admin/dict.py` — 新建：crud_router + `GET /dict/items` 公开端点
+  - `serve/app/logics/dict.py` — 新建：CRUD + `get_items_by_type(type_name)`（Redis 缓存永久有效，dict/dict_item 变更时主动失效，与 settings 同模式）
+  - `serve/app/controllers/admin/dict.py` — 新建：admin 端 crud_router（需登录）
+  - `serve/app/controllers/dict.py` — 新建：`GET /api/dict/items` 公开端点（无 auth，root 路由挂载）
   - `admin/src/views/system/dict/index.vue` — 新建：字典管理页（类型列表 + 项表格编辑）
   - `admin/src/components/DictTag/index.vue` — 新建：接收 `type` prop，调公开端点渲染标签
 - **验收证据**：
   - 后台可创建「性别」类型、添加「男/女」字典项
-  - `GET /api/admin/dict/items?type=gender` 返回项列表
+  - `GET /api/dict/items?type=gender` 返回项列表（无需登录）
   - DictTag `<DictTag type="gender" value="1">` → 渲染为「男」
   - `pytest` 新增 dict 逻辑测试
 - **依赖**：无
@@ -79,20 +81,20 @@
 - **目标**：users 表补 admin 端 CRUD：查看/禁用/重置密码/踢下线
 - **现状态**：`users` 表与 `admin_users` 同构（含 `token_version`），但 admin 端无 users 管理。`controllers/client/user.py` 仅登录/注册。`controllers/admin/user.py` 已被 admin_users 占用
 - **设计要点**：
-  - 控制器挂在 `controllers/admin/user_manage.py`（避免与 `user.py` 冲突），路由 `/api/admin/user_manage`
-  - Logic 加固：`before_create`/`before_edit` 守卫 `is_super_admin`、`token_version`（对齐 admin_user 的 S1 修复）
-  - 踢下线：调用 `revoke_all_tokens("client", user_id)`——users 的 scope 是 "client"
-  - 重置密码：admin 端输入新密码 → 后端 hash 后写入 → 强制踢下线（`token_version++`）
+  - 控制器挂在 `controllers/admin/client_user.py`（避免与 `user.py` 冲突），路由 `/api/admin/client_user`
+  - Logic 加固：`before_create`/`before_edit` 守卫 `is_super_admin`（对齐 admin_user 的 S1 修复），重置密码后调 `revoke_all_tokens`
+  - 踢下线：调用 `revoke_all_tokens("client", user_id)`——users 的 scope 是 "client"，删 Redis 中该用户全部 session
+  - 重置密码：admin 端输入新密码 → 后端 hash 后写入 → 调 `revoke_all_tokens("client", user_id)` 强制踢下线（与踢下线同一机制，不引入新状态）
 - **涉及文件**：
   - `serve/app/logics/user.py` — 补 before_create/before_edit 守卫（pop is_super_admin / token_version）
-  - `serve/app/controllers/admin/user_manage.py` — 新建：crud_router("user_manage", user_logic, perms_prefix="admin:user_manage")
-  - `admin/src/views/system/user_manage/index.vue` — 新建：列表/禁用/重置密码表单
-  - 菜单种子 — 补 `admin:user_manage:*` 权限点（新增 migration 或追加到 016）
+  - `serve/app/controllers/admin/client_user.py` — 新建：crud_router("client_user", user_logic, perms_prefix="admin:client_user")
+  - `admin/src/views/system/client_user/index.vue` — 新建：列表/禁用/重置密码表单
+  - 菜单种子 — 补 `admin:client_user:*` 权限点（新增 migration 或追加到 016）
 - **验收证据**：
   - admin 端可查看、禁用、重置密码 users 记录
-  - 重置密码后 `token_version++` → 该用户所有 client 端 session 失效
-  - 非超管按 `admin:user_manage:*` 权限点控制
-  - `pytest` 新增 user_manage 守卫测试
+  - 重置密码后该用户所有 client 端 session 失效（Redis 中全部 token 被删除）
+  - 非超管按 `admin:client_user:*` 权限点控制
+  - `pytest` 新增 client_user 守卫测试
 - **依赖**：无
 - **风险/回滚**：中——密码重置不可逆。确认重置后强制踢下线。回滚：删 controller + 页面
 - **最后更新**：2026-08-05
@@ -103,7 +105,7 @@
 - **现状态**：6 个任务自动扫描注册（`tasks/`），**无可视化**。`system_monitor` 采集 load 到 Redis，无展示页
 - **设计要点**：
   - 任务列表：扫描 `app/tasks/` 拿 `name/interval/enabled` + Worker 端存最近执行时间到 Redis（`task:last_run:{name}` 含 status/时间/耗时/error）
-  - 手动触发：调 `Queue.push` 推入队列（走默认队列），不入优先队列——**不走 BaseTask.execute 直接调 run()**（防锁冲突）
+  - 手动触发：调 `Queue.push` 推入队列，与 BaseTask 定时器推入的完全一致，worker 照常消费（防锁冲突——不绕过 execute 的锁获取逻辑）
   - 队列状态：从 Redis 读各队列长度（`LLEN {prefix}:queue:default/export/notify/task` + `HLEN {prefix}:queue:delayed`）+ processing 残留数
   - 与 P1-4 边界：B4 = 任务表 + 队列，P1-4 = 系统指标页（CPU/内存/磁盘），两个视图可合成一个「运维中心」入口
 - **涉及文件**：
@@ -113,10 +115,10 @@
   - `serve/app/tasks/system_monitor.py` — 增强：加队列长度采集到 `system:metrics`
 - **验收证据**：
   - 任务列表显示 6+ 任务（name/interval/enabled/最近执行）
-  - 手触发一个任务生效（不走锁，直接 Queue.push）
+  - 手触发：Queue.push 推入队列 → worker 消费 → execute() 正常获取锁执行
   - 队列状态卡片实时展示各队列长度
   - `vue-tsc -b` + `vite build` 通过
-- **阻塞项**：手触发不经过 BaseTask.execute()（避免锁冲突），直接推队列
+- **阻塞项**：手触发走 Queue.push → worker 消费 → execute() 获取锁后执行（与定时触发路径一致，不绕过锁）
 - **风险/回滚**：中——手触发 SEO 管线等重任务可能造成资源竞争。Worker 已有 MAX_CONCURRENT=10 限制。回滚：删页面 + controller
 - **最后更新**：2026-08-05
 
@@ -173,6 +175,18 @@
 - **依赖**：Redis `system:metrics` key 已有。工作量 ~3 小时
 - **最后更新**：2026-08-05
 
+### P1-5 · Migration 管理 UI
+
+- **目标**：后台查看 migration 列表（已执行/待执行），手动执行未运行的 migration
+- **现状态**：`python -m app.migrate` CLI 可用（`--list` / `--run` / `--dry-run`），**无 UI**。Migration runner 在 `app/migrate.py`
+- **设计要点**：复用 migrate 模块的 `get_pending()` / `run_all()`，封装为 API 端点 → 后台展示 migration 表（文件名 / 状态 / 执行时间）→ 提供「执行全部待执行」按钮（需二次确认）
+- **涉及文件**：
+  - `serve/app/controllers/admin/migration.py` — 新建：GET /migration/list + POST /migration/run
+  - `admin/src/views/system/migration/index.vue` — 新建：migration 表格 + 执行按钮 + 二次确认弹窗
+- **验收证据**：页面显示 migration 列表（已执行/待执行状态）；点执行后待执行项消失
+- **依赖**：`app/migrate.py` 已有 `get_pending()` / `run_all()`。工作量 ~1.5 小时
+- **最后更新**：2026-08-05
+
 ---
 
 ## 3. 批次 3（P2 · 可选）
@@ -200,9 +214,10 @@
 | P1-2 · 缓存管理 | 待执行 | ~2h | — | — |
 | P1-3 · 数据导入 | 待执行 | ~4h | — | — |
 | P1-4 · 系统监控页 | 待执行 | ~3h | — | — |
+| P1-5 · Migration UI | 待执行 | ~1.5h | — | — |
 | P2-* · 验证码等 | 待决策 | - | — | — |
 
-**总预计**：批次 1 P0 4 项 ~12h，批次 2 P1 4 项 ~11h
+**总预计**：批次 1 P0 4 项 ~12h，批次 2 P1 5 项 ~12.5h
 
 ## 5. 执行顺序建议
 
@@ -210,7 +225,7 @@
 B2 数据字典 ──→ B3 前端用户管理 ──→ B1 数据库备份 ──→ B4 任务/队列监控
    (独立)         (复用 admin_user 模式)   (需 gate 审计)      (B2/B3 基建可复用)
                                                               ↓
-                                                         P1-4 系统监控页
+                                              P1-4 系统监控页 + P1-5 Migration UI
                                                               ↓
                                                         P1-1~P1-3 按需
 ```
@@ -228,10 +243,16 @@ B2 数据字典 ──→ B3 前端用户管理 ──→ B1 数据库备份 ─
 |---|---|
 | B1 补 pg_dump 命令细节 | 加 `PGPASSWORD` 密码传递、`--format=custom`、保留策略说明 |
 | B1 补恢复闭环 | 加 db_backups 表字段 + 二次确认流程 |
+| B1 补备份验证 | pg_restore --list 校验 dump 完整性 |
 | B2 补 dict 表字段 | 精确到 `dicts`/`dict_items` 每列 + 对外 API `/dict/items` |
-| B3 补控制器命名 | `user_manage` 避免与现有 `user.py` 冲突 + 明确 scope=client |
+| B2 缓存策略修正 | 1h TTL → 永久缓存+变更时主动失效（与 settings 同模式） |
+| B2 公开端点路由修正 | `/api/admin/dict/items` → `/api/dict/items`（非 admin 前缀，真正无 auth） |
+| B3 补控制器命名 | `client_user` 与 `controllers/client/user.py` 对称，避免与 `user.py` 冲突 |
+| B3 踢下线机制统一 | 移除 `token_version++`，统一用 `revoke_all_tokens`（已有且可靠） |
+| B4 手动触发矛盾修正 | 明确走 Queue.push + worker 消费（删「直接调 run()」矛盾语句） |
 | B4/P1-4 边界明确 | B4=任务列表+队列状态，P1-4=系统指标页，可合为「运维中心」 |
 | P1 档格式对齐 | P1-1~P1-4 补精确文件路径 + 验收证据（对齐 B 档格式） |
+| 补 Migration UI | P1-5：后台查看/执行 migration（复用已有 migrate.py CLI 能力） |
 | 补工作量列 | 每项加预计工时 |
 | 补执行顺序图 | ASCII flowchart |
 | 补审计修正记录 | 本表 |
