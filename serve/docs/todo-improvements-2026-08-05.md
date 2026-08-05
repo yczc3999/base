@@ -154,8 +154,10 @@
 
 ### C1 · 关系层落地（FK + relationship + 级联）
 
-- **目标**：补 SQLAlchemy relationship 声明 + DB 外键约束 + 级联删除，消除 N+1 与孤儿数据
-- **现状态**：全 model 零 `relationship()` 声明（`grep relationship` 无命中）。`role_menus`/`admin_user_roles` 连 ForeignKey 都没有（裸 Integer 主键）。所有关联查询靠手写 join。删 menu/user 不留删关联记录
+- **目标**：补 DB 外键约束 + 级联删除（引用完整性）+ SQLAlchemy relationship（关系可导航）
+- **现状态**：`role_menus`/`admin_user_roles` 是裸 Integer 主键，无 FK。删 role（有应用层守卫）/menu/user 会留孤儿行（DB 层不阻止）。`article_keywords` 已有 FK + CASCADE（015 已加）。全 model 零 `relationship()` 声明
+- **科学分析**：FK 是引用完整性的不可绕过保证，应用层守卫可被绕过，两者互补。base 是模板阶段加 FK 风险趋零，等下游 fork 后各项目单独扛锁表+清理成本放大 N 倍。关联表用 CASCADE 是关系建模标准（无独立生命周期）
+- **非夸大说明**：relationship 不解决 N+1（默认 lazy 反而可能引入）；N+1 的解法是 selectinload/joinedload，属另一层工作。C1 只保证完整性 + 关系可导航
 - **涉及文件**（影响 12 个 model + 2 个 SQL + 1 个 migration）：
   - `serve/app/models/role_menu.py` — 加 FK(roles.id) + FK(menus.id) + relationship
   - `serve/app/models/admin_user_role.py` — 加 FK + relationship
@@ -244,7 +246,8 @@
 | B2 · 缓存一致性 | ✅ 完成 | — | commit 后延迟双删 |
 | B3 · get_list 异常可见 | ✅ 完成 | — | 抛 BizError(500) |
 | B4 · 缓存穿透防护 | ✅ 完成 | — | 30s 负缓存 |
-| C1 · 关系层落地 | ⏸ 待决策 | 需确认业务约定 | — |
+| C1a · FK + 级联 | ✅ 完成 | 关联表 CASCADE | migration 019 + 4 测试 |
+| C1b · relationship | ⏸ 待执行 | 纯 Python 侧低优先 | — |
 | C2 · 统一 SSE | ✅ 完成 | — | useSSE hook |
 | N1 · Validator 类型归一 | ✅ 完成 | — | 30 测试 |
 | N2 · require_perms 双 session | ✅ 完成 | — | 复用请求 session |
