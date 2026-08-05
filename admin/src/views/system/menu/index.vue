@@ -46,7 +46,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="父级" prop="parent_id">
-          <el-tree-select v-model="formData.parent_id" :data="parentOptions" :props="{ label:'label', value:'id', children:'children' }" check-strictly default-expand-all placeholder="顶级" clearable style="width:100%" />
+          <el-tree-select v-model="formData.parent_id" :data="parentOptions" node-key="id" :props="{ label:'label', children:'children' }" check-strictly default-expand-all placeholder="顶级" clearable style="width:100%" />
         </el-form-item>
         <el-form-item label="标识" prop="slug"><el-input v-model="formData.slug" /></el-form-item>
         <el-form-item label="名称" prop="label"><el-input v-model="formData.label" /></el-form-item>

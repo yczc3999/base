@@ -113,6 +113,13 @@ class QueueConsumer:
 
         logger.info(f"QueueConsumer started (max_concurrent={MAX_CONCURRENT})")
 
+        # 启动时回捞 processing 残留消息（孤儿恢复）
+        orphan_count = 0
+        while await r.lmove(processing_key, queue_key, "LEFT", "RIGHT"):
+            orphan_count += 1
+        if orphan_count:
+            logger.info(f"Recovered {orphan_count} orphaned messages from processing queue")
+
         while not shutdown_event.is_set():
             try:
                 # BRPOPLPUSH：取出并移入 processing 队列（原子操作，crash 不丢）
@@ -141,6 +148,7 @@ class QueueConsumer:
     async def _handle(self, payload, raw, r, processing_key):
         job_name = payload.get("job")
         data = payload.get("data", {})
+        retries = payload.get("retries", 0)
 
         job = self.jobs.get(job_name)
         if not job:
@@ -155,7 +163,16 @@ class QueueConsumer:
             logger.info(f"Done: {job_name}")
         except Exception as e:
             logger.error(f"Failed: {job_name} — {e}")
-            # TODO: 可以在这里推入死信队列
+            if retries < 3:
+                delay = 2 ** retries * 60  # 1min, 2min, 4min
+                from app.queue import Queue
+                await Queue.push(job_name, data, delay=delay, retries=retries + 1)
+                logger.info(f"Requeued {job_name} (retry {retries + 1}/3)")
+            else:
+                from app.config import settings
+                dead_key = f"{settings.APP_NAME}:queue:dead"
+                await r.lpush(dead_key, raw)
+                logger.warning(f"Pushed {job_name} to dead letter queue ({dead_key})")
         finally:
             # ACK：从 processing 队列移除
             await r.lrem(processing_key, 1, raw)

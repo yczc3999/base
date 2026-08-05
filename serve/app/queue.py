@@ -24,7 +24,7 @@ PREFIX = settings.APP_NAME
 
 class Queue:
     @staticmethod
-    async def push(job_name: str, data: dict = None, delay: int = 0, queue: str = "default"):
+    async def push(job_name: str, data: dict = None, delay: int = 0, queue: str = "default", retries: int = 0):
         """
         推入队列
 
@@ -32,12 +32,14 @@ class Queue:
         :param data:     任务数据
         :param delay:    延迟秒数（0=立即）
         :param queue:    队列名（default / export / notify / task）
+        :param retries:  已重试次数（失败重推时透传，用于死信判定）
         """
         r = await get_redis()
         payload = json.dumps({
             "job": job_name,
             "data": data or {},
             "created_at": time.time(),
+            "retries": retries,
         }, default=str)
 
         if delay > 0:

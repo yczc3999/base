@@ -114,12 +114,12 @@ class QcloudCosDriver(BaseDriver):
         now = int(time.time())
         key_time = f"{now};{now + 600}"
 
-        sign_key = hmac.new(secret_key.encode(), key_time.encode(), hashlib.sha256).hexdigest()
+        sign_key = hmac.new(secret_key.encode(), key_time.encode(), hashlib.sha1).hexdigest()
 
         http_string = f"{method}\n{uri}\n\nhost={host.lower()}\n"
         sha1_hash = hashlib.sha1(http_string.encode()).hexdigest()
         string_to_sign = f"sha1\n{key_time}\n{sha1_hash}\n"
-        signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha256).hexdigest()
+        signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha1).hexdigest()
 
         auth = (
             f"q-sign-algorithm=sha1"

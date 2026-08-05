@@ -164,9 +164,16 @@ def crud_router(
                 if f"{perms_prefix}:create" not in user_perms:
                     return fail("无权限", 403)
 
-        # bindUserColumn：创建时自动注入当前用户 ID
-        if logic.bind_user_column and user_id is not None and not is_super and logic.pk_name not in data:
-            data[logic.bind_user_column] = user_id
+        # bindUserColumn：创建时自动注入当前用户 ID，编辑时校验记录归属
+        if logic.bind_user_column and user_id is not None and not is_super:
+            if data.get(logic.pk_name):
+                # 编辑路径：校验目标记录归属
+                record = await logic.get_detail(db, data[logic.pk_name])
+                if record and record.get(logic.bind_user_column) != user_id:
+                    return fail("无权编辑该数据")
+            else:
+                # 创建路径：自动注入当前用户 ID
+                data[logic.bind_user_column] = user_id
         try:
             result = await logic.save(db, data)
         except BizError as e:

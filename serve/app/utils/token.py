@@ -149,7 +149,7 @@ async def refresh_access_token(refresh_token: str) -> dict | None:
 
 
 async def revoke_token(access_token: str, refresh_token: str = None):
-    """登出：删除 access_token 和 refresh_token"""
+    """登出：删除 access_token，同时删除该用户全部 refresh_token"""
     r = await get_redis()
 
     raw = await r.get(_token_key(access_token))
@@ -162,9 +162,15 @@ async def revoke_token(access_token: str, refresh_token: str = None):
         user_id = data["user_id"]
         pipe.srem(_user_tokens_key(scope, user_id), access_token)
 
+        # 同时删除该用户全部 refresh_token（登出即彻底失效）
+        ur_key = _user_refreshes_key(scope, user_id)
+        refresh_tokens = await r.smembers(ur_key)
+        for rt in refresh_tokens:
+            pipe.delete(_refresh_key(rt))
+        pipe.delete(ur_key)
+
     if refresh_token:
         pipe.delete(_refresh_key(refresh_token))
-        # 也从用户 refresh 索引中移除
         if raw:
             pipe.srem(_user_refreshes_key(scope, user_id), refresh_token)
 

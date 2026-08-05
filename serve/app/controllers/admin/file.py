@@ -28,13 +28,14 @@ async def upload_file(
     auth: AuthInfo = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传文件"""
+    """上传文件（默认限制：ALLOWED_FILE_TYPES + 50MB）"""
     try:
         result = await file_logic.upload(
             db, file,
             category=category,
             is_private=is_private,
             user_id=auth.user_id,
+            allowed_types=ALLOWED_FILE_TYPES,
         )
         return ok(result)
     except BizError as e:
@@ -70,7 +71,7 @@ async def batch_delete(
     auth: AuthInfo = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量删除文件（DB + 存储双删）"""
+    """批量删除文件（DB + 存储双删，非超管仅删自己的文件）"""
     body = await request.json()
     ids = body.get("ids", [])
     if isinstance(ids, int):
@@ -78,7 +79,7 @@ async def batch_delete(
     if not ids:
         return fail("缺少 ids")
 
-    await file_logic.delete_files(db, ids)
+    await file_logic.delete_files(db, ids, user_id=auth.user_id, is_super=auth.is_super_admin)
     return ok(msg="删除成功")
 
 
@@ -114,10 +115,8 @@ async def proxy_private_file(
         return fail("无权限", 403)
 
     # 读本地文件
-    from app.services.storage.drivers.local import LocalDriver
-    local_config = await storage_service.get_driver_config(db, "local")
-    base_path = local_config.get("path", "/data/uploads")
-    full_path = os.path.join(base_path, record.path.lstrip("/"))
+    from app.logics.file import _PRIVATE_ROOT
+    full_path = os.path.join(_PRIVATE_ROOT, record.path.lstrip("/"))
 
     if not os.path.exists(full_path):
         return fail("文件不存在")

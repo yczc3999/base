@@ -88,7 +88,7 @@ async function testConnection() {
   testing.value = true
   try {
     await save()
-    const res = await post('/admin/tag/ai-test')
+    const res = await post('/admin/setting/ai/test')
     ElMessage.success(res?.message || 'AI 连接正常')
   } catch (e: any) {
     ElMessage.error(e?.message || '连接失败')

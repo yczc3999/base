@@ -17,7 +17,7 @@ export interface CrudColumn {
   /** 状态映射（type=status 时） */
   statusMap?: Record<string | number, { label: string; type: string }>
   /** tag 映射（type=tag 时） */
-  tagMap?: Record<string | number, { label: string; type: string }>
+  tagMap?: Record<string | number, { label: string; type: 'primary' | 'success' | 'warning' | 'info' | 'danger' }>
   /** 是否固定列 */
   fixed?: 'left' | 'right'
   /** 自定义格式化 */

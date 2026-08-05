@@ -8,6 +8,9 @@ config:
 import os
 from app.services.base import BaseDriver
 
+# 默认路径指向项目 serve/storage/public（与 main.py 中 /uploads 静态挂载一致）
+_DEFAULT_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))), "storage", "public")
+
 
 class LocalDriver(BaseDriver):
 
@@ -15,13 +18,14 @@ class LocalDriver(BaseDriver):
         """校验路径，防止路径穿越"""
         full_path = os.path.join(base, path.lstrip("/"))
         normalized = os.path.normpath(full_path)
-        if not normalized.startswith(os.path.normpath(base)):
+        base_norm = os.path.normpath(base)
+        if not (normalized == base_norm or normalized.startswith(base_norm + os.sep)):
             self.service._fail("非法文件路径")
             return ""
         return normalized
 
     async def upload(self, path: str, content: bytes, visible: bool = True) -> str:
-        base = self._get("path") or "/data/uploads"
+        base = self._get("path") or _DEFAULT_BASE
         full_path = self._safe_path(base, path)
         if not full_path:
             return ""
@@ -37,7 +41,7 @@ class LocalDriver(BaseDriver):
             return ""
 
     async def delete(self, path: str) -> bool:
-        base = self._get("path") or "/data/uploads"
+        base = self._get("path") or _DEFAULT_BASE
         full_path = self._safe_path(base, path)
         if not full_path:
             return False
@@ -50,7 +54,7 @@ class LocalDriver(BaseDriver):
             return False
 
     async def exists(self, path: str) -> bool:
-        base = self._get("path") or "/data/uploads"
+        base = self._get("path") or _DEFAULT_BASE
         full_path = self._safe_path(base, path)
         if not full_path:
             return False

@@ -5,11 +5,21 @@
 """
 
 import logging
+import uuid
 from app.services.redis import get_redis
 from app.config import settings
 
 logger = logging.getLogger("task")
 PREFIX = settings.APP_NAME
+
+# Lua 脚本：仅当锁值匹配时才删除（原子操作，防误删他人锁）
+_DEL_IF_MATCH = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
 
 
 class BaseTask:
@@ -25,9 +35,12 @@ class BaseTask:
         cache_key = f"{PREFIX}:task:lock:{self.__class__.__name__}"
         r = await get_redis()
 
+        # 唯一 token 标识锁持有者
+        token = uuid.uuid4().hex
+
         # 锁 TTL = interval * 2（防止任务执行超时导致锁提前过期）
         lock_ttl = max(self.interval * 2, 30)
-        locked = await r.set(cache_key, "1", ex=lock_ttl, nx=True)
+        locked = await r.set(cache_key, token, ex=lock_ttl, nx=True)
         if not locked:
             return
 
@@ -36,4 +49,5 @@ class BaseTask:
         except Exception as e:
             logger.error(f"[{self.name}] failed: {e}")
         finally:
-            await r.delete(cache_key)
+            # 原子删除：只删自己持有的锁，不误删他人锁
+            await r.eval(_DEL_IF_MATCH, 1, cache_key, token)

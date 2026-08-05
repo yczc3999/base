@@ -207,24 +207,13 @@ const columns: CrudColumn[] = [
 ]
 
 const searchFields: SearchField[] = [
-  { field: 'keyword', label: '搜索', placeholder: '标题' },
+  { field: 'keyword', label: '搜索', type: 'input', placeholder: '标题' },
   { field: 'status', label: '状态', type: 'select', options: [
     { label: '草稿', value: 0 }, { label: '已发布', value: 1 },
   ] },
   { field: 'source', label: '来源', type: 'select', options: [
     { label: '手动', value: 0 }, { label: '采集', value: 1 },
   ] },
-]
-
-const formFields: FormField[] = [
-  { field: 'title', label: '标题', rules: [{ required: true, message: '请输入标题' }] },
-  { field: 'slug', label: 'URL别名', placeholder: 'bilibili-overseas-guide' },
-  { field: 'summary', label: '摘要', type: 'textarea', placeholder: '文章简介' },
-  { field: 'cover_image', label: '封面图', type: 'imageUpload' },
-  { field: 'is_pinned', label: '置顶', type: 'switch', default: false },
-  { field: 'sort', label: '排序', type: 'number', default: 0 },
-  { field: 'status', label: '状态', type: 'radio', options: [{ label: '草稿', value: 0 }, { label: '发布', value: 1 }], default: 0 },
-  // content 通过 slot 渲染富文本编辑器，不在 formFields 里
 ]
 
 // ---- 编辑器 ----
@@ -256,7 +245,7 @@ async function loadTags() {
   if (tagOptions.value.length) return
   tagsLoading.value = true
   try {
-    const res = await get('/admin/tag/getList', { pageSize: 500, filters: JSON.stringify({ status: 1 }) })
+    const res = await get('/admin/keyword/getList', { pageSize: 500, filters: JSON.stringify({ stage: 'approved' }) })
     tagOptions.value = res?.list || []
   } finally { tagsLoading.value = false }
 }

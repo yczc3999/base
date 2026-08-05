@@ -132,3 +132,12 @@ def strip_think_tags(text: str) -> str:
     """
     cleaned = _THINK_RE.sub('', text).strip()
     return cleaned if cleaned else text
+
+
+async def test_connection() -> bool:
+    """测试 AI 连接连通性：发一个极简请求，能返回非空内容即视为正常"""
+    try:
+        resp = await chat("ping", system="只回复 OK")
+        return bool(resp and resp.strip())
+    except Exception:
+        return False

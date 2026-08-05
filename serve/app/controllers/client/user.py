@@ -33,6 +33,13 @@ class RefreshDto(BaseModel):
 
 @router.post("/user/login")
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
+    from app.utils.rate_limit import check_rate_limit
+    from app.utils.helpers import get_client_ip
+
+    ip = get_client_ip(request)
+    if not await check_rate_limit(f"client_login:{ip}", max_attempts=10, window=300):
+        return fail("请求过于频繁，请稍后再试", 429)
+
     user = await user_logic.verify_login(db, dto.username, dto.password)
     if not user:
         return fail("用户名或密码错误")
@@ -57,7 +64,14 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
 
 
 @router.post("/user/register")
-async def register(dto: RegisterDto, db: AsyncSession = Depends(get_db)):
+async def register(dto: RegisterDto, request: Request, db: AsyncSession = Depends(get_db)):
+    from app.utils.rate_limit import check_rate_limit
+    from app.utils.helpers import get_client_ip
+
+    ip = get_client_ip(request)
+    if not await check_rate_limit(f"client_register:{ip}", max_attempts=5, window=300):
+        return fail("请求过于频繁，请稍后再试", 429)
+
     # 检查用户名是否已存在
     existing = await user_logic.get_by_field(db, "username", dto.username)
     if existing:

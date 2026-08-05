@@ -65,8 +65,8 @@ const searchFields: SearchField[] = [
     { label: 'warn', value: 'warn' },
     { label: 'error', value: 'error' },
   ] },
-  { field: 'action', label: '动作', placeholder: '如 publish / skip' },
-  { field: 'article_id', label: '文章ID', type: 'number' },
+  { field: 'action', label: '动作', type: 'input', placeholder: '如 publish / skip' },
+  { field: 'article_id', label: '文章ID', type: 'input', placeholder: '文章 ID' },
 ]
 
 function formatPayload(p: any): string {

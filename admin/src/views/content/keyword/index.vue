@@ -393,7 +393,7 @@ const columns: CrudColumn[] = [
 ]
 
 const searchFields: SearchField[] = [
-  { field: 'keyword', label: '搜索', placeholder: '关键词 / slug / 种子词' },
+  { field: 'keyword', label: '搜索', type: 'input', placeholder: '关键词 / slug / 种子词' },
   { field: 'stage', label: '阶段', type: 'select', options: [
     { label: '候选', value: 'candidate' }, { label: '已上线', value: 'approved' },
     { label: '已忽略', value: 'archived' },

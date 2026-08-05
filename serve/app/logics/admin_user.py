@@ -31,13 +31,17 @@ class AdminUserLogic(BaseLogic):
         return ["username", "nickname", "email", "phone"]
 
     def before_create(self, data: dict) -> dict:
+        # 超级管理员标记和 token 版本号不允许通过接口设置
+        data.pop("is_super_admin", None)
+        data.pop("token_version", None)
         if "password" in data and data["password"]:
             data["password"] = hash_password(data["password"])
         return data
 
     def before_edit(self, data: dict) -> dict:
-        # 超级管理员标记不允许通过接口修改
+        # 超级管理员标记和 token 版本号不允许通过接口修改
         data.pop("is_super_admin", None)
+        data.pop("token_version", None)
         if "password" in data and data["password"]:
             data["password"] = hash_password(data["password"])
         else:

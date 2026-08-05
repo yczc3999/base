@@ -61,6 +61,9 @@ export const useUserStore = defineStore('user', {
       this.permissions = []
       this.roles = []
       clearTokens()
+      // 重置权限 store，避免换账号后沿用旧菜单/路由
+      const { usePermissionStore } = await import('@/stores/permission')
+      usePermissionStore().resetState()
     },
 
     resetState() {

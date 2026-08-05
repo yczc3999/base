@@ -17,12 +17,10 @@
       </div>
       <el-form v-if="showPwdForm" :model="pwdForm" label-width="80px">
         <el-form-item label="原密码">
-          <el-input ref="oldPwdRef" v-model="pwdForm.oldPassword" type="text" show-password autocomplete="off"
-            :style="{ '-webkit-text-security': 'disc' }" />
+          <el-input ref="oldPwdRef" v-model="pwdForm.oldPassword" type="password" show-password autocomplete="off" />
         </el-form-item>
         <el-form-item label="新密码">
-          <el-input v-model="pwdForm.newPassword" type="text" show-password autocomplete="off"
-            :style="{ '-webkit-text-security': 'disc' }" />
+          <el-input v-model="pwdForm.newPassword" type="password" show-password autocomplete="off" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Check" @click="changePassword">提交</el-button>

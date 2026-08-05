@@ -29,7 +29,7 @@ from app.services.storage import storage_service
 
 # 默认限制
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_FILE_TYPES = ALLOWED_IMAGE_TYPES | {
     "application/pdf",
     "application/msword",
@@ -44,6 +44,12 @@ ALLOWED_FILE_TYPES = ALLOWED_IMAGE_TYPES | {
     "video/mp4",
     "audio/mpeg",
 }
+
+# 本地存储根目录
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+_STORAGE_ROOT = os.path.join(_PROJECT_ROOT, "storage")
+_PUBLIC_ROOT = os.path.join(_STORAGE_ROOT, "public")
+_PRIVATE_ROOT = os.path.join(_STORAGE_ROOT, "private")
 
 
 class FileLogic(BaseLogic):
@@ -106,12 +112,11 @@ class FileLogic(BaseLogic):
         # 上传到存储
         if is_private:
             # private 文件只存本地 storage/private，不走 OSS
-            private_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "storage", "private")
-            full_path = os.path.join(private_root, path)
+            full_path = os.path.join(_PRIVATE_ROOT, path)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             with open(full_path, "wb") as f:
                 f.write(content)
-            url = f"/api/file/preview/{path}"
+            url = ""
             platform = "local"
         else:
             driver = await storage_service.get_driver(db)
@@ -158,13 +163,17 @@ class FileLogic(BaseLogic):
 
     # ==================== 删除（含存储清理） ====================
 
-    async def delete_files(self, db: AsyncSession, ids: list[int]):
-        """删除文件（DB + 存储双删）"""
+    async def delete_files(self, db: AsyncSession, ids: list[int], user_id: int = None, is_super: bool = False):
+        """删除文件（DB + 存储双删，非超管仅删自己的文件）"""
         for file_id in ids:
             stmt = select(File).where(File.id == file_id)
             result = await db.execute(stmt)
             record = result.scalar_one_or_none()
             if not record:
+                continue
+
+            # 归属校验：非超管只能删自己的文件
+            if user_id is not None and not is_super and record.user_id != user_id:
                 continue
 
             # 删存储文件

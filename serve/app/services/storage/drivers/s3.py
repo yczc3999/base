@@ -90,7 +90,8 @@ class S3Driver(BaseDriver):
         endpoint = self._get("endpoint")
         region = self._get("region") or "us-east-1"
         if endpoint:
-            return f"{bucket}.{endpoint.lstrip('https://').lstrip('http://')}"
+            ep = endpoint.removeprefix("https://").removeprefix("http://")
+        return f"{bucket}.{ep}"
         return f"{bucket}.s3.{region}.amazonaws.com"
 
     def _build_request(self, method: str, path: str, content: bytes = b"", extra_headers: dict | None = None) -> tuple:

@@ -46,7 +46,7 @@ class HuaweiSmsDriver(BaseDriver):
         nonce = str(uuid.uuid4()).replace("-", "")
         created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         password_digest = base64.b64encode(
-            hashlib.sha256(f"{nonce}{created}{app_secret}".encode()).digest()
+            hashlib.sha256(f"{nonce}{created}{app_secret}".encode()).hexdigest().encode()
         ).decode()
 
         wsse = f'UsernameToken Username="{app_key}", PasswordDigest="{password_digest}", Nonce="{nonce}", Created="{created}"'

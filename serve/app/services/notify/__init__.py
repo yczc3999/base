@@ -55,18 +55,20 @@ class NotifyService(BaseService):
         return await self._safe_call(driver.send(title, content, **kwargs))
 
     async def broadcast(self, db, title: str, content: str, **kwargs) -> dict:
-        """通过所有已启用渠道广播"""
+        """通过所有已启用渠道广播（每渠道独立状态，互不串扰）"""
         config = await self.get_config(db)
         results = {}
 
         for name in self.driver_map:
             if config.get(f"{name}_enabled") != "1":
                 continue
+            # 每渠道独立 reset，避免上一渠道失败污染后续渠道
+            self._reset()
             try:
                 driver = await self.get_specific_driver(db, name)
                 if driver:
-                    await driver.send(title, content, **kwargs)
-                    results[name] = True
+                    ok = await driver.send(title, content, **kwargs)
+                    results[name] = bool(ok) and not self.failed
                 else:
                     results[name] = False
             except Exception:

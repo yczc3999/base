@@ -203,6 +203,16 @@ export function useCrud(options: CrudOptions) {
     onMounted(getList)
   }
 
+  // ── 设置查询参数（用于统计卡片点击筛选联动）──
+  function setQuery(query: Record<string, any>) {
+    if (query.keyword !== undefined) queryParams.keyword = query.keyword
+    if (query.filters) {
+      Object.assign(queryParams.filters, query.filters)
+    }
+    queryParams.page = 1
+    getList()
+  }
+
   return {
     // 状态
     loading,
@@ -220,6 +230,7 @@ export function useCrud(options: CrudOptions) {
     // 方法
     api,
     getList,
+    setQuery,
     handleSearch,
     handleReset,
     handlePageChange,

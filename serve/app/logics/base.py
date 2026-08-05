@@ -1,6 +1,6 @@
 import json
 from typing import Any, Type
-from sqlalchemy import select, func, delete, update, asc, desc
+from sqlalchemy import select, func, delete, update, asc, desc, null
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.redis import cache_get, cache_set, cache_del, cache_del_pattern
 from app.utils.query import apply_filters, apply_keyword
@@ -99,6 +99,11 @@ class BaseLogic:
         if not condition:
             raise BizError(msg, code)
 
+    @property
+    def _has_deleted_at(self) -> bool:
+        """模型是否有 deleted_at 列（软删除支持）"""
+        return hasattr(self.model, "deleted_at")
+
     # ==================== 列表 ====================
 
     async def get_list(
@@ -138,6 +143,10 @@ class BaseLogic:
             col = getattr(self.model, self.bind_user_column, None)
             if col is not None:
                 conditions.append(col == user_id)
+
+        # 软删除过滤：有 deleted_at 列则只显示未删除的记录
+        if self._has_deleted_at:
+            conditions.append(getattr(self.model, "deleted_at").is_(null()))
 
         # keyword 搜索
         keyword = query.get("keyword", "")
@@ -219,6 +228,9 @@ class BaseLogic:
             return self._strip_sensitive(cached)
 
         stmt = select(self.model).where(getattr(self.model, self.pk_name) == pk_value)
+        # 软删除过滤
+        if self._has_deleted_at:
+            stmt = stmt.where(getattr(self.model, "deleted_at").is_(null()))
         result = await db.execute(stmt)
         record = result.scalar_one_or_none()
         if record is None:
@@ -240,6 +252,9 @@ class BaseLogic:
             return cached
 
         stmt = select(self.model).where(getattr(self.model, field) == value)
+        # 软删除过滤
+        if self._has_deleted_at:
+            stmt = stmt.where(getattr(self.model, "deleted_at").is_(null()))
         result = await db.execute(stmt)
         record = result.scalar_one_or_none()
         if record is None:
