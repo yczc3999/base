@@ -1,8 +1,12 @@
 from enum import IntEnum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import Integer, String, SmallInteger, Boolean, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.admin_user_role import AdminUserRole
 
 
 class AdminUser(Base):
@@ -26,3 +30,6 @@ class AdminUser(Base):
     last_login_ip: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系：通过关联表访问 roles（passive_deletes 依赖 DB 级联）
+    roles_assoc: Mapped[list["AdminUserRole"]] = relationship(back_populates="user", passive_deletes=True)

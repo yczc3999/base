@@ -1,8 +1,12 @@
 from enum import IntEnum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import Integer, String, SmallInteger, Boolean, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.role_menu import RoleMenu
 
 
 class Menu(Base):
@@ -38,3 +42,18 @@ class Menu(Base):
     remark: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系：自引用（目录/子菜单）+ 关联表访问 roles
+    parent = relationship(
+        "Menu",
+        remote_side="Menu.id",
+        back_populates="children",
+        primaryjoin="foreign(Menu.parent_id) == Menu.id",
+        viewonly=True,
+    )
+    children: Mapped[list["Menu"]] = relationship(
+        back_populates="parent",
+        primaryjoin="Menu.id == foreign(Menu.parent_id)",
+        viewonly=True,
+    )
+    roles_assoc: Mapped[list["RoleMenu"]] = relationship(back_populates="menu", passive_deletes=True)

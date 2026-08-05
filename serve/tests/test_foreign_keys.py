@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import ForeignKey, Integer, String, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class FKBase(DeclarativeBase):
@@ -19,6 +19,7 @@ class Role(FKBase):
     __tablename__ = "roles"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(50))
+    menus_assoc: Mapped[list["RoleMenu"]] = relationship(back_populates="role", passive_deletes=True)
 
 
 class Menu(FKBase):
@@ -31,6 +32,7 @@ class RoleMenu(FKBase):
     __tablename__ = "role_menus"
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
     menu_id: Mapped[int] = mapped_column(ForeignKey("menus.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped["Role"] = relationship(back_populates="menus_assoc")
 
 
 @pytest_asyncio.fixture
@@ -118,3 +120,25 @@ async def test_cascade_keeps_unrelated_rows(db):
     remaining = (await db.execute(select(RoleMenu))).scalars().all()
     assert len(remaining) == 1
     assert remaining[0].role_id == 2
+
+
+@pytest.mark.asyncio
+async def test_relationship_navigation(db):
+    """relationship 关系可导航（C1b，需 selectinload 防 lazy-MissingGreenlet）"""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    role = Role(id=1, name="admin")
+    menu = Menu(id=1, slug="system")
+    db.add_all([role, menu])
+    await db.commit()
+    db.add(RoleMenu(role_id=1, menu_id=1))
+    await db.commit()
+
+    # 用 selectinload 显式加载关系（async 下 lazy 会报 MissingGreenlet）
+    result = await db.execute(
+        select(Role).options(selectinload(Role.menus_assoc)).where(Role.id == 1)
+    )
+    loaded = result.scalar_one()
+    assert len(loaded.menus_assoc) == 1
+    assert loaded.menus_assoc[0].menu_id == 1
