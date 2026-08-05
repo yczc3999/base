@@ -11,9 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 serve/          Python 后端（FastAPI + SQLAlchemy 2 async + PostgreSQL + Redis）
 admin/          Vue 前端（Vue 3 + TypeScript + Element Plus + Vite）
-php_project/    后端的 PHP 镜像（controller/logic/model/service/middleware/task/queue/scheduler）
 serve/docs/     架构事实源（api-convention / queue-task-design / service-design / rbac / file-system）
-serve/databases/  init.sql（11 核心表+种子）+ 域名 SQL（article/tag/seo）+ migrations/（001-015）
+serve/databases/  init.sql（11 核心表+种子）+ 域名 SQL（article/tag/seo）+ migrations/（001-016）
 ```
 
 **重要**：`serve/docs/` 是架构设计的唯一权威来源，动手前先读对应文档（api-convention、queue-task-design、service-design、rbac-design/implementation、file-system-design、keyword-refactor-design）。文档与代码冲突时以代码为准，并同步修文档。
@@ -114,10 +113,6 @@ Opaque Bearer token（Authorization 头），**会话状态存 Redis，不是签
 - `migrations/`（001-015）记录演进历史，**当前 schema 以 init.sql + 最新迁移 + article.sql 为准**。
 - **遗留陷阱**：`tag.sql` / `seo.sql` 里的 `tags` / `search_keywords` / `article_tags` / `publish_schedule` 表**已被迁移 015 删除**，这两个 SQL 文件**与当前 schema 不同步，勿以它们为准**（`controllers/admin/seo.py` 有注释掉的 `publish_schedule` 引用作证）。
 - 关键词模块已完成重构：三表合并为单表 `keywords`（`stage` candidate/approved/archived + `review_status` + `source_code` + `metrics_json` + `ai_review_json`）+ `article_keywords` 关联表。设计见 `serve/docs/keyword-refactor-design.md`，表结构与菜单重命名（content-tag → content-keyword）全在 `015_keyword_unify.sql`（含空表强断言，生产保护）。
-
-## PHP 镜像
-
-`php_project/` 是后端的 PHP 全量镜像（controller/logic/model/service/middleware/task/queue/scheduler/command 等）。**改后端业务逻辑时先确认是否要同步到 PHP 端**；php 侧大量目录（如 `market_test`、`product`）是历史遗留，不要以 php_project 推断当前产品结构。
 
 ## 设计规范（前端）
 

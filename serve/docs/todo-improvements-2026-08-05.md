@@ -17,7 +17,10 @@
 - [C 档：架构级 · 需要决策](#c-档架构级--需要决策)
   - [C1 · 关系层落地（FK + relationship + 级联）](#c1--关系层落地fk--relationship--级联)
   - [C2 · 统一 SSE 逻辑](#c2--统一-sse-逻辑)
-  - [C3 · PHP 镜像同步策略](#c3--php-镜像同步策略)
+- [补充：遗漏 NIT 小改进](#补充遗漏的-nit-小改进审计发现但未入档)
+  - [N1 · Validator 类型归一修复](#n1--validator-类型归一修复)
+  - [N2 · require_perms 避免额外 DB session](#n2--require_perms-避免额外-db-session)
+  - [N3 · 文档漂移同步](#n3--文档漂移同步)
 
 ---
 
@@ -33,7 +36,7 @@
   - `serve/app/utils/query.py` — QueryHelper 35 操作符
   - `serve/app/utils/token.py` — Token 生成/刷新/登出/全部撤销
   - `serve/app/tasks/base.py` — BaseTask 防重复锁
-  - `serve/pyproject.toml` 或 `serve/requirements-dev.txt`（新增 pytest / pytest-asyncio / httpx）
+  - `serve/requirements-dev.txt` — 新建，写入 pytest / pytest-asyncio / httpx
 - **验收证据**：
   - `serve/tests/` 目录存在
   - `cd serve && python -m pytest tests/` 全绿
@@ -51,8 +54,8 @@
 - **涉及文件**：
   - `serve/app/logics/base.py` — `get_list` 方法 ~121 行 + 新增 `MAX_PAGE` 常量
 - **验收证据**：
-  - `page` 超过 `MAX_PAGE`（建议 100000）时自动截断到 1
-  - 或改为 `page = min(max(1, raw_page), MAX_PAGE)` 然后重新计算 offset
+  - `page` 超过 `MAX_PAGE`（建议 100000）时返回 `{"code":1, "msg":"超出分页上限"}`，不执行查询
+  - `page` 在合法范围内正常分页
   - `python -m py_compile serve/app/logics/base.py` 通过
 - **阻塞项**：无
 - **非目标**：不做 keyset 分页（架构改动大，当前 pageSize≤100 足够）
@@ -86,8 +89,7 @@
 - **现状态**：`serve/databases/migrations/001-016` 是裸 SQL 文件，无执行记录表。016 已建但**未在任何环境应用**。CLAUDE.md 装库指引是 `psql -f databases/init.sql`
 - **涉及文件**：
   - `serve/app/migrate.py` — 新建，扫描 migrations/，按序执行，幂等跳过
-  - `serve/databases/migrations/` — 新建 `_schema_migrations` 表记录已执行迁移
-  - `serve/app/config.py` — 可能需要加 `DATABASE_MIGRATIONS_PATH` 配置
+  - `serve/databases/migrations/017_xxx.sql` — 新建，创建 `schema_migrations` 表（DB 表，非文件，用于记录已执行迁移版本）
 - **验收证据**：
   - `python -m app.migrate` 执行 001-016，全部成功或幂等跳过
   - 重复执行无副作用（`schema_migrations` 表记录已执行）
@@ -110,7 +112,7 @@
 - **阻塞项**：`_clear_cache` 需要读旧记录（查 `cache_fields` 值）。双删后第二次清需要仍能拿到 cache key 列表
 - **非目标**：不做分布式锁/版本号方案（过度设计）
 - **依赖**：无
-- **风险/回滚**：低——延迟清缓存失败不影响数据正确性（主路径已清除），只是缓存短暂不一致。回滚：git revert
+- **风险/回滚**：低。延迟清缓存失败不影响数据正确性。注意 `asyncio.create_task` 在 FastAPI 请求结束后可能被取消——建议用 `asyncio.ensure_future` 或 `loop.call_later`，或直接用 Redis `EXPIRE` 缩短 TTL 代替第二次主动删除。回滚：git revert
 - **最后更新**：2026-08-05
 
 ### B3 · `get_list` DB 异常可见性
@@ -183,25 +185,25 @@
 - **风险/回滚**：低。hook 抽提不影响 UI 渲染。回滚：git revert
 - **最后更新**：2026-08-05
 
-### C3 · PHP 镜像同步策略
+---
 
-- **目标**：明确 `php_project/` 的维护策略——是继续双轨同步，还是宣布 Python 为唯一实现
-- **现状态**：`php_project/` 是后端 PHP 全量镜像（controller/logic/model/service/middleware/task/queue/scheduler/command）。本轮 P0/P1 修复改动了 20+ Python 服务端文件，PHP 端未同步。CLAUDE.md 写「改后端业务逻辑时先确认是否要同步到 PHP 端」
-- **涉及文件**：
-  - `serve/CLAUDE.md` — 更新 PHP 镜像策略声明
-  - （若持续双轨）`php_project/app/` — 安全/功能修复同步
-  - （若宣布 Python 唯一）`php_project/` — 标记为 legacy 或移除
-- **验收证据**：
-  - CLAUDE.md 或项目文档明确声明：
-    - 方案 A「PHP 端需同步同步，修复项需逐一移植」— 列出待移植清单
-    - 方案 B「PHP 端标记 deprecated，不再维护，现有功能以 Python 端为准」— 删除或归档 php_project
-- **阻塞项**：需要你决策——这涉及产品路线图，无法从代码推断
-- **非目标**：（你决策前）不做任何 php_project 改动
-- **依赖**：你的产品决策
-- **风险/回滚**：
-  - 方案 A：维护成本高，每改 Logic 就要改 PHP，大概率不同步
-  - 方案 B：如果 PHP 端有生产使用，直接删除是破坏性的。建议归档（`php_project/ → _archive/php_project/`）
-- **最后更新**：2026-08-05
+## 补充：遗漏的 NIT 小改进（审计发现但未入档）
+
+以下 3 项在审计中已发现但未列入修复。价值中等，改动量小，可随时顺手做。
+
+### N1 · Validator 类型归一修复
+
+- **涉及文件**：`serve/app/utils/validator.py` — `in`/`not_in` 用 `str(value)` 比较（True→"True"≠"1"）；`boolean` 规则不收 "True"/"False" 字符串；`regex` 用 `re.match`（非全匹配）
+- **改动量**：~15 行
+
+### N2 · require_perms 避免额外 DB session
+
+- **涉及文件**：`serve/app/deps.py:122` — `_check_perms` 内 `async with async_session()` 开第二个 session，路由已有 session 可用
+- **改动量**：复用请求 session 或接受传入，~10 行
+
+### N3 · 文档漂移同步
+
+- **涉及文件**：`serve/docs/service-design.md`（签名表 V1→V3、interface.py 不存在、SMS driver_map 含 qiniu、broadcast 串行、s3 URL 格式、热重载 6 处）+ `serve/docs/queue-task-design.md`（防重复已迁移到 SET NX）
 
 ---
 
@@ -217,4 +219,6 @@
 | B3 · get_list 异常可见 | 待执行 | — | — |
 | C1 · 关系层落地 | 待决策 | — | — |
 | C2 · 统一 SSE | 待执行 | — | — |
-| C3 · PHP 镜像策略 | 待决策 | — | — |
+| N1 · Validator 类型归一 | 待执行 | — | — |
+| N2 · require_perms 双 session | 待执行 | — | — |
+| N3 · 文档漂移同步 | 待执行 | — | — |
