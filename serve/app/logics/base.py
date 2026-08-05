@@ -1,12 +1,16 @@
 import json
+import logging
 from typing import Any, Type
 from sqlalchemy import select, func, delete, update, asc, desc, null
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.redis import cache_get, cache_set, cache_del, cache_del_pattern
 from app.utils.query import apply_filters, apply_keyword
 
+logger = logging.getLogger("logic")
+
 DEFAULT_TTL = 3600
 MAX_PAGE = 100000  # 分页深度上限，防止恶意深翻 offset 扫全表
+NEGATIVE_CACHE_TTL = 30  # 负缓存 TTL（不存在的记录短缓存防穿透）
 
 
 class BizError(Exception):
@@ -178,8 +182,10 @@ class BaseLogic:
             result = await db.execute(stmt)
             total_result = await db.execute(count_stmt)
         except Exception:
+            # 区分"真无数据"与"DB 故障"：故障必须可见，不能伪装成空列表
             await db.rollback()
-            return {"list": [], "total": 0, "page": page, "pageSize": page_size}
+            logger.exception("get_list query failed: %s.%s", self.model.__name__, sort_field)
+            raise BizError("查询失败，请稍后再试", 500)
 
         rows = [self.format_data(row) for row in result.scalars().all()]
         total = total_result.scalar_one()
@@ -228,6 +234,9 @@ class BaseLogic:
         cache_key = self._cache_key(self.pk_name, pk_value)
         cached = await cache_get(cache_key)
         if cached is not None:
+            # 负缓存命中：记录不存在
+            if isinstance(cached, dict) and cached.get("__null__"):
+                return None
             return self._strip_sensitive(cached)
 
         stmt = select(self.model).where(getattr(self.model, self.pk_name) == pk_value)
@@ -237,6 +246,9 @@ class BaseLogic:
         result = await db.execute(stmt)
         record = result.scalar_one_or_none()
         if record is None:
+            # 负缓存：不存在的记录短缓存，防恶意遍历穿透
+            if self.cache_prefix:
+                await cache_set(cache_key, {"__null__": True}, ttl=NEGATIVE_CACHE_TTL)
             return None
 
         data = self._to_dict(record, with_sensitive=True)
@@ -252,6 +264,9 @@ class BaseLogic:
         cache_key = self._cache_key(field, value)
         cached = await cache_get(cache_key)
         if cached is not None:
+            # 负缓存命中：记录不存在
+            if isinstance(cached, dict) and cached.get("__null__"):
+                return None
             return cached
 
         stmt = select(self.model).where(getattr(self.model, field) == value)
@@ -261,6 +276,9 @@ class BaseLogic:
         result = await db.execute(stmt)
         record = result.scalar_one_or_none()
         if record is None:
+            # 负缓存
+            if self.cache_prefix:
+                await cache_set(cache_key, {"__null__": True}, ttl=NEGATIVE_CACHE_TTL)
             return None
 
         data = self._to_dict(record, with_sensitive=True)
@@ -333,7 +351,24 @@ class BaseLogic:
             if "UniqueViolation" in err_msg or "unique constraint" in err_msg.lower():
                 raise BizError("数据已存在（唯一约束冲突）")
             raise BizError(f"更新失败：{err_msg[:200]}")
+
+        # 双删：commit 后延迟再清一次缓存，防并发读在 clear→commit 窗口写入旧值
+        if self.cache_prefix:
+            await self._delay_clear_cache(pk_value, db)
         return await self.get_detail(db, pk_value)
+
+    async def _delay_clear_cache(self, pk_value: Any, db: AsyncSession):
+        """延迟清除缓存（避免阻塞主流程）"""
+        import asyncio
+
+        async def _delayed():
+            try:
+                await asyncio.sleep(0.1)  # 100ms 后清，覆盖并发读写入的旧值
+                await self._clear_cache(pk_value, db)
+            except Exception:
+                logger.warning("delayed cache clear failed for %s=%s", self.pk_name, pk_value)
+
+        asyncio.ensure_future(_delayed())
 
     # ==================== save（兼容 create/modify 合一调用） ====================
 

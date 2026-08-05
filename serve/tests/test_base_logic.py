@@ -177,6 +177,35 @@ async def test_cache_set_on_get_detail(db, logic, mock_redis_cache):
 
 
 @pytest.mark.asyncio
+async def test_negative_cache_on_missing_detail(db, logic, mock_redis_cache):
+    """不存在的 id 命中负缓存（第二次不查 DB 直接返回 None）"""
+    # 第一次：无缓存，走 DB，写负缓存
+    detail = await logic.get_detail(db, 99999)
+    assert detail is None
+    key = f"test_user:id:99999"
+    raw = await mock_redis_cache.get(key)
+    import json as _json
+    cached = _json.loads(raw)
+    assert cached.get("__null__") is True
+    # 第二次：负缓存命中，直接返回 None
+    detail2 = await logic.get_detail(db, 99999)
+    assert detail2 is None
+
+
+@pytest.mark.asyncio
+async def test_negative_cache_cleared_on_create(db, logic, mock_redis_cache):
+    """负缓存被创建操作覆盖（create 写正缓存到同一 email key）"""
+    # 先查不存在的 email → 写负缓存
+    assert await logic.get_by_field(db, "email", "new@b.com") is None
+    # 创建该 email 用户 → 正缓存覆盖负缓存（email 在 cache_fields 里）
+    created = await logic.create(db, {"name": "新用户", "email": "new@b.com"})
+    # 再次按 email 查 → 应命中正缓存返回用户
+    found = await logic.get_by_field(db, "email", "new@b.com")
+    assert found is not None
+    assert found["id"] == created["id"]
+
+
+@pytest.mark.asyncio
 async def test_cache_invalidated_on_modify(db, logic, mock_redis_cache):
     """modify 后 get_detail 返回新值（缓存已失效/重建）"""
     created = await logic.create(db, {"name": "原值", "email": "orig@b.com"})
