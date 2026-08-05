@@ -22,8 +22,10 @@
 """
 
 from fastapi import Request, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.logics.base import BizError
 from app.utils.token import verify_token
+from app.services.database import get_db
 
 
 class AuthInfo:
@@ -112,15 +114,16 @@ def require_perms(*perms: str):
         3. 匹配任一 perm → 放行
         4. 不匹配 → 403
     """
-    async def _check_perms(auth: AuthInfo = Depends(require_admin)):
+    async def _check_perms(
+        auth: AuthInfo = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
+    ):
         if auth.is_super_admin:
             return auth
 
         from app.logics.admin_user import admin_user_logic
-        from app.services.database import async_session
 
-        async with async_session() as db:
-            user_perms = await admin_user_logic.get_user_perms(db, auth.user_id)
+        user_perms = await admin_user_logic.get_user_perms(db, auth.user_id)
 
         # 满足任一权限即可
         for p in perms:

@@ -43,17 +43,14 @@ app/services/
 ├── base.py                 # BaseService 基类（配置加载 + 驱动工厂 + 错误通知）
 ├── sms/
 │   ├── __init__.py         # SmsService（统一入口）
-│   ├── interface.py        # SmsDriver 抽象接口
 │   └── drivers/
 │       ├── __init__.py
 │       ├── aliyun.py       # 阿里云短信
 │       ├── aliyun_intl.py  # 阿里云国际
 │       ├── qcloud.py       # 腾讯云短信
-│       ├── huawei.py       # 华为云短信
-│       └── qiniu.py        # 七牛云短信
+│       └── huawei.py       # 华为云短信
 ├── storage/
 │   ├── __init__.py         # StorageService（统一入口）
-│   ├── interface.py        # StorageDriver 抽象接口
 │   └── drivers/
 │       ├── __init__.py
 │       ├── local.py        # 本地存储
@@ -63,7 +60,6 @@ app/services/
 │       └── s3.py           # AWS S3 / MinIO / R2
 ├── notify/
 │   ├── __init__.py         # NotifyService（统一入口）
-│   ├── interface.py        # NotifyDriver 抽象接口
 │   └── drivers/
 │       ├── __init__.py
 │       ├── telegram.py     # Telegram Bot
@@ -173,7 +169,6 @@ class SmsService(BaseService):
         "aliyun_intl": AliyunIntlSmsDriver,
         "qcloud":      QcloudSmsDriver,
         "huawei":      HuaweiSmsDriver,
-        "qiniu":       QiniuSmsDriver,
     }
 
     async def send_code(self, db, phone: str, code: str):
@@ -371,7 +366,7 @@ class StorageService(BaseService):
 | aliyun_oss | `https://{bucket}.{endpoint}/{path}` 或 `{config.domain}/{path}` |
 | qcloud_cos | `https://{bucket}.cos.{region}.myqcloud.com/{path}` |
 | qiniu | `{config.domain}/{path}` |
-| s3 | `{config.endpoint}/{bucket}/{path}` 或 `{config.domain}/{path}` |
+| s3 | `https://{bucket}.{config.endpoint}/{path}` 或 `{config.domain}/{path}` |
 
 规则：有自定义域名（`config.domain`）优先用自定义域名，没有则拼默认域名。
 
@@ -435,7 +430,7 @@ class NotifyService(BaseService):
         return await driver.send(title, content, **kwargs)
 
     async def broadcast(self, db, title: str, content: str, **kwargs) -> dict:
-        """通过所有已启用渠道广播（并行模式，如告警通知）"""
+        """通过所有已启用渠道广播（串行逐渠道，每渠道独立状态，如告警通知）"""
         config = await self.get_config(db)
         results = {}
         for name, driver_cls in self.driver_map.items():
@@ -600,7 +595,7 @@ class SmsService(BaseService):
 | P2 | **SMS** | qcloud / huawei | 备选短信 |
 | P2 | **Storage** | qcloud_cos / s3 | 备选存储 |
 | P2 | **Notify** | feishu / wechat_work / email | 备选通知 |
-| P3 | **SMS** | aliyun_intl / qiniu | 国际短信 / 小众 |
+| P3 | **SMS** | aliyun_intl | 国际短信 |
 | P3 | **Storage** | qiniu | 小众 |
 
 ---
@@ -613,13 +608,10 @@ class SmsService(BaseService):
 |------|------|
 | `app/services/base.py` | BaseService 基类（配置加载 + 驱动工厂） |
 | `app/services/sms/__init__.py` | SmsService 统一入口 |
-| `app/services/sms/interface.py` | SmsDriver 抽象接口 |
 | `app/services/sms/drivers/*.py` | 各 SMS 驱动（按需） |
 | `app/services/storage/__init__.py` | StorageService 统一入口 |
-| `app/services/storage/interface.py` | StorageDriver 抽象接口 |
 | `app/services/storage/drivers/*.py` | 各存储驱动（按需） |
 | `app/services/notify/__init__.py` | NotifyService 统一入口 |
-| `app/services/notify/interface.py` | NotifyDriver 抽象接口 |
 | `app/services/notify/drivers/*.py` | 各通知驱动（按需） |
 
 ### 不改的文件

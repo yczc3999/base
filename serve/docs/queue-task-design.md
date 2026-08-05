@@ -367,14 +367,13 @@ numprocs=2
 # 开发模式启动
 python -m app.worker --reload
 
-# 内部实现：
+# 内部实现（整进程重启，非就地重注册）：
 if args.reload:
     import watchfiles
-    async for changes in watchfiles.awatch("app/tasks/", "app/jobs/"):
-        logger.info(f"Files changed: {changes}, reloading...")
-        tasks = scan_tasks()
-        jobs = scan_jobs()
-        # 重新注册
+    watchfiles.run_process(
+        str(app_dir / "tasks"), str(app_dir / "jobs"),
+        target=lambda: asyncio.run(main()),
+    )
 ```
 
 生产环境不开 reload，通过 `supervisorctl restart base-worker` 重启。

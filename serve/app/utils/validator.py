@@ -53,6 +53,22 @@ _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 _URL_RE = re.compile(r'^https?://\S+$')
 
 
+def _normalize_enum(value) -> str:
+    """布尔值归一化，使 in/not_in 能正确比较 True/1/'1'/'true'"""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("true", "1"):
+            return "1"
+        if s in ("false", "0"):
+            return "0"
+        return value.strip()
+    return str(value)
+
+
 def validate(data: dict, rules: dict, partial: bool = False, messages: dict = None):
     """
     校验 dict 数据
@@ -162,12 +178,12 @@ def _check_rule(field: str, value, rule: str) -> str | None:
 
         case "in":
             allowed = [v.strip() for v in param.split(",")]
-            if value is not None and str(value) not in allowed:
+            if value is not None and _normalize_enum(value) not in allowed:
                 return f"{field} 的值必须是 {param} 之一"
 
         case "not_in":
             disallowed = [v.strip() for v in param.split(",")]
-            if value is not None and str(value) in disallowed:
+            if value is not None and _normalize_enum(value) in disallowed:
                 return f"{field} 的值不能是 {param}"
 
         case "no_symbols":
@@ -175,7 +191,7 @@ def _check_rule(field: str, value, rule: str) -> str | None:
                 return f"{field} 不能包含特殊字符"
 
         case "regex":
-            if value and isinstance(value, str) and not re.match(param, value):
+            if value and isinstance(value, str) and not re.fullmatch(param, value):
                 return f"{field} 格式不正确"
 
         case "integer":
@@ -186,7 +202,7 @@ def _check_rule(field: str, value, rule: str) -> str | None:
                     return f"{field} 必须是整数"
 
         case "boolean":
-            if value is not None and value not in (True, False, 0, 1, "0", "1", "true", "false"):
+            if value is not None and _normalize_enum(value) not in ("0", "1"):
                 return f"{field} 必须是布尔值"
 
     return None
