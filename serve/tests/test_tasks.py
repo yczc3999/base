@@ -76,4 +76,7 @@ async def test_task_error_does_not_crash(mock_redis):
             raise RuntimeError("boom")
 
     t = TaskD()
-    await t.execute()  # 不应抛异常
+    await t.execute()  # 不抛异常即通过
+    # 异常后锁仍被正确释放
+    key = f"base:task:lock:TaskD"
+    assert await mock_redis.get(key) is None

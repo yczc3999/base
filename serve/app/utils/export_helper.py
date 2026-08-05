@@ -97,9 +97,12 @@ class ExportHelper:
         self.total_rows = (await db.execute(count_stmt)).scalar_one()
 
         if self.total_rows == 0:
-            # 空数据也生成一个只有表头的文件
+            # 空数据也生成一个只有表头的文件（流式风格，不累积 list）
             path = self._make_xlsx_path()
-            self._write_xlsx(path, [], row_formatter, format_context)
+            wb = Workbook(write_only=True)
+            ws = wb.create_sheet("Sheet1")
+            ws.append(list(self.header_map.values()))
+            wb.save(path)
             await self._set_progress(100)
             await self._set_file_path(path)
             return path

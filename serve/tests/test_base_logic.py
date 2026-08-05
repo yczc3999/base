@@ -223,3 +223,40 @@ async def test_save_create_and_modify(db, logic):
     assert created["id"] is not None
     updated = await logic.save(db, {"id": created["id"], "name": "合一体改"})
     assert updated["name"] == "合一体改"
+
+
+# ==================== B3: get_list 异常可见性 ====================
+
+@pytest.mark.asyncio
+async def test_get_list_raises_on_db_error(db, logic):
+    """DB 故障不再返回空列表，而是抛 BizError(500)"""
+    from app.logics.base import BizError
+    # 故意传一个无法解析的 sortField 触发异常？不行，白名单会兜底。
+    # 用坏连接模拟：把 db 的 execute 替换成抛异常
+    import unittest.mock as mock
+
+    async def boom(*a, **kw):
+        raise RuntimeError("connection lost")
+
+    with mock.patch.object(db, "execute", boom):
+        with pytest.raises(BizError) as exc_info:
+            await logic.get_list(db, {})
+        assert exc_info.value.code == 500
+
+
+# ==================== B2: 缓存双删 ====================
+
+@pytest.mark.asyncio
+async def test_modify_triggers_delayed_clear(db, logic, mock_redis_cache, monkeypatch):
+    """modify commit 后触发延迟清缓存（_delay_clear_cache 被调用）"""
+    created = await logic.create(db, {"name": "双删测试", "email": "del@b.com"})
+    called = []
+    original = logic._delay_clear_cache
+
+    async def spy(pk, d):
+        called.append(pk)
+        await original(pk, d)
+
+    monkeypatch.setattr(logic, "_delay_clear_cache", spy)
+    await logic.modify(db, created["id"], {"name": "双删后"})
+    assert called == [created["id"]]
