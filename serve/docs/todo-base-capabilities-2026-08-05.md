@@ -1,163 +1,237 @@
 # Base Platform 基础后台能力补全 TODO
 
-**创建**：2026-08-05
-**背景**：base 当前是「业务 CRUD 模板」，缺基础后台标配的通用底座能力。base 是下游项目的模板，这些能力必须在 base 做掉，否则每个下游 fork 后各自补，成本放大 N 倍。
-**前置**：P0/P1 修复 + 改进 TODO（12 项）已完成。当前 127 后端测试全绿。
-
-## 现状盘点（能力全景）
-
-| 域 | 已有 | 缺失 |
-|---|---|---|
-| 认证授权 | 登录/RBAC/菜单权限/操作日志 | 验证码/密码策略 |
-| 用户管理 | admin_users 后台管理 | **前端用户(users)无后台管理** |
-| 系统配置 | settings 多分类 | 无配置版本历史 |
-| 文件 | 上传/导出/隐私代理 | 无备份/无回收站 |
-| 消息 | message(仅 admin) | 前端用户无消息入口 |
-| 监控 | system_monitor 采集 load | **无展示页/无任务管理/无队列监控** |
-| 运维 | 手动 psql 装库 | **无定时备份** |
-| 数据 | 导出(doExport) | **无导入/无数据字典** |
+**创建**：2026-08-05 · **复审**：2026-08-05
+**背景**：base 当前偏「业务 CRUD 模板」，缺基础后台标配的通用底座能力。base 是下游项目模板，这些能力须在 base 做掉——否则下游各自补，成本放大 N 倍。
+**前置**：P0/P1 修复 + 改进 TODO（12 项）已完成。当前 127 后端测试 + vue-tsc + vite build 全绿。
 
 ---
 
-## 批次 1（P0 · 让 base 真正「基础」）
+## 0. 现状盘点（能力全景）
+
+| 域 | 已有 | 缺失 |
+|---|---|---|
+| 认证授权 | 登录 / RBAC / 菜单权限 / 操作·登录日志 | 验证码 / 密码策略 |
+| 用户管理 | admin_users 后台管理 | **前端用户(users)无后台管理**（查/禁/重置密码） |
+| 系统配置 | settings 多分类（ai/sms/storage/notify/...） | 无配置版本历史 |
+| 文件 | 上传 / 导出 / 隐私代理 / 静态挂载 | 无文件备份 / 无回收站 |
+| 消息 | message（仅 admin 端） | 前端用户无消息入口 |
+| 监控 | system_monitor 每 60s 采集 load → Redis `system:metrics` | **无展示页 / 无任务管理 / 无队列监控** |
+| 运维 | 手动 `psql -f` 装库，migration runner 可用 | **无定时备份** |
+| 数据 | 导出(doExport) + 进度 | **无导入 / 无数据字典** |
+
+---
+
+## 1. 批次 1（P0 · 让 base 真正「基础」）
 
 ### B1 · 数据库定时备份
 
-- **目标**：`pg_dump` 定时全库备份 + 保留策略 + 后台管理页（查看列表/手动备份/下载/恢复）
+- **目标**：`pg_dump` 定时全库备份 → `storage/backups/`，自动保留 + 后台管理（列表 / 手动备份 / 下载 / 恢复确认）
 - **现状态**：无任何备份机制。`init.sql` + migrations 只在装库时用，运行期数据无保护
+- **设计要点**：
+  - pg_dump 命令：`PGPASSWORD=$password pg_dump -h $host -p $port -U $user -d $dbname --format=custom --file=$output`（custom 格式支持 pg_restore 选择性恢复）
+  - 密码通过环境变量 `PGPASSWORD` 传入（不出现于命令行 ps 输出）
+  - 保留策略：保留最近 7 天每日 + 最近 4 周每周（`keep_daily=7, keep_weekly=4`）
+  - db_backups 表字段：`id / filename / file_size / status(ok|failed) / started_at / finished_at / error_msg / created_at`
+  - 恢复：后台列出备份 → 点击「恢复」→ 二次确认弹窗 → 调 `pg_restore`（**不可逆，必须二次确认**）
 - **涉及文件**：
-  - `serve/app/tasks/db_backup.py` — 新建 BaseTask：`pg_dump` 到 `storage/backups/`，按日期命名，保留最近 N 份（如 7 天）
-  - `serve/app/models/db_backup.py` — 新建：id/文件名/大小/创建时间/状态
-  - `serve/app/logics/db_backup.py` — 新建：列表/手动备份触发/删除
-  - `serve/app/controllers/admin/db_backup.py` — 新建：crud_router 注册 + 手动备份端点
-  - `admin/src/views/system/db_backup/index.vue` — 新建：备份列表 + 手动备份按钮 + 下载链接
-  - `serve/databases/migrations/020_db_backups.sql` — 新建：db_backups 表
+  - `serve/app/tasks/db_backup.py` — 新建 BaseTask(interval=86400, name="数据库备份")
+  - `serve/app/models/db_backup.py` — 新建：DbBackup(id/filename/file_size/status/started_at/finished_at/error_msg)
+  - `serve/app/logics/db_backup.py` — 新建：列表 / 手动触发 / 下载路径 / 删除(含文件)
+  - `serve/app/controllers/admin/db_backup.py` — 新建：crud_router + 手动备份 + 恢复(二次确认)
+  - `admin/src/views/system/db_backup/index.vue` — 新建：备份列表 + 手动备份按钮 + 下载 + 恢复
+  - `serve/databases/migrations/020_db_backups.sql` — 新建
 - **验收证据**：
-  - 任务定时执行生成 .sql/.dump 文件到 storage/backups/
-  - 超过保留策略的旧备份自动删除
-  - 后台页可看备份列表、手动触发备份、下载
-  - `pytest` 新增备份逻辑测试
-- **阻塞项**：**涉及生产数据安全**——恢复操作不可逆，需 tri-consensus-gate 审计后再动手
-- **风险/回滚**：pg_dump 只读不破坏数据；恢复操作单独加确认 + 二次验证。回滚：删任务文件 + migration 020 反向
+  - 任务定时执行，生成 `.dump`(pg_dump custom 格式)
+  - 超过保留策略的旧文件自动删除（DB 记录 + 磁盘文件）
+  - 后台可看列表、手动触发、下载文件
+  - 恢复操作要求二次确认弹窗
+  - `pytest` 新增备份逻辑测试（mock subprocess，验证命令构造）
+- **阻塞项**：**涉及生产数据安全——恢复不可逆，动手前须 tri-consensus-gate 审计**
+- **风险/回滚**：pg_dump 只读不破坏；恢复二次确认做最后防线。回滚：删 migration + task + 页面
 - **最后更新**：2026-08-05
 
 ### B2 · 数据字典（Dict）
 
-- **目标**：枚举/字典集中管理（性别/状态/类型等），前端 DictTag 闭环
+- **目标**：集中管理枚举/常量（性别/状态/类型等），前端 DictTag 组件闭环
 - **现状态**：无 dict 表、无管理页。`admin/src/components/DictTag/` **不存在**（上轮盘点误判为已建，实为设计规划）
+- **表设计**：
+  - `dicts`：`id / type_name(VARCHAR 50 UNIQUE) / description / status / created_at / updated_at`
+  - `dict_items`：`id / dict_id(FK→dicts.id CASCADE) / value(VARCHAR 100) / label(VARCHAR 100) / sort(INT) / status / created_at`，UNIQUE(dict_id, value)
+  - 对外 API：`GET /api/admin/dict/items?type=gender` → `[{value:"1",label:"男"},{value:"2",label:"女"}]`（公开接口，无需登录）
 - **涉及文件**：
-  - `serve/databases/migrations/021_dicts.sql` — 新建：dicts（类型名/说明）+ dict_items（value/label/sort/启用）两表
-  - `serve/app/models/dict.py` — 新建：Dict / DictItem 两模型
-  - `serve/app/logics/dict.py` — 新建：dict CRUD + get_by_type（按类型取项列表）
-  - `serve/app/controllers/admin/dict.py` — 新建：crud_router 注册
-  - `admin/src/views/system/dict/index.vue` — 新建：字典管理页（类型分组 + 项编辑）
-  - `admin/src/components/DictTag/` — 新建：按 dict_type 渲染标签
+  - `serve/databases/migrations/021_dicts.sql` — 新建：dicts + dict_items 两表
+  - `serve/app/models/dict.py` — 新建：Dict / DictItem（FK + CASCADE）
+  - `serve/app/logics/dict.py` — 新建：CRUD + `get_items_by_type(type_name)`（Redis 缓存 1h）
+  - `serve/app/controllers/admin/dict.py` — 新建：crud_router + `GET /dict/items` 公开端点
+  - `admin/src/views/system/dict/index.vue` — 新建：字典管理页（类型列表 + 项表格编辑）
+  - `admin/src/components/DictTag/index.vue` — 新建：接收 `type` prop，调公开端点渲染标签
 - **验收证据**：
-  - dicts + dict_items 两表 CRUD 正常
-  - 前端可创建字典类型、维护字典项
-  - DictTag 组件按类型渲染（有数据源）
+  - 后台可创建「性别」类型、添加「男/女」字典项
+  - `GET /api/admin/dict/items?type=gender` 返回项列表
+  - DictTag `<DictTag type="gender" value="1">` → 渲染为「男」
   - `pytest` 新增 dict 逻辑测试
 - **依赖**：无
-- **风险/回滚**：低，纯新增。回滚：删 migration + 组件
+- **风险/回滚**：低，纯新增。回滚：删 migration + 组件 + controller
 - **最后更新**：2026-08-05
 
 ### B3 · 前端用户（users）后台管理
 
-- **目标**：`users` 表（前端用户）补后台 CRUD：查看/禁用/重置密码/踢下线
-- **现状态**：`users` 表与 `admin_users` 同构（含 token_version），但 admin 端**无任何 users 管理**。`controllers/client/user.py` 只有登录/注册/信息
+- **目标**：users 表补 admin 端 CRUD：查看/禁用/重置密码/踢下线
+- **现状态**：`users` 表与 `admin_users` 同构（含 `token_version`），但 admin 端无 users 管理。`controllers/client/user.py` 仅登录/注册。`controllers/admin/user.py` 已被 admin_users 占用
+- **设计要点**：
+  - 控制器挂在 `controllers/admin/user_manage.py`（避免与 `user.py` 冲突），路由 `/api/admin/user_manage`
+  - Logic 加固：`before_create`/`before_edit` 守卫 `is_super_admin`、`token_version`（对齐 admin_user 的 S1 修复）
+  - 踢下线：调用 `revoke_all_tokens("client", user_id)`——users 的 scope 是 "client"
+  - 重置密码：admin 端输入新密码 → 后端 hash 后写入 → 强制踢下线（`token_version++`）
 - **涉及文件**：
-  - `serve/app/logics/user.py` — 补 before_create/before_edit 守卫（同 admin_user：禁 token_version 等）
-  - `serve/app/controllers/admin/user_manage.py` — 新建：crud_router("user") 挂前端 users 表
-  - `admin/src/views/system/user_manage/index.vue` — 新建：前端用户管理页（列表/禁用/重置密码）
-  - `serve/databases/migrations/016_content_menus_perms.sql` 或新增 — 补 users 管理菜单 + 权限点
+  - `serve/app/logics/user.py` — 补 before_create/before_edit 守卫（pop is_super_admin / token_version）
+  - `serve/app/controllers/admin/user_manage.py` — 新建：crud_router("user_manage", user_logic, perms_prefix="admin:user_manage")
+  - `admin/src/views/system/user_manage/index.vue` — 新建：列表/禁用/重置密码表单
+  - 菜单种子 — 补 `admin:user_manage:*` 权限点（新增 migration 或追加到 016）
 - **验收证据**：
-  - admin 端可查看 users 列表、禁用、重置密码
-  - 复用 `token_version` 踢下线
-  - 非超管按 admin 权限点控制
-  - `pytest` 新增 user_manage 逻辑测试
+  - admin 端可查看、禁用、重置密码 users 记录
+  - 重置密码后 `token_version++` → 该用户所有 client 端 session 失效
+  - 非超管按 `admin:user_manage:*` 权限点控制
+  - `pytest` 新增 user_manage 守卫测试
 - **依赖**：无
-- **风险/回滚**：中——前端用户管理涉及密码重置（不可逆）。需确认重置后强制重新登录。回滚：删 controller + 页面
+- **风险/回滚**：中——密码重置不可逆。确认重置后强制踢下线。回滚：删 controller + 页面
 - **最后更新**：2026-08-05
 
-### B4 · 定时任务/队列管理界面
+### B4 · 定时任务 / 队列管理界面
 
-- **目标**：后台查看任务列表（启停状态/最近执行/手动触发），队列长度/失败数展示
-- **现状态**：6 个任务自动扫描注册（tasks/），但**无任何可视化**。`system_monitor` 每 60s 采集 load 到 `system:metrics`（Redis），已有数据源但无展示页
+- **目标**：后台查看任务列表（启停/最近执行/手动触发）+ 队列状态展示
+- **现状态**：6 个任务自动扫描注册（`tasks/`），**无可视化**。`system_monitor` 采集 load 到 Redis，无展示页
+- **设计要点**：
+  - 任务列表：扫描 `app/tasks/` 拿 `name/interval/enabled` + Worker 端存最近执行时间到 Redis（`task:last_run:{name}` 含 status/时间/耗时/error）
+  - 手动触发：调 `Queue.push` 推入队列（走默认队列），不入优先队列——**不走 BaseTask.execute 直接调 run()**（防锁冲突）
+  - 队列状态：从 Redis 读各队列长度（`LLEN {prefix}:queue:default/export/notify/task` + `HLEN {prefix}:queue:delayed`）+ processing 残留数
+  - 与 P1-4 边界：B4 = 任务表 + 队列，P1-4 = 系统指标页（CPU/内存/磁盘），两个视图可合成一个「运维中心」入口
 - **涉及文件**：
-  - `serve/app/logics/task_monitor.py` — 新建：扫描 tasks/ 列出任务（name/interval/enabled）+ 读取最近执行状态
-  - `serve/app/controllers/admin/task_monitor.py` — 新建：任务列表端点 + 手动触发端点
-  - `admin/src/views/system/task_monitor/index.vue` — 新建：任务列表 + 手动触发按钮 + 队列状态
-  - `serve/app/tasks/system_monitor.py` — 增强：采集 Redis 队列长度 + 更多系统指标
-  - `admin/src/views/system/monitor/index.vue` — 新建：系统监控展示页（读 system:metrics）
+  - `serve/app/logics/task_monitor.py` — 新建：扫描任务 + 读执行状态 + 手动手动触发
+  - `serve/app/controllers/admin/task_monitor.py` — 新建：任务列表 + 手动触发 + 队列状态端点
+  - `admin/src/views/system/task_monitor/index.vue` — 新建：任务表格 + 手动触发按钮 + 队列状态卡片
+  - `serve/app/tasks/system_monitor.py` — 增强：加队列长度采集到 `system:metrics`
 - **验收证据**：
-  - 任务列表显示全部 6+ 任务（name/interval/enabled）
-  - 手动触发一个任务生效
-  - 监控页显示 load/CPU/队列长度
+  - 任务列表显示 6+ 任务（name/interval/enabled/最近执行）
+  - 手触发一个任务生效（不走锁，直接 Queue.push）
+  - 队列状态卡片实时展示各队列长度
   - `vue-tsc -b` + `vite build` 通过
-- **阻塞项**：手动触发任务需防重复（复用 BaseTask 锁）
-- **风险/回滚**：中——手动触发可能重复执行（SEO 管线等重任务）。需确认手动触发走独立队列且限并发。回滚：删页面 + controller
+- **阻塞项**：手触发不经过 BaseTask.execute()（避免锁冲突），直接推队列
+- **风险/回滚**：中——手触发 SEO 管线等重任务可能造成资源竞争。Worker 已有 MAX_CONCURRENT=10 限制。回滚：删页面 + controller
 - **最后更新**：2026-08-05
 
 ---
 
-## 批次 2（P1 · 锦上添花）
+## 2. 批次 2（P1 · 锦上添花）
 
-### P1-1 · 在线用户/会话管理
+### P1-1 · 在线用户 / 会话管理
 
-- **目标**：查看在线 admin 会话列表，一键踢下线（复用 revoke_all_tokens）
-- **涉及文件**：`serve/app/controllers/admin/session.py` + `admin/src/views/system/session/index.vue`
-- **依赖**：Redis `user_tokens:{scope}:{user_id}` 索引已有
+- **目标**：查看 admin/client 在线会话列表，一键踢下线（复用 `revoke_all_tokens`）
+- **现状态**：Redis `user_tokens:{scope}:{user_id}` 索引已有，`revoke_all_tokens` 已有
+- **设计要点**：从 Redis Set 索引读活跃 token 列表 → 拆出 username/user_id/登录时间/最后活跃 → 展示在线用户表
+- **涉及文件**：
+  - `serve/app/controllers/admin/session.py` — 新建：GET /session/list(读 Redis 索引) + POST /session/kick
+  - `admin/src/views/system/session/index.vue` — 新建：在线用户表 + 踢下线按钮
+- **验收证据**：页面显示当前在线用户列表；踢下线后该用户 session 消失
+- **依赖**：无。工作量 ~2 小时
+- **最后更新**：2026-08-05
 
 ### P1-2 · 缓存管理界面
 
-- **目标**：查看缓存用量，一键清理指定模块缓存
-- **涉及文件**：`serve/app/controllers/admin/cache.py` + `admin/src/views/system/cache/index.vue`
-- **依赖**：BaseLogic.clear_all_cache 已有
+- **目标**：后台查看缓存用量（dbsize + 按前缀 key 数），一键清理指定模块缓存
+- **现状态**：`BaseLogic.clear_all_cache()` + `cache_del_pattern` 已有，无 UI
+- **设计要点**：列出各 Logic 的 `cache_prefix` + 对应 key 数（Redis SCAN 统计）→ 提供「清空此模块缓存」按钮
+- **涉及文件**：
+  - `serve/app/controllers/admin/cache.py` — 新建：GET /cache/stats(Redis DBSIZE + 按前缀 key 数) + POST /cache/clear(指定 prefix)
+  - `admin/src/views/system/cache/index.vue` — 新建：缓存模块卡片 + 清空按钮
+- **验收证据**：页面显示各模块 key 数；点击清空后 key 数归零
+- **依赖**：无。工作量 ~2 小时
+- **最后更新**：2026-08-05
 
 ### P1-3 · 数据导入
 
-- **目标**：为支持导出的模块补导入（模板下载 + 上传解析 + 校验）
-- **涉及文件**：`serve/app/controllers/admin/import.py` + `admin/src/components/ImportModal.vue`
+- **目标**：支持从 Excel/CSV 导入数据到任意已有 CRUD 模块
+- **现状态**：导出已有（doExport），导入无
+- **设计要点**：模板下载（复用 `export_header_map` 做表头）→ 上传解析 openpyxl → 逐行 validate（复用 `create_rules`）→ 批量 create（独立事务，每行不影响其他行）
+- **涉及文件**：
+  - `serve/app/utils/import_helper.py` — 新建：Excel 解析 + 逐行校验 + 批量入库
+  - `serve/app/controllers/admin/import_api.py` — 新建：模板下载 + 上传导入 + 进度
+  - `admin/src/components/ImportModal.vue` — 新建：上传 + 预览 + 提交
+- **验收证据**：下载模板 → 填数据 → 上传导入 → 校验通过的行入库，失败行在结果中展示
+- **依赖**：openpyxl 已安装。工作量 ~4 小时
+- **最后更新**：2026-08-05
 
-### P1-4 · 系统监控展示（独立于 B4）
+### P1-4 · 系统监控展示页
 
-- **目标**：完整系统监控页（CPU/内存/磁盘/网络/进程）
-- **涉及文件**：`serve/app/tasks/system_monitor.py` 增强 + `admin/src/views/system/monitor/index.vue`
-- **注**：与 B4 的任务管理界面可合并为一个「运维中心」
+- **目标**：完整系统指标展示页（CPU load / 内存 / 磁盘 / 网络 / 进程 / 队列深度 / Redis 内存）
+- **现状态**：`system_monitor` 已采 load → Redis。页面不存在
+- **设计要点**：扩展 system_monitor 采集更多指标（内存 free、磁盘 df、Redis INFO memory）→ 前端展示仪表板
+- **涉及文件**：
+  - `serve/app/tasks/system_monitor.py` — 增强：加内存/磁盘/Redis 指标采集
+  - `admin/src/views/system/monitor/index.vue` — 新建：指标仪表板（B4 的任务列表可合入此页或独立页）
+- **验收证据**：监控页显示 CPU/内存/磁盘/Redis/队列实时指标，自动刷新
+- **依赖**：Redis `system:metrics` key 已有。工作量 ~3 小时
+- **最后更新**：2026-08-05
 
 ---
 
-## 批次 3（P2 · 可选）
+## 3. 批次 3（P2 · 可选）
 
-| 项 | 说明 |
+| 项 | 说明 | 涉及文件(概要) |
+|---|---|---|
+| 验证码/登录保护 | 图形验证码或滑块，接入 admin 登录页 | `controllers/admin/user.py` 中 login + 验证码 service |
+| 密码策略 | 强制最低复杂度 / 定期过期 | `logics/admin_user.py` 中 change_password 校验 + `settings` 表 |
+| 多语言 i18n | 前端硬编码中文 → 配置化 | `admin/src/locales/` + 后端 API 返回字典 key |
+| 暗黑模式/主题 | 设计令牌扩展 + CSS 变量切换 | `admin/src/styles/theme.scss` + `stores/theme.ts` |
+| 软删除/回收站统一 | 跨模块回收站（article 已有 deleted_at 雏形） | `logics/base.py` 回收站视图 + `views/system/trash/` |
+| 前端用户消息入口 | message 表支持 client scope，client 端可读消息 | `logics/message.py` + `controllers/client/message.py` |
+
+---
+
+## 4. 进度追踪
+
+| 项 | 状态 | 预计工作量 | 依赖 | 完成 |
+|---|---|---|---|---|
+| B1 · 数据库定时备份 | 待执行，需 gate | ~4h | tri-consensus-gate | — |
+| B2 · 数据字典 | 待执行 | ~3h | — | — |
+| B3 · 前端用户管理 | 待执行 | ~2h | — | — |
+| B4 · 任务/队列监控 | 待执行 | ~3h | — | — |
+| P1-1 · 在线用户 | 待执行 | ~2h | — | — |
+| P1-2 · 缓存管理 | 待执行 | ~2h | — | — |
+| P1-3 · 数据导入 | 待执行 | ~4h | — | — |
+| P1-4 · 系统监控页 | 待执行 | ~3h | — | — |
+| P2-* · 验证码等 | 待决策 | - | — | — |
+
+**总预计**：批次 1 P0 4 项 ~12h，批次 2 P1 4 项 ~11h
+
+## 5. 执行顺序建议
+
+```
+B2 数据字典 ──→ B3 前端用户管理 ──→ B1 数据库备份 ──→ B4 任务/队列监控
+   (独立)         (复用 admin_user 模式)   (需 gate 审计)      (B2/B3 基建可复用)
+                                                              ↓
+                                                         P1-4 系统监控页
+                                                              ↓
+                                                        P1-1~P1-3 按需
+```
+
+- **B2 先做**：最独立，建 dict 表是纯新增，不影响现有功能
+- **B3 接着**：复用 admin_user 的守卫/踢人模式，工作量的确最小
+- **B1 需要审计**：涉及 `pg_dump` 和恢复，是 P0 里唯一需外部校验的
+- **B4 收尾**：任务管理是 P0 里工作量最大的一项，但 B2/B3 的基建（菜单种子/权限点模式）可复用
+
+---
+
+### 审计修正记录（2026-08-05）
+
+| 修正 | 说明 |
 |---|---|
-| 验证码/登录保护 | 图形验证码或滑块 |
-| 密码策略 | 强制复杂度/定期过期 |
-| 多语言 i18n | 前端硬编码中文 → 配置化 |
-| 暗黑模式/主题 | 设计令牌扩展 |
-| 软删除/回收站统一 | 跨模块回收站 |
-| 前端用户消息入口 | message 表支持 client scope |
-
----
-
-## 进度追踪
-
-| 项 | 状态 | 决定 | 完成 |
-|---|---|---|---|
-| B1 · 数据库定时备份 | 待执行 | 需 tri-consensus-gate | — |
-| B2 · 数据字典 | 待执行 | — | — |
-| B3 · 前端用户管理 | 待执行 | — | — |
-| B4 · 任务/队列监控 | 待执行 | — | — |
-| P1-1 · 在线用户 | 待执行 | — | — |
-| P1-2 · 缓存管理 | 待执行 | — | — |
-| P1-3 · 数据导入 | 待执行 | — | — |
-| P1-4 · 系统监控页 | 待执行 | — | — |
-| P2-* · 验证码等 | 待决策 | — | — |
-
-## 执行顺序建议
-
-1. **B2 数据字典**（最标准、最独立，先做建立信心）
-2. **B3 前端用户管理**（复用 admin_user 模式，快）
-3. **B1 数据库备份**（涉及安全，需审计，放第三）
-4. **B4 任务/队列监控**（依赖 B1 的部分基建）
-5. 批次 2 视精力
+| B1 补 pg_dump 命令细节 | 加 `PGPASSWORD` 密码传递、`--format=custom`、保留策略说明 |
+| B1 补恢复闭环 | 加 db_backups 表字段 + 二次确认流程 |
+| B2 补 dict 表字段 | 精确到 `dicts`/`dict_items` 每列 + 对外 API `/dict/items` |
+| B3 补控制器命名 | `user_manage` 避免与现有 `user.py` 冲突 + 明确 scope=client |
+| B4/P1-4 边界明确 | B4=任务列表+队列状态，P1-4=系统指标页，可合为「运维中心」 |
+| P1 档格式对齐 | P1-1~P1-4 补精确文件路径 + 验收证据（对齐 B 档格式） |
+| 补工作量列 | 每项加预计工时 |
+| 补执行顺序图 | ASCII flowchart |
+| 补审计修正记录 | 本表 |
