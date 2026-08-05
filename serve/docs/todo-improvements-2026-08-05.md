@@ -14,6 +14,7 @@
   - [B1 · 建 migration runner](#b1--建-migration-runner)
   - [B2 · 缓存一致性（双删）](#b2--缓存一致性双删)
   - [B3 · `get_list` DB 异常可见性](#b3--get_list-db-异常可见性)
+  - [B4 · 缓存穿透防护（负缓存）](#b4--缓存穿透防护负缓存)
 - [C 档：架构级 · 需要决策](#c-档架构级--需要决策)
   - [C1 · 关系层落地（FK + relationship + 级联）](#c1--关系层落地fk--relationship--级联)
   - [C2 · 统一 SSE 逻辑](#c2--统一-sse-逻辑)
@@ -73,7 +74,7 @@
   - `_fetch_all_chunks` 不再构建 `all_rows` 列表
   - 单文件导出内存占用与行数解耦（Openpyxl write_only 自身常量内存）
   - 导出 1000 行验证通过（可以用已有 `file_key` 流程测试）
-- **阻塞项**：`_write_xlsx` 签名变更——当前接收 `list[dict]`，重构后改为接收生成器或逐行推入
+- **阻塞项**：`_write_xlsx` 被单文件路径（`_export_single`）和 ZIP 路径（`_export_zip:143`）两处调用——改造需兼容 ZIP 路径仍接受 `list[dict]`（最多 MAX_ROWS 行，已分批），单文件路径改为逐 chunk 直接写。重构范围：`_export_single` 不再调用 `_write_xlsx`，而是循环 `_fetch_chunk_batch` → 直接 `ws.append`
 - **非目标**：不重构 ZIP 多文件路径（已按 MAX_ROWS 分批，风险可控）
 - **依赖**：无
 - **风险/回滚**：中等——导出是用户可见功能。建议做 A1 后再改 A3（有测试防回归）。回滚：git revert
@@ -89,7 +90,7 @@
 - **现状态**：`serve/databases/migrations/001-016` 是裸 SQL 文件，无执行记录表。016 已建但**未在任何环境应用**。CLAUDE.md 装库指引是 `psql -f databases/init.sql`
 - **涉及文件**：
   - `serve/app/migrate.py` — 新建，扫描 migrations/，按序执行，幂等跳过
-  - `serve/databases/migrations/017_xxx.sql` — 新建，创建 `schema_migrations` 表（DB 表，非文件，用于记录已执行迁移版本）
+  - `serve/databases/migrations/017_schema_migrations.sql` — 新建，创建 `schema_migrations` 表（DB 表，用于记录已执行迁移版本）
 - **验收证据**：
   - `python -m app.migrate` 执行 001-016，全部成功或幂等跳过
   - 重复执行无副作用（`schema_migrations` 表记录已执行）
@@ -131,6 +132,22 @@
 - **风险/回滚**：如果某个调用方依赖「异常返回空列表」的行为（比如前端判断 `list.length===0` 决定空态 UI），修复后会看到错误提示。需验证前端是否有这种情况。回滚：git revert
 - **最后更新**：2026-08-05
 
+### B4 · 缓存穿透防护（负缓存）
+
+- **目标**：不存在的 pk/field 查询结果做短 TTL 负缓存，防止恶意遍历
+- **现状态**：`logics/base.py:217-225` `get_detail`、`237-250` `get_by_field` 对不存在的结果直接返回 None，无任何缓存。恶意遍历不存在的 id 每次都打 DB
+- **涉及文件**：
+  - `serve/app/logics/base.py` — `get_detail` 和 `get_by_field` 增加空结果负缓存（TTL 30s，存特殊 marker 如 `__NULL__`）
+- **验收证据**：
+  - 查询不存在的 `id=99999` — 第一次查 DB，返回 None
+  - 30 秒内重复查询 `id=99999` — 不查 DB，直接返回 None
+  - 真实创建 `id=99999` 的记录后——创建/编辑清空该 key 的负缓存（`_set_cache` 里判断）
+- **阻塞项**：负缓存 marker 需要和真实数据区分（防止把 `__NULL__` 当业务数据返回）。建议缓存 `{"__null__": True}` 字典，在 `get_detail` 的缓存命中路径判断 `cached.get("__null__")`
+- **非目标**：不做全量预填 null（内存/复杂度不值得）
+- **依赖**：无
+- **风险/回滚**：如果负缓存创建后记录被数据迁移脚本直接写 DB（绕过 BaseLogic create），缓存不一致 30 秒。风险极低。回滚：git revert
+- **最后更新**：2026-08-05
+
 ---
 
 ## C 档：架构级 · 需要决策
@@ -151,7 +168,7 @@
   - `serve/app/models/message.py` — 补 `user` relationship
   - `serve/app/models/file.py` — 补 `user` relationship
   - `serve/app/logics/menu.py` — 改 `get_tree`/`get_tree_by_role_ids` 用 relationship 而非裸 join
-  - `serve/databases/migrations/017_add_foreign_keys.sql` — 新建，补 FK 约束 + 级联策略
+  - `serve/databases/migrations/019_add_foreign_keys.sql` — 新建，补 FK 约束 + 级联策略
 - **验收证据**：
   - 所有 model 的 `__init__.py` relationship 导入可用
   - migration 017 可执行（`ALTER TABLE ADD CONSTRAINT ... FOREIGN KEY ... ON DELETE ...`）
@@ -193,17 +210,26 @@
 
 ### N1 · Validator 类型归一修复
 
-- **涉及文件**：`serve/app/utils/validator.py` — `in`/`not_in` 用 `str(value)` 比较（True→"True"≠"1"）；`boolean` 规则不收 "True"/"False" 字符串；`regex` 用 `re.match`（非全匹配）
+- **目标**：修复 3 个 validator 规则的边缘行为
+- **现状态**：审计 R4-C 发现 `validator.py:163-190` 三个问题：`in`/`not_in` 用 `str(value)` 比较导致布尔值匹配错误；`boolean` 规则不收 "True"/"False" 字符串；`regex` 用 `re.match`（非全匹配，`re.search` 语义）
+- **涉及文件**：`serve/app/utils/validator.py`
 - **改动量**：~15 行
+- **验收证据**：`python -m pytest tests/test_validator.py`（如有 A1）；或手动 `python -c` 验证 True 能被 `in` 规则正确匹配
 
 ### N2 · require_perms 避免额外 DB session
 
-- **涉及文件**：`serve/app/deps.py:122` — `_check_perms` 内 `async with async_session()` 开第二个 session，路由已有 session 可用
-- **改动量**：复用请求 session 或接受传入，~10 行
+- **目标**：消除权限校验时的双 session 开销
+- **现状态**：`deps.py:122` `_check_perms` 内 `async with async_session()` 创建额外 session，而调用方（如 crud_router）已经持有请求级 session
+- **涉及文件**：`serve/app/deps.py`
+- **改动量**：~10 行（`_check_perms` 接受传入 session 参数）
+- **验收证据**：crud_router 各端点权限校验仍正常，不再双连 DB
 
 ### N3 · 文档漂移同步
 
-- **涉及文件**：`serve/docs/service-design.md`（签名表 V1→V3、interface.py 不存在、SMS driver_map 含 qiniu、broadcast 串行、s3 URL 格式、热重载 6 处）+ `serve/docs/queue-task-design.md`（防重复已迁移到 SET NX）
+- **目标**：7 处文档宣称与代码实现对齐
+- **现状态**：`service-design.md` 6 处漂移（阿里云签名 V1→V3、interface.py 不存在、SMS driver_map 含 qiniu、broadcast 宣称并行实为串行、s3 URL 格式、热重载重注册 vs 整进程重启）+ `queue-task-design.md` 1 处（防重复 get+set 已迁 SET NX）
+- **涉及文件**：`serve/docs/service-design.md`、`serve/docs/queue-task-design.md`
+- **验收证据**：`grep` 对比文档描述与实际代码，7 处全部对齐
 
 ---
 
@@ -217,6 +243,7 @@
 | B1 · migration runner | 待执行 | — | — |
 | B2 · 缓存一致性 | 待执行 | — | — |
 | B3 · get_list 异常可见 | 待执行 | — | — |
+| B4 · 缓存穿透防护 | 待执行 | — | — |
 | C1 · 关系层落地 | 待决策 | — | — |
 | C2 · 统一 SSE | 待执行 | — | — |
 | N1 · Validator 类型归一 | 待执行 | — | — |
