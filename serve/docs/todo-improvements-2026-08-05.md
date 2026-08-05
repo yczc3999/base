@@ -247,7 +247,7 @@
 | B3 · get_list 异常可见 | ✅ 完成 | — | 抛 BizError(500) |
 | B4 · 缓存穿透防护 | ✅ 完成 | — | 30s 负缓存 |
 | C1a · FK + 级联 | ✅ 完成 | 关联表 CASCADE | migration 019 + 4 测试 |
-| C1b · relationship | ⏸ 待执行 | 纯 Python 侧低优先 | — |
+| C1b · relationship | ✅ 完成 | 关联表+自引用 | 双向 relationship + passive_deletes |
 | C2 · 统一 SSE | ✅ 完成 | — | useSSE hook |
 | N1 · Validator 类型归一 | ✅ 完成 | — | 30 测试 |
 | N2 · require_perms 双 session | ✅ 完成 | — | 复用请求 session |
