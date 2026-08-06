@@ -41,9 +41,12 @@ def _discover_cache_modules() -> list[dict]:
 
 
 def _match_patterns(prefix: str) -> list[str]:
-    """清理/统计用匹配模式 (兼容 settings 聚合 key)."""
+    """清理/统计用匹配模式 (兼容 settings 聚合 key + dict_item 的 items 缓存)."""
     if prefix == "setting":
         return ["setting:*", "settings:*"]
+    if prefix == "dict_item":
+        # L5 修复: dict_item 变更会失效 dict:items:{type} 缓存, 手动清理需一并覆盖
+        return ["dict_item:*", "dict:items:*"]
     return [f"{prefix}:*"]
 
 

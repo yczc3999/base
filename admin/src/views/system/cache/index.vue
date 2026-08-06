@@ -1,12 +1,20 @@
 <template>
   <div>
     <div class="cache-header">
-      <el-button type="primary" :icon="Refresh" @click="load">刷新</el-button>
+      <el-button type="primary" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       <span class="tip">Redis 总 key 数：<b>{{ stats?.dbsize ?? '—' }}</b></span>
     </div>
 
-    <div class="cache-grid">
-      <div class="cache-card" v-for="m in stats?.modules || []" :key="m.prefix">
+    <!-- 加载/空态 -->
+    <div v-if="!stats" class="cache-empty">
+      <el-empty :description="loading ? '加载中...' : '暂无数据，点刷新重试'" />
+    </div>
+    <div v-else-if="!stats.modules?.length" class="cache-empty">
+      <el-empty description="未发现缓存模块" />
+    </div>
+
+    <div v-else class="cache-grid">
+      <div class="cache-card" v-for="m in stats.modules" :key="m.prefix">
         <div class="cache-info">
           <div class="cache-label">{{ m.label }}</div>
           <div class="cache-prefix"><code>{{ m.prefix }}</code></div>
@@ -32,11 +40,13 @@ import { get, post } from '@/api/request'
 
 const stats = ref<any>(null)
 const clearing = ref('')
+const loading = ref(false)
 
 async function load() {
+  loading.value = true
   try {
     stats.value = await get('/admin/cache/stats')
-  } catch {}
+  } catch {} finally { loading.value = false }
 }
 
 async function clearModule(m: any) {
@@ -63,6 +73,12 @@ onMounted(load)
   margin-bottom: 12px;
 }
 .tip { font-size: 13px; }
+.cache-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px 0;
+}
 .cache-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -72,18 +88,18 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 16px;
 }
 .cache-label { font-size: 14px; font-weight: 600; }
 .cache-prefix code {
   font-size: 12px;
-  background: var(--el-fill-color-light);
-  padding: 1px 6px; border-radius: 3px;
+  background: var(--border-light);
+  padding: 1px 6px; border-radius: var(--radius-lg);
 }
 .cache-keys { display: flex; align-items: baseline; gap: 6px; }
-.keys-num { font-size: 24px; font-weight: 700; color: var(--el-color-primary); }
-.keys-label { font-size: 12px; color: var(--el-text-color-secondary); }
+.keys-num { font-size: 24px; font-weight: 700; color: var(--primary); }
+.keys-label { font-size: 12px; color: var(--text-secondary); }
 </style>

@@ -40,6 +40,17 @@ class DictLogic(BaseLogic):
     def keyword_fields(self):
         return ["type_name", "description"]
 
+    def before_create(self, data: dict) -> dict:
+        # S4 修复: 时间戳由 DB server_default 生成, 禁止客户端伪造
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+        return data
+
+    def before_edit(self, data: dict) -> dict:
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+        return data
+
     async def create(self, db: AsyncSession, data: dict) -> dict:
         result = await super().create(db, data)
         await _invalidate_items_cache()
@@ -106,6 +117,17 @@ class DictItemLogic(BaseLogic):
 
     def keyword_fields(self):
         return ["value", "label"]
+
+    def before_create(self, data: dict) -> dict:
+        # S4 修复: 时间戳由 DB server_default 生成, 禁止客户端伪造
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+        return data
+
+    def before_edit(self, data: dict) -> dict:
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+        return data
 
     async def create(self, db: AsyncSession, data: dict) -> dict:
         result = await super().create(db, data)

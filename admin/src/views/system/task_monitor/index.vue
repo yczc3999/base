@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
@@ -145,34 +145,34 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   min-width: 90px;
   padding: 14px 16px;
   text-align: center;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-bg-color);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
   position: relative;
 }
 .queue-num { font-size: 26px; font-weight: 700; line-height: 1.2; }
-.queue-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; }
+.queue-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
 .queue-card .el-tag { position: absolute; top: 6px; right: 6px; }
 .queue-refresh {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--text-secondary);
   padding-bottom: 6px;
 }
-.c-primary { color: var(--el-color-primary); }
-.c-info { color: var(--el-color-info); }
-.c-warning { color: var(--el-color-warning); }
+.c-primary { color: var(--primary); }
+.c-info { color: var(--info); }
+.c-warning { color: var(--warning); }
 .c-secondary { color: #64748b; }
 .c-processing { color: #8b5cf6; }
 .c-delayed { color: #f59e0b; }
-.c-danger { color: var(--el-color-danger); }
+.c-danger { color: var(--danger); }
 
 .task-section {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 16px;
 }
 .section-header {
@@ -182,11 +182,11 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   margin-bottom: 12px;
 }
 .section-title { font-size: 15px; font-weight: 600; }
-.section-hint { font-size: 12px; color: var(--el-text-color-secondary); }
-.cls-name { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; background: var(--el-fill-color-light); padding: 1px 6px; border-radius: 3px; }
+.section-hint { font-size: 12px; color: var(--text-secondary); }
+.cls-name { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; background: var(--border-light); padding: 1px 6px; border-radius: var(--radius-lg); }
 .last-run { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .run-time { font-size: 12px; }
-.run-duration { font-size: 12px; color: var(--el-text-color-secondary); }
-.run-error { width: 100%; font-size: 12px; color: var(--el-color-danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
-.no-run { font-size: 12px; color: var(--el-text-color-placeholder); }
+.run-duration { font-size: 12px; color: var(--text-secondary); }
+.run-error { width: 100%; font-size: 12px; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+.no-run { font-size: 12px; color: var(--text-placeholder); }
 </style>

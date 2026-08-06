@@ -11,7 +11,8 @@
     </div>
 
     <CrudTable ref="crudRef" api="admin/db_backup" perms="admin:db_backup"
-      :columns="columns" :search-fields="searchFields" :action-width="160">
+      :columns="columns" :search-fields="searchFields" :action-width="160"
+      :has-create="false" :has-edit="false">
       <template #actions="{ row }">
         <el-button type="primary" link size="small" :icon="DownloadIcon"
           @click="downloadBackup(row)">下载</el-button>
@@ -102,6 +103,6 @@ async function downloadBackup(row: any) {
 }
 .tip {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--text-secondary);
 }
 </style>

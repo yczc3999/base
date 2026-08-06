@@ -7,8 +7,10 @@
   - 保留策略: 最近 7 天每日 + 最近 4 周每周, 其余删除（文件 + DB 记录）
 """
 import asyncio
+import logging
 import os
 import subprocess
+import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -19,6 +21,8 @@ from app.logics.base import BaseLogic, BizError
 from app.models.db_backup import DbBackup
 from app.services.redis import get_redis
 
+logger = logging.getLogger("logic")
+
 # 与 file 逻辑共用 storage 根目录
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _BACKUPS_ROOT = os.path.join(_PROJECT_ROOT, "storage", "backups")
@@ -26,6 +30,15 @@ _BACKUPS_ROOT = os.path.join(_PROJECT_ROOT, "storage", "backups")
 _PG_DUMP_TIMEOUT = 600     # 10 分钟
 _RETENTION_DAYS = 7        # 每日备份保留天数
 _RETENTION_WEEKS = 4       # 周备份保留周数
+
+# Lua 脚本：仅当锁值匹配时才删除（原子操作，防误删他人锁）
+_DEL_IF_MATCH = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
 
 
 def _compute_retention_keep(records: list[DbBackup]) -> set[int]:
@@ -44,7 +57,8 @@ def _compute_retention_keep(records: list[DbBackup]) -> set[int]:
         if b.created_at >= now - timedelta(days=_RETENTION_DAYS):
             keep.add(b.id)
 
-    for offset in range(_RETENTION_DAYS, _RETENTION_DAYS * _RETENTION_WEEKS, _RETENTION_DAYS):
+    # L2 修复: range(7, 7*(WEEKS+1), 7) = [7,14,21,28] 补齐 4 个周窗口 (28-35 天)
+    for offset in range(_RETENTION_DAYS, _RETENTION_DAYS * (_RETENTION_WEEKS + 1), _RETENTION_DAYS):
         window_start = now - timedelta(days=offset + _RETENTION_DAYS)
         window_end = now - timedelta(days=offset)
         in_window = [b for b in ordered if window_start <= b.created_at < window_end]
@@ -63,6 +77,14 @@ class DbBackupLogic(BaseLogic):
     def allowed_sorts(self):
         return ["id", "created_at", "file_size"]
 
+    def before_create(self, data: dict) -> dict:
+        # S2 修复: 备份记录只读, 只能由 do_backup 内部 db.add() 创建
+        raise BizError("备份记录只能由备份任务创建，不支持手动新增")
+
+    def before_edit(self, data: dict) -> dict:
+        # S2 修复: 备份记录只读
+        raise BizError("备份记录只读，不支持手动编辑")
+
     @staticmethod
     def _backup_file_path(filename: str) -> str:
         # basename 防路径穿越
@@ -74,12 +96,25 @@ class DbBackupLogic(BaseLogic):
         """执行一次完整备份（定时任务与手动按钮共用）."""
         r = await get_redis()
         lock_key = f"{settings.APP_NAME}:backup:lock"
-        locked = await r.set(lock_key, "1", ex=3600, nx=True)
-        if not locked:
+        token = uuid.uuid4().hex
+        # L4 修复: token 锁 + finally 释放, TTL 300s 仅兜底异常中断
+        if not await r.set(lock_key, token, ex=300, nx=True):
             raise BizError("已有备份任务正在进行")
 
+        try:
+            return await self._do_backup_locked(db)
+        finally:
+            # 释放锁（DEL-IF-MATCH: 只删自己持有的锁）
+            try:
+                await r.eval(_DEL_IF_MATCH, 1, lock_key, token)
+            except Exception:
+                logger.warning("backup lock release failed")
+
+    async def _do_backup_locked(self, db: AsyncSession) -> dict:
+        """持锁状态下的备份主体（成功/失败均记录 + 清理失败文件）."""
         started = datetime.now()
-        filename = f"backup_{started.strftime('%Y%m%d_%H%M%S')}.dump"
+        # 微秒精度防同秒并发撞 UNIQUE(filename)（L4 锁释放后同秒两次备份可行）
+        filename = f"backup_{started.strftime('%Y%m%d_%H%M%S_%f')}.dump"
         output = self._backup_file_path(filename)
 
         record = DbBackup(filename=filename, status=DbBackup.Status.OK, started_at=started)
@@ -99,9 +134,11 @@ class DbBackupLogic(BaseLogic):
             record.finished_at = datetime.now()
             await db.commit()
         except Exception as e:
+            # S5 修复: 详细错误进日志, DB/API 只返回通用消息
+            logger.error(f"DB backup failed ({filename}): {e}", exc_info=True)
             await db.rollback()
             record.status = DbBackup.Status.FAILED
-            record.error_msg = str(e)[:500]
+            record.error_msg = "备份失败，详见服务端日志"
             record.finished_at = datetime.now()
             db.add(record)
             await db.commit()
@@ -111,14 +148,13 @@ class DbBackupLogic(BaseLogic):
                     os.remove(output)
                 except OSError:
                     pass
-            raise BizError(f"备份失败: {e}")
+            raise BizError("备份失败，详见服务端日志")
 
         # 保留策略清理（不影响本次备份结果）
         try:
             await self._apply_retention(db)
         except Exception:
-            import logging
-            logging.getLogger("logic").warning("retention cleanup failed", exc_info=True)
+            logger.warning("retention cleanup failed", exc_info=True)
 
         return {"filename": filename, "file_size": record.file_size}
 
@@ -152,15 +188,20 @@ class DbBackupLogic(BaseLogic):
     # ---- 保留策略 ----
 
     async def _apply_retention(self, db: AsyncSession):
-        stmt = (
-            select(DbBackup)
-            .where(DbBackup.status == DbBackup.Status.OK)
-            .order_by(DbBackup.created_at)
-        )
+        stmt = select(DbBackup).order_by(DbBackup.created_at)
         records = (await db.execute(stmt)).scalars().all()
-        keep_ids = _compute_retention_keep(list(records))
 
+        ok_records = [b for b in records if b.status == DbBackup.Status.OK]
+        keep_ids = _compute_retention_keep(ok_records)
+
+        cutoff = datetime.now() - timedelta(days=_RETENTION_DAYS)
         for b in records:
+            if b.status == DbBackup.Status.FAILED:
+                # L3 修复: 失败记录（失败时文件已清理, 仅剩 DB 记录）保留 7 天后删除
+                if b.created_at and b.created_at >= cutoff:
+                    continue
+                await db.delete(b)
+                continue
             if b.id in keep_ids:
                 continue
             self._delete_file(b.filename)

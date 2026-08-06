@@ -9,7 +9,12 @@ P1-1/P1-2 测试 — 会话枚举 + 缓存统计/清理
 """
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.models.base import Base
+from app.models.admin_user import AdminUser
+from app.deps import AuthInfo
 from app.utils import token as token_mod
 
 
@@ -20,6 +25,20 @@ class _FakeRequest:
 
     async def json(self):
         return self._body
+
+
+@pytest_asyncio.fixture
+async def admin_db():
+    """含 admin_users 表的 SQLite 库（S1 越权测试用）"""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            lambda c: Base.metadata.create_all(c, tables=[AdminUser.__table__])
+        )
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    async with Session() as session:
+        yield session
+    await engine.dispose()
 
 
 # ==================== 会话管理 ====================
@@ -41,6 +60,44 @@ async def test_session_list_enumerates_tokens(mock_redis):
     by_user = {s["user_id"]: s["username"] for s in sessions}
     assert by_user[5] == "client5"
     assert all(s["ttl"] > 0 for s in sessions)
+
+
+# ==================== S1 越权防护 ====================
+
+@pytest.mark.asyncio
+async def test_session_kick_non_super_cannot_kick_super(admin_db, mock_redis):
+    """S1 修复: 非超管不可踢超管"""
+    from app.controllers.admin.session import session_kick
+
+    super_admin = AdminUser(username="root", password="x", is_super_admin=True)
+    admin_db.add(super_admin)
+    await admin_db.commit()
+
+    auth = AuthInfo(user_id=99, scope="admin", username="op", access_token="t")
+    resp = await session_kick(
+        _FakeRequest({"scope": "admin", "user_id": super_admin.id}),
+        auth=auth, db=admin_db,
+    )
+    assert resp["code"] == 403
+
+
+@pytest.mark.asyncio
+async def test_session_kick_allowed_for_normal_target(admin_db, mock_redis):
+    """非超管可踢普通 admin 用户"""
+    from app.controllers.admin.session import session_kick
+
+    normal = AdminUser(username="op2", password="x", is_super_admin=False)
+    admin_db.add(normal)
+    await admin_db.commit()
+    await token_mod.create_token_pair(user_id=normal.id, scope="admin", user_info={"username": "op2"})
+
+    auth = AuthInfo(user_id=999, scope="admin", username="boss", access_token="t")
+    resp = await session_kick(
+        _FakeRequest({"scope": "admin", "user_id": normal.id}),
+        auth=auth, db=admin_db,
+    )
+    assert resp["code"] == 0
+    assert await mock_redis.smembers(f"{token_mod._PREFIX}:user_tokens:admin:{normal.id}") == set()
 
 
 @pytest.mark.asyncio

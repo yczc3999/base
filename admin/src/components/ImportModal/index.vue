@@ -132,23 +132,23 @@ function done() {
 .step-num {
   width: 20px; height: 20px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--el-color-primary);
+  background: var(--primary);
   color: #fff; border-radius: 50%;
   font-size: 12px; flex-shrink: 0;
 }
 .import-result {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 12px;
 }
 .result-summary { display: flex; gap: 16px; font-weight: 600; margin-bottom: 8px; }
-.result-summary .ok { color: var(--el-color-success); }
-.result-summary .bad { color: var(--el-color-danger); }
-.result-summary .bad.warn { color: var(--el-color-danger); }
+.result-summary .ok { color: var(--success); }
+.result-summary .bad { color: var(--danger); }
+.result-summary .bad.warn { color: var(--danger); }
 .error-list {
   max-height: 160px; overflow-y: auto;
   font-size: 12px; line-height: 1.8;
-  color: var(--el-color-danger);
+  color: var(--danger);
 }
-.error-more { color: var(--el-text-color-secondary); }
+.error-more { color: var(--text-secondary); }
 </style>

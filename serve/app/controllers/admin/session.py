@@ -6,9 +6,11 @@ import json
 import time
 
 from fastapi import APIRouter, Request, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.deps import AuthInfo, require_perms
+from app.services.database import get_db
 from app.services.redis import get_redis
 from app.utils.response import ok, fail
 from app.utils.token import revoke_all_tokens
@@ -64,8 +66,15 @@ async def session_list(auth: AuthInfo = Depends(_perm_list)):
 
 
 @router.post("/session/kick")
-async def session_kick(request: Request, auth: AuthInfo = Depends(_perm_kick)):
-    """按 scope + user_id 踢下线（撤销全部 session）."""
+async def session_kick(
+    request: Request,
+    auth: AuthInfo = Depends(_perm_kick),
+    db: AsyncSession = Depends(get_db),
+):
+    """按 scope + user_id 踢下线（撤销全部 session）.
+
+    越权防护: 非超管不可踢超管 (S1 修复)。
+    """
     body = await request.json()
     scope = body.get("scope")
     user_id = body.get("user_id")
@@ -73,6 +82,14 @@ async def session_kick(request: Request, auth: AuthInfo = Depends(_perm_kick)):
         return fail("缺少 scope / user_id")
     if scope not in ("admin", "client"):
         return fail("scope 不合法")
+
+    # 非超管不可踢超管（防越权提权）
+    if scope == "admin" and not auth.is_super_admin:
+        from sqlalchemy import select
+        from app.models.admin_user import AdminUser
+        target = (await db.execute(select(AdminUser).where(AdminUser.id == user_id))).scalar_one_or_none()
+        if target and target.is_super_admin:
+            return fail("无权操作超级管理员", 403)
 
     await revoke_all_tokens(scope, user_id)
     return ok(msg="已踢下线")

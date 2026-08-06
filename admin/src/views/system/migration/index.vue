@@ -76,10 +76,10 @@ onMounted(loadList)
   gap: 12px;
   margin-bottom: 12px;
 }
-.tip { font-size: 12px; color: var(--el-text-color-secondary); }
+.tip { font-size: 12px; color: var(--text-secondary); }
 .tip code {
-  background: var(--el-fill-color-light);
-  padding: 1px 6px; border-radius: 3px; font-size: 11px;
+  background: var(--border-light);
+  padding: 1px 6px; border-radius: var(--radius-lg); font-size: 11px;
 }
 .ver-name {
   font-family: 'SF Mono', Monaco, monospace; font-size: 12px;

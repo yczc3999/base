@@ -44,5 +44,5 @@ async function load() {
 }
 
 onMounted(load)
-watch(() => [props.type, props.value] as const, load, { deep: true })
+watch(() => [props.type, props.value] as const, load)
 </script>

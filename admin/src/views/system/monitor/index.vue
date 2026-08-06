@@ -153,28 +153,28 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   gap: 12px;
 }
 .header-title { font-size: 16px; font-weight: 600; }
-.header-time { font-size: 12px; color: var(--el-text-color-secondary); }
+.header-time { font-size: 12px; color: var(--text-secondary); }
 .empty-state {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 40px;
 }
 .metric-card {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 16px;
 }
 .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .load-row { display: flex; gap: 24px; }
 .load-item { text-align: center; }
 .load-num { font-size: 28px; font-weight: 700; }
-.load-label { font-size: 12px; color: var(--el-text-color-secondary); }
-.load-low { color: var(--el-color-success); }
-.load-mid { color: var(--el-color-warning); }
-.load-high { color: var(--el-color-danger); }
-.metric-detail { font-size: 13px; color: var(--el-text-color-regular); margin-top: 8px; }
+.load-label { font-size: 12px; color: var(--text-secondary); }
+.load-low { color: var(--success); }
+.load-mid { color: var(--warning); }
+.load-high { color: var(--danger); }
+.metric-detail { font-size: 13px; color: var(--text-primary); margin-top: 8px; }
 .queue-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -185,10 +185,10 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   flex-direction: column;
   align-items: center;
   padding: 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
+  background: var(--border-light);
+  border-radius: var(--radius);
 }
-.queue-name { font-size: 12px; color: var(--el-text-color-secondary); }
+.queue-name { font-size: 12px; color: var(--text-secondary); }
 .queue-val { font-size: 22px; font-weight: 700; margin-top: 4px; }
-.queue-val.warn { color: var(--el-color-warning); }
+.queue-val.warn { color: var(--warning); }
 </style>

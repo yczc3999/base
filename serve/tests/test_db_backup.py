@@ -89,7 +89,7 @@ def test_retention_keeps_all_recent():
 
 
 def test_retention_keeps_weekly_newest():
-    """旧备份: 各周窗口只留最新一条"""
+    """旧备份: 各周窗口只留最新一条 (L2: 补齐 4 个周窗口)"""
     now = datetime.now()
     # 10 天前 (落在 7-14 天窗口): 两条, 应留较新的
     old_a = _mk_record(1, now - timedelta(days=10, hours=2))
@@ -98,9 +98,12 @@ def test_retention_keeps_weekly_newest():
     old_c = _mk_record(3, now - timedelta(days=20))
     # 40 天前 (超窗口, 应删)
     old_d = _mk_record(4, now - timedelta(days=40))
+    # 30 天前 (落在 28-35 窗口, L2 修复后应保留)
+    old_e = _mk_record(5, now - timedelta(days=30))
 
-    keep = db_backup_mod._compute_retention_keep([old_a, old_b, old_c, old_d])
-    assert keep == {2, 3}  # old_a 被同窗口更新的 old_b 顶掉; old_d 超期删除
+    keep = db_backup_mod._compute_retention_keep([old_a, old_b, old_c, old_d, old_e])
+    # old_a 被同窗口更新的 old_b 顶掉; old_d 超期删除; old_e 第 4 窗口保留
+    assert keep == {2, 3, 5}
 
 
 def test_retention_empty():
@@ -127,12 +130,13 @@ async def test_do_backup_failure(db, mock_redis, backups_root, monkeypatch):
     _mock_pg_dump_fail(monkeypatch)
     with pytest.raises(BizError):
         await db_backup_mod.db_backup_logic.do_backup(db)
-    # 失败记录保留, status=failed
+    # 失败记录保留, status=failed; S5 修复: error_msg 用通用消息不泄露 stderr 细节
     from sqlalchemy import select
     records = (await db.execute(select(DbBackup))).scalars().all()
     assert len(records) == 1
     assert records[0].status == "failed"
-    assert "connection refused" in (records[0].error_msg or "")
+    assert "connection refused" not in (records[0].error_msg or "")
+    assert "服务端日志" in (records[0].error_msg or "")
     # 失败文件被清理
     assert list(backups_root.iterdir()) == []
 
@@ -173,6 +177,46 @@ async def test_get_download_validates(db, mock_redis, backups_root, monkeypatch)
     # 不存在的文件名 → BizError
     with pytest.raises(BizError):
         await db_backup_mod.db_backup_logic.get_download(db, "nope.dump")
+
+
+# ==================== 修复回归测试 ====================
+
+def test_db_backup_readonly():
+    """S2 修复: 备份记录只读, 手动 create/edit 被拒"""
+    logic = db_backup_mod.db_backup_logic
+    with pytest.raises(BizError):
+        logic.before_create({"filename": "fake.dump"})
+    with pytest.raises(BizError):
+        logic.before_edit({"filename": "fake.dump"})
+
+
+@pytest.mark.asyncio
+async def test_apply_retention_cleans_old_failed(db, mock_redis):
+    """L3 修复: 失败记录保留 7 天后删除"""
+    old_failed = DbBackup(filename="fail_old.dump", status="failed",
+                          created_at=datetime.now() - timedelta(days=30))
+    new_failed = DbBackup(filename="fail_new.dump", status="failed",
+                          created_at=datetime.now() - timedelta(days=2))
+    db.add_all([old_failed, new_failed])
+    await db.commit()
+
+    await db_backup_mod.db_backup_logic._apply_retention(db)
+
+    from sqlalchemy import select
+    remaining = (await db.execute(select(DbBackup))).scalars().all()
+    assert [b.filename for b in remaining] == ["fail_new.dump"]
+
+
+@pytest.mark.asyncio
+async def test_backup_lock_released_after_success(db, mock_redis, backups_root, monkeypatch):
+    """L4 修复: 备份完成后锁释放, 可立即再次触发"""
+    _mock_pg_dump_success(monkeypatch, backups_root)
+    await db_backup_mod.db_backup_logic.do_backup(db)
+    # 锁已释放
+    assert await mock_redis.get("base:backup:lock") is None
+    # 可立即再次备份
+    result = await db_backup_mod.db_backup_logic.do_backup(db)
+    assert result["filename"]
 
 
 # ==================== 校验 ====================

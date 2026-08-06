@@ -25,6 +25,9 @@ async def migration_list(auth: AuthInfo = Depends(_perm_list)):
 
 @router.post("/migration/run")
 async def migration_run(auth: AuthInfo = Depends(_perm_run)):
+    # S3 修复: DDL 属极高危操作, 仅超管可执行
+    if not auth.is_super_admin:
+        return fail("仅超级管理员可执行迁移", 403)
     try:
         from app.migrate import run_migrations
         count = await run_migrations(verbose=False)

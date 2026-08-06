@@ -127,7 +127,7 @@ async function kick(row: any) {
 <style scoped>
 .pwd-tip {
   font-size: 12px;
-  color: var(--el-color-warning);
+  color: var(--warning);
   margin-top: 4px;
 }
 </style>

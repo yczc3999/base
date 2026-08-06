@@ -15,8 +15,6 @@ class DbBackupTask(BaseTask):
         from app.logics.db_backup import db_backup_logic
 
         async with async_session() as db:
-            try:
-                result = await db_backup_logic.do_backup(db)
-                logger.info(f"DB backup done: {result['filename']} ({result['file_size']} bytes)")
-            except Exception as e:
-                logger.error(f"DB backup failed: {e}")
+            # 不吞异常: 让 BaseTask.execute() 捕获并记录 last_run.status=failed (L1 修复)
+            result = await db_backup_logic.do_backup(db)
+            logger.info(f"DB backup done: {result['filename']} ({result['file_size']} bytes)")
