@@ -18,6 +18,7 @@ export const useUserStore = defineStore('user', {
     userInfo: null as UserInfo | null,
     permissions: [] as string[],
     roles: [] as string[],
+    passwordExpired: false,
   }),
 
   getters: {
@@ -32,6 +33,7 @@ export const useUserStore = defineStore('user', {
       setToken(data.access_token)
       setRefreshToken(data.refresh_token)
       this.userInfo = data.user
+      this.passwordExpired = !!data.password_expired
       return data
     },
 

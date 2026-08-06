@@ -1,6 +1,11 @@
 <template>
   <div style="max-width:600px">
     <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">个人中心</h2>
+    <!-- P2-2: 密码过期提示 -->
+    <div v-if="userStore.passwordExpired"
+      style="background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;color:var(--text-primary);font-size:13px">
+      ⚠️ 当前密码已超过最长使用期限，建议立即在下方修改密码。
+    </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="用户名"><el-input :model-value="userStore.userInfo?.username" disabled /></el-form-item>

@@ -26,6 +26,7 @@ class AdminUser(Base):
     status: Mapped[int] = mapped_column(SmallInteger, default=Status.ACTIVE, nullable=False)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime)  # P2-2 密码过期追踪
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_login_ip: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

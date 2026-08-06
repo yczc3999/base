@@ -7,6 +7,7 @@ from app.utils.response import ok, fail
 from app.utils.token import create_token_pair, revoke_token, refresh_access_token
 from app.logics.user import user_logic
 from app.logics.setting import setting_logic
+from app.logics.base import BizError
 from app.deps import AuthInfo, require_client
 
 router = APIRouter()
@@ -84,6 +85,14 @@ async def register(dto: RegisterDto, request: Request, db: AsyncSession = Depend
     ip = get_client_ip(request)
     if not await check_rate_limit(f"client_register:{ip}", max_attempts=5, window=300):
         return fail("请求过于频繁，请稍后再试", 429)
+
+    # P2-2 密码策略: 注册密码强度校验
+    from app.utils.password_policy import get_policy_rules, validate_password_strength
+    rules = await get_policy_rules(db)
+    try:
+        validate_password_strength(dto.password, rules)
+    except BizError as e:
+        return fail(e.msg, 422)
 
     # 检查用户名是否已存在
     existing = await user_logic.get_by_field(db, "username", dto.username)

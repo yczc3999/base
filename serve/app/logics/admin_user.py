@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AdminUser, AdminUserRole
@@ -36,6 +37,8 @@ class AdminUserLogic(BaseLogic):
         data.pop("token_version", None)
         if "password" in data and data["password"]:
             data["password"] = hash_password(data["password"])
+            # P2-2: 记录密码修改时间 (过期策略用)
+            data["password_changed_at"] = datetime.now()
         return data
 
     def before_edit(self, data: dict) -> dict:
@@ -44,9 +47,19 @@ class AdminUserLogic(BaseLogic):
         data.pop("token_version", None)
         if "password" in data and data["password"]:
             data["password"] = hash_password(data["password"])
+            # P2-2: 密码变更时刷新修改时间
+            data["password_changed_at"] = datetime.now()
         else:
             data.pop("password", None)
         return data
+
+    async def save(self, db: AsyncSession, data: dict) -> dict:
+        """P2-2 密码策略: 设置/修改密码时校验强度（rules 从 settings 读）."""
+        if data.get("password"):
+            from app.utils.password_policy import get_policy_rules, validate_password_strength
+            rules = await get_policy_rules(db)
+            validate_password_strength(data["password"], rules)
+        return await super().save(db, data)
 
     # ==================== 登录（支持用户名 / 邮箱） ====================
 

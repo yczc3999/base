@@ -128,7 +128,11 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
         )
     )
 
-    return ok({**tokens, "user": safe_user})
+    # P2-2: 密码过期标记（前端提示修改密码）
+    from app.utils.password_policy import password_expired
+    expired = await password_expired(db, user.get("password_changed_at"))
+
+    return ok({**tokens, "user": safe_user, "password_expired": expired})
 
 
 @router.post("/user/refreshToken")
