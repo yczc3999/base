@@ -20,6 +20,7 @@ from app.controllers.admin import keyword as admin_keyword
 from app.controllers.admin import seo as admin_seo
 from app.controllers.web import seo as web_seo
 from app.controllers.client import user as client_user
+from app.controllers.client import message as client_message
 from app.controllers.admin import dict as admin_dict
 from app.controllers.admin import client_user as admin_client_user
 from app.controllers.admin import task_monitor as admin_task_monitor
@@ -100,6 +101,7 @@ app.include_router(dict_public.router, prefix="/api")
 
 # client 端
 app.include_router(client_user.router, prefix="/api/client")
+app.include_router(client_message.router, prefix="/api/client")
 
 
 # ---- 静态文件（public 存储，外网直接访问）----
