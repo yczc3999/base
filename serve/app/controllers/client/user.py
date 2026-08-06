@@ -35,14 +35,27 @@ class RefreshDto(BaseModel):
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
     from app.utils.rate_limit import check_rate_limit
     from app.utils.helpers import get_client_ip
+    from app.utils.account_lock import (
+        check_account_locked, record_login_failure, clear_login_failures,
+    )
 
     ip = get_client_ip(request)
     if not await check_rate_limit(f"client_login:{ip}", max_attempts=10, window=300):
         return fail("请求过于频繁，请稍后再试", 429)
 
+    # 重试次数门：账号级失败锁定
+    max_failures = int(await setting_logic.get(db, "login_security", "max_failures", "5") or 5)
+    lock_minutes = int(await setting_logic.get(db, "login_security", "lock_minutes", "15") or 15)
+    if await check_account_locked(dto.username, max_failures):
+        return fail(f"登录失败次数过多，账号已锁定，请 {lock_minutes} 分钟后再试", 429)
+
     user = await user_logic.verify_login(db, dto.username, dto.password)
     if not user:
+        await record_login_failure(dto.username, lock_minutes * 60)
         return fail("用户名或密码错误")
+
+    # 登录成功清零失败计数
+    await clear_login_failures(dto.username)
 
     multi_login = await setting_logic.get(db, "platform", "multi_login", "1")
 

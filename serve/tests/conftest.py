@@ -99,6 +99,12 @@ class FakeRedis:
     async def get(self, key):
         return self._data.get(key)
 
+    async def incr(self, key):
+        n = int(self._data.get(key, 0))
+        n += 1
+        self._data[key] = str(n)
+        return n
+
     async def set(self, key, value, ex=None, nx=False):
         if nx and key in self._data:
             return None  # 未设置
@@ -234,6 +240,8 @@ def mock_redis(monkeypatch):
     monkeypatch.setattr(tm_mod, "get_redis", _get_redis)
     import app.logics.db_backup as dbb_mod
     monkeypatch.setattr(dbb_mod, "get_redis", _get_redis)
+    import app.utils.account_lock as al_mod
+    monkeypatch.setattr(al_mod, "get_redis", _get_redis)
     return fr
 
 
