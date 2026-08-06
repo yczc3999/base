@@ -247,7 +247,7 @@
 | B3 · get_list 异常可见 | ✅ 完成 | — | 抛 BizError(500) |
 | B4 · 缓存穿透防护 | ✅ 完成 | — | 30s 负缓存 |
 | C1a · FK + 级联 | ✅ 完成 | 关联表 CASCADE | migration 019 + 4 测试 |
-| C1b · relationship | ✅ 完成 | 关联表+自引用 | 双向 relationship + passive_deletes |
+| C1b · relationship | ✅ 完成 | 关联表+自引用 | 10 model 双向 relationship + passive_deletes；commit b437d94 补全 6 model（article/keyword/article_keyword/message/file/admin_user.logs）；get_tree 维持单查询组树（已无 N+1，relationship 模型层可用） |
 | C2 · 统一 SSE | ✅ 完成 | — | useSSE hook |
 | N1 · Validator 类型归一 | ✅ 完成 | — | 30 测试 |
 | N2 · require_perms 双 session | ✅ 完成 | — | 复用请求 session |
