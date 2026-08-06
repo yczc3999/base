@@ -68,6 +68,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse({"code": 500, "msg": msg, "data": None}, status_code=200)
 
 
+# ---- 健康检查（最先注册，避免被 web SEO 的 /{name} 兜底路由遮蔽）----
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 # ---- 路由 ----
 
 # admin 端
@@ -110,10 +117,3 @@ from fastapi.staticfiles import StaticFiles
 _storage_public = os.path.join(os.path.dirname(os.path.dirname(__file__)), "storage", "public")
 os.makedirs(_storage_public, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_storage_public), name="uploads")
-
-
-# ---- 健康检查 ----
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}

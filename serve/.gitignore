@@ -25,6 +25,9 @@ venv/
 htmlcov/
 .coverage
 
+# 运行时产物（上传文件 / DB 备份 dump / SEO 生成文件）
+storage/
+
 # 系统
 .DS_Store
 Thumbs.db
