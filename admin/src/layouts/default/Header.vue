@@ -18,6 +18,11 @@
         <span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
       </button>
 
+      <!-- 主题切换 (P2-4) -->
+      <button class="header-action" @click="themeStore.toggle()" :title="themeStore.theme === 'dark' ? '切换亮色' : '切换暗色'">
+        <span>{{ themeStore.theme === 'dark' ? '🌙' : '☀️' }}</span>
+      </button>
+
       <!-- 语言切换 (P2-3) -->
       <el-dropdown trigger="click" @command="switchLocale">
         <button class="header-action" :title="$t('common.language')">
@@ -52,6 +57,7 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { saveLocale } from '@/locales'
@@ -59,6 +65,7 @@ import messageApi from '@/api/modules/message'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const route = useRoute()
 const router = useRouter()
 const { locale } = useI18n()

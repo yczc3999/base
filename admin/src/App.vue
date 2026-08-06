@@ -10,7 +10,11 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
+import { useThemeStore } from '@/stores/theme'
 
 const { locale } = useI18n()
 const elLocale = computed(() => (locale.value === 'en-US' ? en : zhCn))
+
+// P2-4: 应用持久化主题（light/dark）
+useThemeStore().init()
 </script>

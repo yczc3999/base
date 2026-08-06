@@ -1,0 +1,35 @@
+// ═══════════════════════════════════════════════
+// 暗黑模式 — 纯平面深色令牌覆盖
+// 通过 <html data-theme="dark"> 切换（Element Plus 用 .dark class 联动）
+// ═══════════════════════════════════════════════
+
+[data-theme="dark"] {
+  // ── Surfaces ──
+  --bg-page: #0f172a;
+  --bg-card: #1e293b;
+  --bg-header: #1e293b;
+  --bg-input: #0f172a;
+  --bg-sidebar: #0b1220;
+
+  // ── Text ──
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-placeholder: #64748b;
+  --text-disabled: #475569;
+
+  // ── Borders ──
+  --border: #334155;
+  --border-light: #1e293b;
+  --border-dark: #475569;
+
+  // ── Status bg（纯色块, 保持平面） ──
+  --primary-bg: #1e3a5f;
+  --success-bg: #14532d;
+  --warning-bg: #78350f;
+  --danger-bg: #7f1d1d;
+  --info-bg: #1e293b;
+
+  // 侧栏文字（深色侧栏在暗色下可读性）
+  --text-sidebar: #94a3b8;
+  --text-sidebar-active: #ffffff;
+}
