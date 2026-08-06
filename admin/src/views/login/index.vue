@@ -18,14 +18,21 @@
     <!-- 右侧表单 -->
     <div class="form-panel">
       <div class="form-container">
-        <h2 class="form-title">登录</h2>
-        <p class="form-desc">使用管理员账户登录系统</p>
+        <!-- 语言切换 -->
+        <div class="login-lang">
+          <el-button link size="small" :type="locale === 'zh-CN' ? 'primary' : 'default'" @click="setLocale('zh-CN')">中</el-button>
+          <span class="lang-divider">/</span>
+          <el-button link size="small" :type="locale === 'en-US' ? 'primary' : 'default'" @click="setLocale('en-US')">EN</el-button>
+        </div>
+
+        <h2 class="form-title">{{ $t('login.title') }}</h2>
+        <p class="form-desc">{{ $t('login.desc') }}</p>
 
         <el-form ref="formRef" :model="form" :rules="rules" @submit.prevent="handleLogin" class="login-form">
           <el-form-item prop="username">
             <el-input
               v-model="form.username"
-              placeholder="用户名或邮箱"
+              :placeholder="$t('login.username')"
               size="large"
               :prefix-icon="UserIcon"
             />
@@ -35,7 +42,7 @@
             <el-input
               v-model="form.password"
               type="password"
-              placeholder="请输入密码"
+              :placeholder="$t('login.password')"
               size="large"
               show-password
               :prefix-icon="LockIcon"
@@ -48,18 +55,18 @@
             <div class="captcha-row">
               <el-input
                 v-model="form.captchaCode"
-                placeholder="验证码"
+                :placeholder="$t('login.captcha')"
                 size="large"
                 :prefix-icon="KeyIcon"
                 maxlength="4"
                 @keyup.enter="handleLogin"
               />
-              <div class="captcha-svg" v-html="captchaSvg" title="点击刷新" @click="loadCaptcha" />
+              <div class="captcha-svg" v-html="captchaSvg" :title="$t('common.refresh')" @click="loadCaptcha" />
             </div>
           </el-form-item>
 
           <div class="form-options">
-            <el-checkbox v-model="form.remember">记住我</el-checkbox>
+            <el-checkbox v-model="form.remember">{{ $t('login.remember') }}</el-checkbox>
           </div>
 
           <el-button
@@ -69,7 +76,7 @@
             class="login-btn"
             @click="handleLogin"
           >
-            {{ loading ? '登录中...' : '登 录' }}
+            {{ loading ? $t('login.loggingIn') : $t('login.submit') }}
           </el-button>
         </el-form>
 
@@ -82,17 +89,25 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
 import { get } from '@/api/request'
+import { saveLocale } from '@/locales'
 import { User as UserIcon, Lock as LockIcon, Key as KeyIcon } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const siteStore = useSiteStore()
+const { locale } = useI18n()
 const formRef = ref()
 const loading = ref(false)
+
+function setLocale(lang: 'zh-CN' | 'en-US') {
+  locale.value = lang
+  saveLocale(lang)
+}
 
 onMounted(() => {
   siteStore.load()
@@ -237,6 +252,15 @@ async function handleLogin() {
   width: 100%;
   max-width: 380px;
   padding: 40px;
+}
+
+.login-lang {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+
+  .lang-divider { font-size: 12px; color: var(--text-placeholder); }
 }
 
 .form-title {

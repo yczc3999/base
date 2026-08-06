@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
-    <h2 class="page-title">仪表盘</h2>
-    <p class="page-subtitle">欢迎回来，{{ userStore.userInfo?.nickname || 'Admin' }}</p>
+    <h2 class="page-title">{{ $t('dashboard.title') }}</h2>
+    <p class="page-subtitle">{{ $t('dashboard.welcome', { name: userStore.userInfo?.nickname || 'Admin' }) }}</p>
 
     <div class="stat-cards">
       <div v-for="stat in statCards" :key="stat.label" class="stat-card" :style="{ '--accent': stat.color }">

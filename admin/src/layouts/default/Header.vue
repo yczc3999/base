@@ -18,6 +18,19 @@
         <span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
       </button>
 
+      <!-- 语言切换 (P2-3) -->
+      <el-dropdown trigger="click" @command="switchLocale">
+        <button class="header-action" :title="$t('common.language')">
+          <span>{{ locale === 'en-US' ? 'EN' : '中' }}</span>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="zh-CN" :class="{ active: locale === 'zh-CN' }">简体中文</el-dropdown-item>
+            <el-dropdown-item command="en-US" :class="{ active: locale === 'en-US' }">English</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
       <!-- 用户菜单 -->
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="user-info">
@@ -27,8 +40,8 @@
         </div>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-            <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+            <el-dropdown-item command="profile">{{ $t('layout.profile') }}</el-dropdown-item>
+            <el-dropdown-item divided command="logout">{{ $t('layout.logout') }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -40,12 +53,22 @@
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { saveLocale } from '@/locales'
 import messageApi from '@/api/modules/message'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
+const { locale } = useI18n()
+
+function switchLocale(lang: string) {
+  if (lang === 'zh-CN' || lang === 'en-US') {
+    locale.value = lang
+    saveLocale(lang)
+  }
+}
 
 const unreadCount = ref(0)
 
