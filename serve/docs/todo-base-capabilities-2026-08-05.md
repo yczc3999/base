@@ -197,8 +197,9 @@
 | 密码策略 | 强制最低复杂度 / 定期过期 | `logics/admin_user.py` 中 change_password 校验 + `settings` 表 |
 | 多语言 i18n | 前端硬编码中文 → 配置化 | `admin/src/locales/` + 后端 API 返回字典 key |
 | 暗黑模式/主题 | 设计令牌扩展 + CSS 变量切换 | `admin/src/styles/theme.scss` + `stores/theme.ts` |
-| 软删除/回收站统一 | 跨模块回收站（article 已有 deleted_at 雏形） | `logics/base.py` 回收站视图 + `views/system/trash/` |
-| 前端用户消息入口 | message 表支持 client scope，client 端可读消息 | `logics/message.py` + `controllers/client/message.py` |
+| 软删除/回收站统一 | ✅ 跨模块回收站（article 已有 deleted_at 雏形） | `logics/base.py` get_trash/restore/purge + `views/system/trash/` |
+| 前端用户消息入口 | ✅ message 按 user_id 区分, client 端读消息 API | `controllers/client/message.py`（挂载点留给下游前端） |
+| 重试次数门 | ✅ 账号级登录失败锁定（连续 N 次锁 M 分钟, 可配置） | `utils/account_lock.py` + admin/client login |
 
 ---
 
@@ -215,10 +216,16 @@
 | P1-3 · 数据导入 | ✅ 完成 (30b9f59) | ~4h | — | 2026-08-05 |
 | P1-4 · 系统监控页 | ✅ 完成 (c0ba596) | ~3h | — | 2026-08-05 |
 | P1-5 · Migration UI | ✅ 完成 (c0ba596) | ~1.5h | — | 2026-08-05 |
-| P2-* · 验证码等 | 待决策 | - | — | — |
+| P2-1 · 验证码/登录保护 | ✅ 完成 (ccf948a) | ~4h | — | 2026-08-06 |
+| P2-2 · 密码策略 | ✅ 完成 (480d6d9) | ~2h | — | 2026-08-06 |
+| P2-3 · 多语言 i18n | ✅ 完成 (3c76733) | ~8h | — | 2026-08-06 |
+| P2-4 · 暗黑模式/主题 | ✅ 完成 (73117c0) | ~3h | — | 2026-08-06 |
+| P2-5 · 软删除/回收站统一 | ✅ 完成 (2890877) | ~5h | — | 2026-08-06 |
+| P2-6 · 前端用户消息入口 | ✅ 完成 (8c9899e) | ~4h | — | 2026-08-06 |
+| 重试次数门 · 登录失败锁定 | ✅ 完成 (7c9ad5a) | ~2h | — | 2026-08-06 |
 
 **总预计**：批次 1 P0 4 项 ~12h，批次 2 P1 5 项 ~12.5h
-**实际**：P0 4 项 + P1 5 项全部完成（179 测试全绿 + vue-tsc + vite build）
+**实际**：P0 4 项 + P1 5 项 + P2 6 项 + 重试门全部完成（211 测试全绿 + vue-tsc + vite build）
 
 ## 5. 执行顺序建议
 
