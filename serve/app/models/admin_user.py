@@ -7,6 +7,8 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.admin_user_role import AdminUserRole
+    from app.models.admin_operation_log import AdminOperationLog
+    from app.models.admin_login_log import AdminLoginLog
 
 
 class AdminUser(Base):
@@ -34,3 +36,15 @@ class AdminUser(Base):
 
     # 关系：通过关联表访问 roles（passive_deletes 依赖 DB 级联）
     roles_assoc: Mapped[list["AdminUserRole"]] = relationship(back_populates="user", passive_deletes=True)
+
+    # 关系：操作日志 / 登录日志 (viewonly — log.user_id 无 DB FK 约束, 只读导航)
+    logs: Mapped[list["AdminOperationLog"]] = relationship(
+        primaryjoin="AdminUser.id == AdminOperationLog.user_id",
+        foreign_keys="AdminOperationLog.user_id",
+        viewonly=True,
+    )
+    login_logs: Mapped[list["AdminLoginLog"]] = relationship(
+        primaryjoin="AdminUser.id == AdminLoginLog.user_id",
+        foreign_keys="AdminLoginLog.user_id",
+        viewonly=True,
+    )

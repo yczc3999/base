@@ -1,8 +1,12 @@
 from enum import IntEnum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import Integer, String, SmallInteger, Boolean, Text, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Message(Base):
@@ -23,3 +27,10 @@ class Message(Base):
     sender_name: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系：接收用户 (viewonly — user_id 无 DB FK 约束, 只读导航)
+    user: Mapped["User"] = relationship(
+        primaryjoin="Message.user_id == User.id",
+        foreign_keys=[user_id],
+        viewonly=True,
+    )

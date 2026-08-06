@@ -6,13 +6,17 @@ stage 区分生命周期:
     archived   → 被忽略/软删除
 """
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import (
     BigInteger, Integer, String, Boolean, DateTime, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.article import Article
 
 
 class Keyword(Base):
@@ -50,4 +54,11 @@ class Keyword(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    # 关系：通过 article_keywords 多对多访问 articles（C1b 关系可导航）
+    articles: Mapped[list["Article"]] = relationship(
+        secondary="article_keywords",
+        back_populates="keywords",
+        passive_deletes=True,
     )
