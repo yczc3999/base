@@ -26,8 +26,8 @@ export const useUserStore = defineStore('user', {
   },
 
   actions: {
-    async login(username: string, password: string) {
-      const data = await authApi.login({ username, password })
+    async login(username: string, password: string, captcha: Record<string, string> = {}) {
+      const data = await authApi.login({ username, password, ...captcha })
       this.token = data.access_token
       setToken(data.access_token)
       setRefreshToken(data.refresh_token)

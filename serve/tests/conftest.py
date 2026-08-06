@@ -242,6 +242,8 @@ def mock_redis(monkeypatch):
     monkeypatch.setattr(dbb_mod, "get_redis", _get_redis)
     import app.utils.account_lock as al_mod
     monkeypatch.setattr(al_mod, "get_redis", _get_redis)
+    import app.utils.captcha as cap_mod
+    monkeypatch.setattr(cap_mod, "get_redis", _get_redis)
     return fr
 
 

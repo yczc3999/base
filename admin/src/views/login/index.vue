@@ -43,6 +43,21 @@
             />
           </el-form-item>
 
+          <!-- 验证码 -->
+          <el-form-item prop="captchaCode" v-if="captchaVisible">
+            <div class="captcha-row">
+              <el-input
+                v-model="form.captchaCode"
+                placeholder="验证码"
+                size="large"
+                :prefix-icon="KeyIcon"
+                maxlength="4"
+                @keyup.enter="handleLogin"
+              />
+              <div class="captcha-svg" v-html="captchaSvg" title="点击刷新" @click="loadCaptcha" />
+            </div>
+          </el-form-item>
+
           <div class="form-options">
             <el-checkbox v-model="form.remember">记住我</el-checkbox>
           </div>
@@ -69,7 +84,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSiteStore } from '@/stores/site'
 import { useUserStore } from '@/stores/user'
-import { User as UserIcon, Lock as LockIcon } from '@element-plus/icons-vue'
+import { get } from '@/api/request'
+import { User as UserIcon, Lock as LockIcon, Key as KeyIcon } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -78,17 +94,38 @@ const siteStore = useSiteStore()
 const formRef = ref()
 const loading = ref(false)
 
-onMounted(() => { siteStore.load() })
+onMounted(() => {
+  siteStore.load()
+  loadCaptcha()
+})
 
 const form = reactive({
   username: '',
   password: '',
   remember: false,
+  captchaId: '',
+  captchaCode: '',
 })
+
+// ---- 验证码（P2-1）----
+const captchaVisible = ref(true)
+const captchaSvg = ref('')
+
+async function loadCaptcha() {
+  try {
+    const data = await get('/admin/user/captcha', {}, { showError: false })
+    form.captchaId = data.captcha_id
+    captchaSvg.value = data.svg
+    form.captchaCode = ''
+  } catch {
+    captchaVisible.value = false  // 验证码服务不可用时降级, 不阻塞登录
+  }
+}
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  captchaCode: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
 }
 
 async function handleLogin() {
@@ -97,11 +134,15 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    await userStore.login(form.username, form.password)
+    await userStore.login(form.username, form.password, {
+      captcha_id: form.captchaId,
+      captcha_code: form.captchaCode,
+    })
     const redirect = (route.query.redirect as string) || '/dashboard'
     router.push(redirect)
   } catch {
-    // request.ts 已经处理了错误提示
+    // 验证码一次性, 登录失败后刷新
+    loadCaptcha()
   } finally {
     loading.value = false
   }
@@ -214,6 +255,25 @@ async function handleLogin() {
 .login-form {
   :deep(.el-form-item) { margin-bottom: 20px; }
   :deep(.el-input__wrapper) { height: 44px; }
+}
+
+.captcha-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+
+  .el-input { flex: 1; }
+  .captcha-svg {
+    width: 120px; height: 40px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    flex-shrink: 0;
+
+    svg { display: block; }
+  }
 }
 
 .form-options {

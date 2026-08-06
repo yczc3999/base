@@ -23,6 +23,8 @@ router.include_router(crud_router("user", admin_user_logic, tags=["admin-user"],
 class LoginDto(BaseModel):
     username: str
     password: str
+    captcha_id: str = ""      # 验证码 ID（captcha_enabled 时必填）
+    captcha_code: str = ""    # 验证码内容
 
 
 class ChangePasswordDto(BaseModel):
@@ -41,6 +43,13 @@ class AssignRolesDto(BaseModel):
 
 # ---- 公开接口（不加 Depends，天然公开）----
 
+@router.get("/user/captcha")
+async def get_captcha():
+    """获取验证码: {captcha_id, svg}（纯 SVG, 无需登录）."""
+    from app.utils.captcha import generate_captcha
+    return ok(await generate_captcha())
+
+
 @router.post("/user/login")
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
     from app.utils.rate_limit import check_rate_limit
@@ -55,6 +64,13 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
     # 登录限速：同 IP 5 分钟内最多 10 次
     if not await check_rate_limit(f"login:{ip}", max_attempts=10, window=300):
         return fail("请求过于频繁，请稍后再试", 429)
+
+    # 验证码（P2-1）: 可配置开关, 开启时登录必须通过验证码
+    captcha_enabled = await setting_logic.get(db, "login_security", "captcha_enabled", "1")
+    if captcha_enabled != "0":
+        from app.utils.captcha import verify_captcha
+        if not await verify_captcha(dto.captcha_id, dto.captcha_code):
+            return fail("验证码错误或已过期", 400)
 
     # 重试次数门：账号级失败锁定（阈值/窗口可配置, 防换 IP 暴力破解）
     max_failures = int(await setting_logic.get(db, "login_security", "max_failures", "5") or 5)
