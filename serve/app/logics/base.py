@@ -192,6 +192,97 @@ class BaseLogic:
 
         return {"list": rows, "total": total, "page": page, "pageSize": page_size}
 
+    # ==================== 回收站（软删除模块） ====================
+
+    async def get_trash(
+        self, db: AsyncSession, query: dict, user_id: int = None, is_super: bool = False
+    ) -> dict:
+        """回收站列表: 软删除记录 (deleted_at IS NOT NULL). 仅支持软删除的模块可用."""
+        if not self._has_deleted_at:
+            raise BizError("该模块不支持回收站")
+
+        try:
+            page = max(1, int(query.get("page", 1)))
+        except (ValueError, TypeError):
+            page = 1
+        try:
+            page_size = min(100, max(1, int(query.get("pageSize", 20))))
+        except (ValueError, TypeError):
+            page_size = 20
+        sort_field = query.get("sortField", "deleted_at")
+        sort_order = query.get("sortOrder", "desc")
+
+        filters = query.get("filters", {})
+        if isinstance(filters, str):
+            try:
+                filters = json.loads(filters)
+            except (json.JSONDecodeError, TypeError):
+                filters = {}
+
+        conditions = apply_filters(self.model, filters, self.allowed_filters())
+        if self.bind_user_column and user_id is not None and not is_super:
+            col = getattr(self.model, self.bind_user_column, None)
+            if col is not None:
+                conditions.append(col == user_id)
+
+        # 仅软删除记录
+        conditions.append(getattr(self.model, "deleted_at").is_not(null()))
+
+        keyword = query.get("keyword", "")
+        if keyword:
+            kw_cond = apply_keyword(self.model, keyword, self.keyword_fields())
+            if kw_cond is not None:
+                conditions.append(kw_cond)
+
+        if sort_field not in self.allowed_sorts():
+            sort_field = "deleted_at"
+        col = getattr(self.model, sort_field, None) or getattr(self.model, self.pk_name)
+        order = asc(col) if sort_order == "asc" else desc(col)
+
+        stmt = (
+            select(self.model)
+            .where(*conditions)
+            .order_by(order)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        count_stmt = select(func.count()).select_from(self.model).where(*conditions)
+
+        result = await db.execute(stmt)
+        total_result = await db.execute(count_stmt)
+        rows = [self.format_data(row) for row in result.scalars().all()]
+        total = total_result.scalar_one()
+
+        return {"list": rows, "total": total, "page": page, "pageSize": page_size}
+
+    async def restore(self, db: AsyncSession, ids: list[int]):
+        """从回收站恢复 (deleted_at = NULL). 仅软删除模块可用."""
+        if not self._has_deleted_at:
+            raise BizError("该模块不支持回收站")
+        if not ids:
+            return
+        for pk_value in ids:
+            stmt = (
+                update(self.model)
+                .where(getattr(self.model, self.pk_name) == pk_value)
+                .values(deleted_at=None)
+            )
+            await db.execute(stmt)
+            await self._clear_cache(pk_value, db)
+        await db.commit()
+
+    async def purge(self, db: AsyncSession, ids: list[int]):
+        """彻底删除 (物理删除, 不可恢复). 软删除模块用此法清空回收站."""
+        if not ids:
+            return
+        for pk_value in ids:
+            self.before_delete(pk_value)
+            stmt = delete(self.model).where(getattr(self.model, self.pk_name) == pk_value)
+            await db.execute(stmt)
+            await self._clear_cache(pk_value, db)
+            self.after_delete(pk_value)
+        await db.commit()
+
     # ==================== 详情 ====================
 
     async def get_detail(

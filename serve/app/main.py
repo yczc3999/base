@@ -29,6 +29,7 @@ from app.controllers.admin import monitor as admin_monitor
 from app.controllers.admin import import_api as admin_import
 from app.controllers.admin import session as admin_session
 from app.controllers.admin import cache as admin_cache
+from app.controllers.admin import trash as admin_trash
 from app.controllers import dict as dict_public
 
 
@@ -90,6 +91,7 @@ app.include_router(admin_monitor.router, prefix="/api/admin")
 app.include_router(admin_import.router, prefix="/api/admin")
 app.include_router(admin_session.router, prefix="/api/admin")
 app.include_router(admin_cache.router, prefix="/api/admin")
+app.include_router(admin_trash.router, prefix="/api/admin")
 app.include_router(web_seo.router)  # /sitemap.xml /robots.txt /{key}.txt 根路径
 
 # 隐私文件代理 + 数据字典公开端点（不走 /api/admin 前缀）
