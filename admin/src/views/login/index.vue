@@ -2,6 +2,10 @@
   <div class="login-page">
     <!-- 左侧品牌 -->
     <div class="brand-panel">
+      <!-- 装饰大色块（纯平面，随品牌色） -->
+      <div class="brand-deco deco-a"></div>
+      <div class="brand-deco deco-b"></div>
+      <div class="brand-deco deco-c"></div>
       <div class="brand-content">
         <img v-if="siteStore.logo" :src="siteStore.logo" class="brand-logo-img" />
         <div v-else class="brand-logo">{{ siteStore.name?.charAt(0) || 'B' }}</div>
@@ -84,7 +88,8 @@ class="captcha-svg" role="button" tabindex="0" :title="$t('common.refresh')"
             class="login-btn"
             @click="handleLogin"
           >
-            {{ loading ? $t('login.loggingIn') : $t('login.submit') }}
+            <span class="login-btn-text">{{ loading ? $t('login.loggingIn') : $t('login.submit') }}</span>
+            <ArrowRight v-if="!loading" :size="16" class="login-btn-icon" />
           </el-button>
         </el-form>
 
@@ -103,6 +108,7 @@ import { useUserStore } from '@/stores/user'
 import { get } from '@/api/request'
 import { saveLocale } from '@/locales'
 import { User as UserIcon, Lock as LockIcon, Key as KeyIcon } from '@element-plus/icons-vue'
+import { ArrowRight } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
@@ -188,6 +194,19 @@ async function handleLogin() {
   justify-content: center;
   align-items: center;
   position: relative;
+  overflow: hidden;
+}
+
+// 装饰大色块（纯平面，随品牌主色，营造空间层次）
+.brand-deco {
+  position: absolute;
+  border-radius: var(--radius);
+  background: var(--primary);
+  opacity: 0.06;
+
+  &.deco-a { width: 320px; height: 320px; top: -120px; left: -100px; background: var(--primary-light); }
+  &.deco-b { width: 200px; height: 200px; bottom: -80px; right: -60px; }
+  &.deco-c { width: 120px; height: 120px; top: 30%; right: -40px; background: var(--primary); opacity: 0.1; }
 }
 
 .brand-content { text-align: center; }
@@ -321,6 +340,10 @@ async function handleLogin() {
   font-size: var(--text-base) !important;
   font-weight: 600 !important;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .form-footer {
