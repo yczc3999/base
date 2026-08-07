@@ -102,7 +102,7 @@
         v-else
         v-loading="crud.loading.value"
         :data="crud.tableData.value"
-        border
+        stripe
         style="width: 100%"
         @selection-change="crud.handleSelectionChange"
         @sort-change="crud.handleSortChange"

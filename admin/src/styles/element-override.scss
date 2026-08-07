@@ -188,6 +188,7 @@
   --el-table-row-hover-bg-color: var(--bg-table-header) !important;
   --el-table-text-color: var(--text-primary) !important;
   --el-table-header-text-color: var(--text-secondary) !important;
+  --el-fill-color-lighter: var(--bg-input) !important; // 斑马纹浅色
   font-size: var(--text-sm) !important;
 
   th.el-table__cell {

@@ -6,9 +6,13 @@
   >
   <div class="monitor">
     <!-- 空态 -->
-    <div v-if="!metrics" class="empty-state">
-      <el-empty :description="emptyMsg" />
-    </div>
+    <EmptyState
+      v-if="!metrics"
+      :icon="MonitorIcon"
+      title="暂无监控数据"
+      :description="emptyMsg"
+      tone="primary"
+    />
 
     <template v-else>
       <!-- ═══ 顶部深色 hero ═══ -->
@@ -142,11 +146,12 @@
 defineOptions({ name: 'Monitor' })
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { RefreshCw } from 'lucide-vue-next'
+import { RefreshCw, Monitor as MonitorIcon } from 'lucide-vue-next'
 import { get } from '@/api/request'
 import CountUp from '@/components/CountUp.vue'
 import GaugeBar from '@/components/GaugeBar.vue'
 import PageShell from '@/components/PageShell/index.vue'
+import EmptyState from '@/components/EmptyState/index.vue'
 
 // F1 · TanStack Query 轮询：5s 拉取监控指标，刷新不闪烁（refetchInterval 由库接管）
 const { data, isLoading, refetch } = useQuery({
@@ -266,14 +271,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-/* ── 空态 ── */
-.empty-state {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 40px;
 }
 
 /* ── 深色 hero ── */

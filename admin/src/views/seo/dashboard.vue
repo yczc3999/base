@@ -3,7 +3,10 @@
     <!-- 主开关（持久化，重启不丢）-->
     <section class="master-switch" :class="{ on: enabled, off: !enabled }">
       <div class="ms-left">
-        <div class="ms-icon">{{ enabled ? '⚡' : '⏸' }}</div>
+        <div class="ms-icon">
+          <Zap v-if="enabled" :size="32" :stroke-width="2" />
+          <Pause v-else :size="32" :stroke-width="2" />
+        </div>
         <div>
           <h2>自动发布 {{ enabled ? '已开启' : '已关闭' }}</h2>
           <p>{{ enabled ? 'worker 按节奏自动采集 / 排期 / 发布' : '所有 worker 任务暂停；点开关启动' }}</p>
@@ -238,7 +241,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { confirmDialog } from '@/utils/confirm'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
-import { Snowflake, Sprout, TrendingUp, Landmark } from 'lucide-vue-next'
+import { Snowflake, Sprout, TrendingUp, Landmark, Zap, Pause } from 'lucide-vue-next'
 import { get, post } from '@/api/request'
 
 const data = ref<any>(null)

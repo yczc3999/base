@@ -6,12 +6,17 @@
     </div>
 
     <!-- 加载/空态 -->
-    <div v-if="!stats" class="cache-empty">
-      <el-empty :description="loading ? '加载中...' : '暂无数据，点刷新重试'" />
-    </div>
-    <div v-else-if="!stats.modules?.length" class="cache-empty">
-      <el-empty description="未发现缓存模块" />
-    </div>
+    <EmptyState
+      v-if="!stats"
+      :icon="DatabaseIcon"
+      :title="loading ? '加载中...' : '暂无缓存数据'"
+      description="点击刷新重新获取"
+    />
+    <EmptyState
+      v-else-if="!stats.modules?.length"
+      :icon="DatabaseIcon"
+      title="未发现缓存模块"
+    />
 
     <div v-else class="cache-grid">
       <div v-for="m in stats.modules" :key="m.prefix" class="cache-card">
@@ -39,7 +44,9 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { confirmDialog } from '@/utils/confirm'
 import { Refresh, Delete } from '@element-plus/icons-vue'
+import { Database as DatabaseIcon } from 'lucide-vue-next'
 import { get, post } from '@/api/request'
+import EmptyState from '@/components/EmptyState/index.vue'
 
 const stats = ref<any>(null)
 const clearing = ref('')
