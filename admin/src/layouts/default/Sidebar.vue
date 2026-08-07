@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
+  <aside class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
     <!-- Logo -->
     <div class="sidebar-logo">
       <img v-if="siteStore.logo" :src="siteStore.logo" class="logo-img" />
@@ -26,23 +26,23 @@
             <!-- 有子菜单 -->
             <el-sub-menu v-if="menu.children?.length" :index="menu.slug">
               <template #title>
-                <span class="menu-icon">{{ getMenuIcon(menu.icon) }}</span>
+                <el-icon class="menu-icon"><component :is="getMenuIcon(menu.icon)" /></el-icon>
                 <span>{{ menu.label }}</span>
               </template>
               <template v-for="child in menu.children" :key="child.slug">
                 <!-- 子目录（如日志管理）→ 展开子菜单 -->
                 <el-sub-menu v-if="child.type === 0 && child.children?.length" :index="child.slug">
                   <template #title>
-                    <span class="menu-icon">{{ getMenuIcon(child.icon) }}</span>
+                    <el-icon class="menu-icon"><component :is="getMenuIcon(child.icon)" /></el-icon>
                     <span>{{ child.label }}</span>
                   </template>
                   <el-menu-item
                     v-for="sub in child.children"
-                    :key="sub.slug"
                     v-show="sub.type !== 2 && sub.is_visible !== false"
+                    :key="sub.slug"
                     :index="sub.path || sub.slug"
                   >
-                    <span class="menu-icon">{{ getMenuIcon(sub.icon) }}</span>
+                    <el-icon class="menu-icon"><component :is="getMenuIcon(sub.icon)" /></el-icon>
                     <span>{{ sub.label }}</span>
                   </el-menu-item>
                 </el-sub-menu>
@@ -51,7 +51,7 @@
                   v-else-if="child.type !== 2 && child.is_visible !== false"
                   :index="child.path || child.slug"
                 >
-                  <span class="menu-icon">{{ getMenuIcon(child.icon) }}</span>
+                  <el-icon class="menu-icon"><component :is="getMenuIcon(child.icon)" /></el-icon>
                   <span>{{ child.label }}</span>
                 </el-menu-item>
               </template>
@@ -61,14 +61,14 @@
               v-else-if="menu.is_visible !== false && menu.type !== 2"
               :index="menu.path || menu.slug"
             >
-              <span class="menu-icon">{{ getMenuIcon(menu.icon) }}</span>
+              <el-icon class="menu-icon"><component :is="getMenuIcon(menu.icon)" /></el-icon>
               <span>{{ menu.label }}</span>
             </el-menu-item>
           </template>
         </el-menu>
       </el-scrollbar>
     </nav>
-  </div>
+  </aside>
 </template>
 
 <script setup lang="ts">
@@ -76,6 +76,7 @@ import { useAppStore } from '@/stores/app'
 import { usePermissionStore } from '@/stores/permission'
 import { useSiteStore } from '@/stores/site'
 import { useRoute } from 'vue-router'
+import { getMenuIcon } from '@/utils/menuIcons'
 
 const appStore = useAppStore()
 const permStore = usePermissionStore()
@@ -85,31 +86,6 @@ const route = useRoute()
 onMounted(() => { siteStore.load() })
 
 const activeMenu = computed(() => route.path)
-
-const iconMap: Record<string, string> = {
-  // 系统
-  'Settings': '⚙', 'Users': '👤', 'Shield': '🛡', 'Menu': '☰',
-  'Sliders': '⊞', 'FileText': '📄', 'Activity': '◉', 'LogIn': '→',
-  'LayoutDashboard': '▦', 'UserCircle': '◎', 'Bell': '🔔',
-  // 配置
-  'Globe': '🌐', 'MessageSquare': '💬', 'HardDrive': '💾',
-  'CreditCard': '💳', 'Mail': '✉',
-  // 通用
-  'Home': '⌂', 'Search': '🔍', 'Star': '★', 'Heart': '♥',
-  'Lock': '🔒', 'Key': '🔑', 'Database': '🗄', 'Server': '🖥',
-  'Cloud': '☁', 'Package': '📦', 'ShoppingCart': '🛒', 'Store': '🏪',
-  'BarChart3': '📊', 'PieChart': '◔', 'Tag': '🏷', 'Folder': '📁',
-  'Image': '🖼', 'Camera': '📷', 'Phone': '📞', 'Cpu': '⚡',
-  // gui-tu 业务
-  'User': '👤', 'ShieldOff': '🚫', 'Receipt': '🧾', 'RefreshCw': '🔄',
-  'Ticket': '🎫', 'Target': '🎯', 'ArrowRightLeft': '⇄', 'Link': '🔗',
-  'Terminal': '⌨', 'BookOpen': '📖', 'Tags': '🏷', 'BarChart': '📊',
-}
-
-function getMenuIcon(icon?: string): string {
-  if (!icon) return '·'
-  return iconMap[icon] || '·'
-}
 </script>
 
 <style scoped lang="scss">

@@ -10,10 +10,9 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'AdminUser' })
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField, FormField } from '@/components/CrudTable/types'
-
-const crudRef = ref()
 
 const columns: CrudColumn[] = [
   { field: 'id', label: 'ID', width: 70, sortable: 'custom' },

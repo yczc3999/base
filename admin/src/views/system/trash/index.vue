@@ -5,16 +5,18 @@
       <el-select v-model="module" placeholder="选择模块" style="width: 200px" @change="loadList">
         <el-option v-for="m in modules" :key="m.module" :label="m.label" :value="m.module" />
       </el-select>
-      <el-button :icon="Refresh" @click="loadList" :loading="loading">刷新</el-button>
+      <el-button :icon="Refresh" :loading="loading" @click="loadList">刷新</el-button>
       <template v-if="selection.length">
-        <el-button type="primary" :icon="RefreshLeft" :disabled="!hasPerms('admin:trash:restore')"
+        <el-button
+type="primary" :icon="RefreshLeft" :disabled="!hasPerms('admin:trash:restore')"
           @click="batchRestore">恢复选中 ({{ selection.length }})</el-button>
-        <el-button type="danger" :icon="Delete" :disabled="!hasPerms('admin:trash:purge')"
+        <el-button
+type="danger" :icon="Delete" :disabled="!hasPerms('admin:trash:purge')"
           @click="batchPurge">彻底删除 ({{ selection.length }})</el-button>
       </template>
     </div>
 
-    <el-table :data="list" v-loading="loading" border :empty-text="'回收站为空'" @selection-change="selection = $event">
+    <el-table v-loading="loading" :data="list" border :empty-text="'回收站为空'" @selection-change="selection = $event">
       <el-table-column type="selection" width="45" />
       <el-table-column prop="id" label="ID" width="70" align="center" />
       <el-table-column label="记录内容" min-width="260">
@@ -25,9 +27,11 @@
       </el-table-column>
       <el-table-column label="操作" width="160" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link size="small" :icon="RefreshLeft"
+          <el-button
+type="primary" link size="small" :icon="RefreshLeft"
             :disabled="!hasPerms('admin:trash:restore')" @click="restoreRow(row)">恢复</el-button>
-          <el-button type="danger" link size="small" :icon="Delete"
+          <el-button
+type="danger" link size="small" :icon="Delete"
             :disabled="!hasPerms('admin:trash:purge')" @click="purgeRow(row)">彻底删除</el-button>
         </template>
       </el-table-column>
@@ -44,8 +48,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Trash' })
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, RefreshLeft, Delete } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 import { usePermission } from '@/hooks/usePermission'
@@ -79,7 +85,7 @@ function summarize(row: any) {
 async function loadModules() {
   try {
     modules.value = await get('/admin/trash/modules') || []
-  } catch {}
+  } catch { /* 模块列表加载失败静默 */ }
 }
 
 async function loadList() {
@@ -91,18 +97,18 @@ async function loadList() {
     })
     list.value = data?.list || []
     total.value = data?.total || 0
-  } catch {} finally { loading.value = false }
+  } catch { /* 列表加载失败静默 */ } finally { loading.value = false }
 }
 
 async function restoreRow(row: any) {
-  await ElMessageBox.confirm(`确认恢复记录 #${row.id}？`, '恢复', { type: 'warning' })
+  await confirmDialog(`确认恢复记录 #${row.id}？`, '恢复', { type: 'warning' })
   await post('/admin/trash/restore', { module: module.value, ids: [row.id] })
   ElMessage.success('已恢复')
   loadList()
 }
 
 async function purgeRow(row: any) {
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认彻底删除记录 #${row.id}？此操作不可恢复！`, '彻底删除', { type: 'error' },
   )
   await post('/admin/trash/purge', { module: module.value, ids: [row.id] })
@@ -112,7 +118,7 @@ async function purgeRow(row: any) {
 
 async function batchRestore() {
   const ids = selection.value.map(r => r.id)
-  await ElMessageBox.confirm(`确认恢复 ${ids.length} 条记录？`, '批量恢复', { type: 'warning' })
+  await confirmDialog(`确认恢复 ${ids.length} 条记录？`, '批量恢复', { type: 'warning' })
   await post('/admin/trash/restore', { module: module.value, ids })
   ElMessage.success('已恢复')
   loadList()
@@ -120,7 +126,7 @@ async function batchRestore() {
 
 async function batchPurge() {
   const ids = selection.value.map(r => r.id)
-  await ElMessageBox.confirm(`确认彻底删除 ${ids.length} 条记录？此操作不可恢复！`, '批量彻底删除', { type: 'error' })
+  await confirmDialog(`确认彻底删除 ${ids.length} 条记录？此操作不可恢复！`, '批量彻底删除', { type: 'error' })
   await post('/admin/trash/purge', { module: module.value, ids })
   ElMessage.success('已彻底删除')
   loadList()

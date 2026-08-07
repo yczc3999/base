@@ -6,6 +6,7 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SettingsStorage' })
 import SettingForm from '@/components/SettingForm/index.vue'
 import type { SettingProvider } from '@/components/SettingForm/types'
 

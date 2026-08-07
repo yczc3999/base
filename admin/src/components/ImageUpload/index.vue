@@ -16,7 +16,7 @@
       </div>
     </div>
 
-    <div class="image-hint" v-if="hint">{{ hint }}</div>
+    <div v-if="hint" class="image-hint">{{ hint }}</div>
 
     <!-- 文件管理器 -->
     <FileManager

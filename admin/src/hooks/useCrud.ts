@@ -11,7 +11,8 @@
 
 import { ref, reactive, onMounted } from 'vue'
 import { createCrudApi, type CrudApi } from '@/api/crud'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import NProgress from '@/utils/nprogress'
 
 export interface CrudOptions {
@@ -84,7 +85,7 @@ export function useCrud(options: CrudOptions) {
       const data = await api.getList(params)
       tableData.value = data.list || []
       total.value = data.total || 0
-    } catch {}
+    } catch { /* 列表加载失败静默处理 */ }
     loading.value = false
     NProgress.done()
   }
@@ -163,14 +164,14 @@ export function useCrud(options: CrudOptions) {
       ElMessage.success(formMode.value === 'create' ? '创建成功' : '更新成功')
       formVisible.value = false
       getList()
-    } catch {}
+    } catch { /* 保存失败静默处理，表单保持打开供重试 */ }
     formLoading.value = false
   }
 
   // ── 删除 ──
   async function handleDelete(row: any) {
     try {
-      await ElMessageBox.confirm(deleteConfirm, '提示', {
+      await confirmDialog(deleteConfirm, '提示', {
         type: 'warning',
         confirmButtonText: '确定',
         cancelButtonText: '取消',
@@ -178,7 +179,7 @@ export function useCrud(options: CrudOptions) {
       await api.doDelete(row.id)
       ElMessage.success('删除成功')
       getList()
-    } catch {}
+    } catch { /* 删除失败静默处理 */ }
   }
 
   // ── 批量删除 ──
@@ -188,14 +189,14 @@ export function useCrud(options: CrudOptions) {
       return
     }
     try {
-      await ElMessageBox.confirm(`确定要删除选中的 ${selections.value.length} 条数据吗？`, '提示', {
+      await confirmDialog(`确定要删除选中的 ${selections.value.length} 条数据吗？`, '提示', {
         type: 'warning',
       })
       const ids = selections.value.map((r) => r.id)
       await api.doDelete(ids)
       ElMessage.success('删除成功')
       getList()
-    } catch {}
+    } catch { /* 批量删除失败静默处理 */ }
   }
 
   // ── 初始化 ──

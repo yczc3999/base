@@ -22,9 +22,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SettingsSite' })
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Check } from "@element-plus/icons-vue"
 import ImageUpload from '@/components/ImageUpload/index.vue'
 

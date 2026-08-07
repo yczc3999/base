@@ -11,7 +11,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppConfirm: typeof import('./components/AppConfirm/index.vue')['default']
+    AppErrorBoundary: typeof import('./components/AppErrorBoundary.vue')['default']
     ArticleEditor: typeof import('./components/ArticleEditor/index.vue')['default']
+    CountUp: typeof import('./components/CountUp.vue')['default']
     CrudTable: typeof import('./components/CrudTable/index.vue')['default']
     DictTag: typeof import('./components/DictTag/index.vue')['default']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
@@ -45,6 +48,7 @@ declare module 'vue' {
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
     ElSubMenu: typeof import('element-plus/es')['ElSubMenu']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
@@ -52,18 +56,23 @@ declare module 'vue' {
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
+    ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FileManager: typeof import('./components/FileManager/index.vue')['default']
     FileUpload: typeof import('./components/FileUpload/index.vue')['default']
+    GaugeBar: typeof import('./components/GaugeBar.vue')['default']
     IconPicker: typeof import('./components/IconPicker/index.vue')['default']
     ImageUpload: typeof import('./components/ImageUpload/index.vue')['default']
     ImportModal: typeof import('./components/ImportModal/index.vue')['default']
     JsonEditor: typeof import('./components/JsonEditor/index.vue')['default']
+    PageShell: typeof import('./components/PageShell/index.vue')['default']
     RichEditor: typeof import('./components/RichEditor/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SchemaCrudPage: typeof import('./components/SchemaCrudPage/index.vue')['default']
     SettingForm: typeof import('./components/SettingForm/index.vue')['default']
+    StatCard: typeof import('./components/StatCard/index.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

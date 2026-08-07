@@ -28,11 +28,12 @@
         <h2 class="form-title">{{ $t('login.title') }}</h2>
         <p class="form-desc">{{ $t('login.desc') }}</p>
 
-        <el-form ref="formRef" :model="form" :rules="rules" @submit.prevent="handleLogin" class="login-form">
+        <el-form ref="formRef" :model="form" :rules="rules" class="login-form" @submit.prevent="handleLogin">
           <el-form-item prop="username">
             <el-input
               v-model="form.username"
               :placeholder="$t('login.username')"
+              aria-label="用户名"
               size="large"
               :prefix-icon="UserIcon"
             />
@@ -43,6 +44,7 @@
               v-model="form.password"
               type="password"
               :placeholder="$t('login.password')"
+              aria-label="密码"
               size="large"
               show-password
               :prefix-icon="LockIcon"
@@ -51,17 +53,23 @@
           </el-form-item>
 
           <!-- 验证码 -->
-          <el-form-item prop="captchaCode" v-if="captchaVisible">
+          <el-form-item v-if="captchaVisible" prop="captchaCode">
             <div class="captcha-row">
               <el-input
                 v-model="form.captchaCode"
                 :placeholder="$t('login.captcha')"
+                aria-label="验证码"
                 size="large"
                 :prefix-icon="KeyIcon"
                 maxlength="4"
                 @keyup.enter="handleLogin"
               />
-              <div class="captcha-svg" v-html="captchaSvg" :title="$t('common.refresh')" @click="loadCaptcha" />
+              <div
+class="captcha-svg" role="button" tabindex="0" :title="$t('common.refresh')"
+                :aria-label="$t('common.refresh')" @click="loadCaptcha"
+                @keydown.enter.prevent="loadCaptcha"
+                @keydown.space.prevent="loadCaptcha"
+                v-html="captchaSvg" />
             </div>
           </el-form-item>
 
@@ -189,48 +197,48 @@ async function handleLogin() {
   background: var(--primary);
   color: white;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 700;
+  font-size: var(--text-2xl); font-weight: 700;
   border-radius: var(--radius);
-  margin: 0 auto 24px;
+  margin: 0 auto var(--space-xl);
 }
 
 .brand-logo-img {
   max-width: 180px;
   max-height: 60px;
-  margin: 0 auto 24px;
+  margin: 0 auto var(--space-xl);
   object-fit: contain;
 }
 
 .brand-title {
-  font-size: 42px; font-weight: 700;
-  color: #F1F5F9;
+  font-size: var(--text-3xl); font-weight: 700;
+  color: var(--bg-page);
   letter-spacing: -1px;
   line-height: 1;
 }
 
 .brand-sub {
-  font-size: 28px; font-weight: 400;
+  font-size: var(--text-2xl); font-weight: 400;
   color: var(--primary-light);
-  margin-top: 4px;
+  margin-top: var(--space-xs);
 }
 
 .brand-divider {
-  width: 48px; height: 3px;
+  width: var(--space-3xl); height: 3px;
   background: var(--primary);
-  margin: 24px auto;
+  margin: var(--space-xl) auto;
 }
 
 .brand-desc {
-  font-size: 14px;
-  color: #64748B;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
   letter-spacing: 0.1em;
 }
 
 .brand-footer {
   position: absolute;
-  bottom: 32px;
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: #64748B;
+  bottom: var(--space-2xl);
+  display: flex; align-items: center; gap: var(--space-sm);
+  font-size: var(--text-xs); color: var(--text-secondary);
 
   .status-dot {
     width: 6px; height: 6px;
@@ -251,16 +259,16 @@ async function handleLogin() {
 .form-container {
   width: 100%;
   max-width: 380px;
-  padding: 40px;
+  padding: var(--space-3xl);
 }
 
 .login-lang {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 
-  .lang-divider { font-size: 12px; color: var(--text-placeholder); }
+  .lang-divider { font-size: var(--text-xs); color: var(--text-placeholder); }
 }
 
 .form-title {
@@ -273,11 +281,11 @@ async function handleLogin() {
 .form-desc {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin-bottom: 32px;
+  margin-bottom: var(--space-2xl);
 }
 
 .login-form {
-  :deep(.el-form-item) { margin-bottom: 20px; }
+  :deep(.el-form-item) { margin-bottom: var(--space-lg); }
   :deep(.el-input__wrapper) { height: 44px; }
 }
 
@@ -304,7 +312,7 @@ async function handleLogin() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-xl);
 }
 
 .login-btn {
@@ -316,7 +324,7 @@ async function handleLogin() {
 }
 
 .form-footer {
-  margin-top: 32px;
+  margin-top: var(--space-2xl);
   text-align: center;
   font-size: var(--text-xs);
   color: var(--text-placeholder);

@@ -2,6 +2,7 @@
   <CrudTable api="admin/operationLog" perms="admin:log:operation" :columns="columns" :show-keyword="true" :action-width="0" exportable />
 </template>
 <script setup lang="ts">
+defineOptions({ name: 'OperationLog' })
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn } from '@/components/CrudTable/types'
 const columns: CrudColumn[] = [

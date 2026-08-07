@@ -1,7 +1,8 @@
 <template>
   <div class="file-upload">
     <!-- 拖拽区域 -->
-    <div class="dropzone" :class="{ dragover }" @click="openManager"
+    <div
+class="dropzone" :class="{ dragover }" @click="openManager"
       @dragover.prevent="dragover = true" @dragleave="dragover = false"
       @drop.prevent="handleDrop">
       <span class="dropzone-icon">{{ isPrivate ? '🔒' : '☁' }}</span>
@@ -18,7 +19,7 @@
       </div>
     </div>
 
-    <div class="file-hint" v-if="hint">
+    <div v-if="hint" class="file-hint">
       {{ hint }}
       <span v-if="isPrivate" class="private-tag">🔒 隐私文件 · 本地存储</span>
     </div>
@@ -39,7 +40,7 @@
 import { computed, ref } from 'vue'
 import FileManager from '@/components/FileManager/index.vue'
 import fileApi from '@/api/modules/file'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 
 const props = withDefaults(defineProps<{
   modelValue: string | string[]

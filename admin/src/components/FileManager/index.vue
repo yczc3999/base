@@ -20,7 +20,7 @@
     </div>
 
     <!-- 文件网格 -->
-    <div class="fm-grid" v-loading="loading">
+    <div v-loading="loading" class="fm-grid">
       <div v-for="f in files" :key="f.id" class="fm-item" :class="{ selected: selectedIds.has(f.id) }" @click="toggleSelect(f)">
         <div class="fm-thumb">
           <img v-if="isImage(f.mime_type)" :src="f.url" :alt="f.original_name" />
@@ -49,7 +49,8 @@
 import { ref, reactive, watch } from 'vue'
 import { Upload, Check, Delete } from "@element-plus/icons-vue"
 import fileApi from '@/api/modules/file'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -106,7 +107,7 @@ async function loadFiles() {
     }
     const data = await fileApi.getList(params)
     files.value = data?.list || []
-  } catch {}
+  } catch { /* 加载失败静默处理，保留空列表 */ }
   loading.value = false
 }
 
@@ -144,7 +145,7 @@ async function handleFileSelect(e: Event) {
 
   for (const f of Array.from(fileList)) {
     try {
-      const result = await fileApi.upload(f, { category: props.category || 'default' })
+      await fileApi.upload(f, { category: props.category || 'default' })
       ElMessage.success(`${f.name} 上传成功`)
     } catch (err: any) {
       ElMessage.error(`${f.name} 上传失败: ${err.message}`)
@@ -158,8 +159,7 @@ async function handleFileSelect(e: Event) {
 // 删除
 async function handleDelete() {
   if (!selectedIds.size) return
-  const { ElMessageBox } = await import('element-plus')
-  await ElMessageBox.confirm(`确认删除 ${selectedIds.size} 个文件？删除后不可恢复。`, '删除文件', { type: 'warning' })
+  await confirmDialog(`确认删除 ${selectedIds.size} 个文件？删除后不可恢复。`, '删除文件', { type: 'warning' })
   try {
     await fileApi.doDelete(Array.from(selectedIds))
     ElMessage.success(`已删除 ${selectedIds.size} 个文件`)

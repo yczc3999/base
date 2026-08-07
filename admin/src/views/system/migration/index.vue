@@ -2,14 +2,15 @@
   <div>
     <div class="migration-toolbar">
       <el-button type="primary" :icon="Refresh" @click="loadList">刷新</el-button>
-      <el-button type="warning" :icon="VideoPlay" :loading="running" :disabled="pendingCount === 0"
+      <el-button
+type="warning" :icon="VideoPlay" :loading="running" :disabled="pendingCount === 0"
         @click="runPending">
         执行全部待执行 ({{ pendingCount }})
       </el-button>
       <span class="tip">CLI 等价命令：<code>python -m app.migrate</code></span>
     </div>
 
-    <el-table :data="list" v-loading="loading" border>
+    <el-table v-loading="loading" :data="list" border>
       <el-table-column prop="version" label="迁移文件" min-width="260">
         <template #default="{ row }">
           <code class="ver-name">{{ row.version }}</code>
@@ -30,8 +31,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Migration' })
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
@@ -50,11 +53,11 @@ async function loadList() {
   loading.value = true
   try {
     list.value = await get('/admin/migration/list') || []
-  } catch {} finally { loading.value = false }
+  } catch { /* 迁移列表加载失败静默 */ } finally { loading.value = false }
 }
 
 async function runPending() {
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认执行全部 ${pendingCount.value} 个待执行迁移？迁移是幂等的（已执行会跳过），但会修改数据库结构。`,
     '执行迁移', { type: 'warning' },
   )
@@ -63,7 +66,7 @@ async function runPending() {
     const res = await post('/admin/migration/run')
     ElMessage.success(`已执行 ${res?.applied ?? 0} 个迁移`)
     await loadList()
-  } catch {} finally { running.value = false }
+  } catch { /* 执行迁移失败静默处理 */ } finally { running.value = false }
 }
 
 onMounted(loadList)

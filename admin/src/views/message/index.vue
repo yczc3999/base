@@ -7,10 +7,11 @@
   </CrudTable>
 </template>
 <script setup lang="ts">
+defineOptions({ name: 'Message' })
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
 import messageApi from '@/api/modules/message'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 const crudRef = ref()
 const columns: CrudColumn[] = [
   { field: 'id', label: 'ID', width: 70 },

@@ -4,13 +4,13 @@
 
 // ── 页面标题 ──
 .page-title {
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.3px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-sm);
 
   // 左侧色条装饰
   &::before {
@@ -25,23 +25,23 @@
 
 // ── 页面副标题 ──
 .page-subtitle {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin-top: 4px;
-  padding-left: 13px; // 和 page-title 的色条对齐
+  margin-top: var(--space-xs);
+  padding-left: var(--space-md); // 和 page-title 的色条对齐
 }
 
 // ── 区块标题（卡片内部） ──
 .section-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+  padding-bottom: var(--space-md);
+  margin-bottom: var(--space-base);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 
   &::before {
     content: '';
@@ -58,7 +58,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: var(--space-lg);
   transition: border-color var(--transition-fast);
 
   &::before {
@@ -78,17 +78,17 @@
 // ── 空状态 ──
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: var(--space-4xl) var(--space-lg);
   color: var(--text-placeholder);
 
   .empty-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
+    font-size: var(--text-3xl);
+    margin-bottom: var(--space-md);
     opacity: 0.4;
   }
 
   .empty-text {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
 }
 
@@ -99,9 +99,9 @@
   border-radius: var(--radius);
 
   .card-header {
-    padding: 14px 20px;
+    padding: var(--space-md) var(--space-lg);
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--text-base);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -110,7 +110,7 @@
     .card-title {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-sm);
 
       &::before {
         content: '';
@@ -123,7 +123,7 @@
   }
 
   .card-body {
-    padding: 20px;
+    padding: var(--space-lg);
   }
 }
 
@@ -131,7 +131,7 @@
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-sm);
 
   .el-button {
     min-width: 80px;

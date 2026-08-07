@@ -14,7 +14,7 @@
     </div>
 
     <div v-else class="cache-grid">
-      <div class="cache-card" v-for="m in stats.modules" :key="m.prefix">
+      <div v-for="m in stats.modules" :key="m.prefix" class="cache-card">
         <div class="cache-info">
           <div class="cache-label">{{ m.label }}</div>
           <div class="cache-prefix"><code>{{ m.prefix }}</code></div>
@@ -23,7 +23,8 @@
           <span class="keys-num">{{ m.keys }}</span>
           <span class="keys-label">个 key</span>
         </div>
-        <el-button type="warning" plain size="small" :icon="Delete"
+        <el-button
+type="warning" plain size="small" :icon="Delete"
           :loading="clearing === m.prefix" @click="clearModule(m)">
           清空
         </el-button>
@@ -33,8 +34,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Cache' })
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, Delete } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
@@ -46,11 +49,11 @@ async function load() {
   loading.value = true
   try {
     stats.value = await get('/admin/cache/stats')
-  } catch {} finally { loading.value = false }
+  } catch { /* 统计加载失败静默 */ } finally { loading.value = false }
 }
 
 async function clearModule(m: any) {
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认清空「${m.label}」的 ${m.keys} 个缓存 key？清空后相关数据会重新从数据库读取。`,
     '清空缓存', { type: 'warning' },
   )
@@ -59,7 +62,7 @@ async function clearModule(m: any) {
     await post('/admin/cache/clear', { prefix: m.prefix })
     ElMessage.success('已清空')
     load()
-  } catch {} finally { clearing.value = '' }
+  } catch { /* 清空失败静默处理 */ } finally { clearing.value = '' }
 }
 
 onMounted(load)

@@ -14,7 +14,7 @@
  *   await run(body)
  */
 
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 
 export interface SSEOptions {
   /** POST 目标 URL */

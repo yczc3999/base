@@ -29,7 +29,7 @@ export const useSiteStore = defineStore('site', {
         }
 
         this.loaded = true
-      } catch {}
+      } catch { /* 站点信息拉取失败时保持默认值 */ }
     },
   },
 })

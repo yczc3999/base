@@ -5,6 +5,20 @@
 @import './layout.scss';
 @import './theme.scss';
 
+// 跳到主内容（键盘可访问性）
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--primary);
+  color: var(--text-inverse);
+  padding: var(--space-sm) var(--space-base);
+  z-index: 9999;
+  text-decoration: none;
+  transition: top var(--transition-fast);
+  &:focus { top: 0; }
+}
+
 // NProgress 顶部进度条
 #nprogress .bar {
   background: var(--primary) !important;
@@ -12,4 +26,21 @@
 }
 #nprogress .peg {
   box-shadow: 0 0 6px var(--primary), 0 0 2px var(--primary) !important;
+}
+
+// P2-4: 尊重系统减弱动效偏好（prefers-reduced-motion）
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  // 仪表盘状态点脉冲
+  .dot-live {
+    animation: none !important;
+  }
 }

@@ -11,3 +11,8 @@
 // 侧边栏
 .sidebar-enter-active, .sidebar-leave-active { transition: transform var(--transition-slow); }
 .sidebar-enter-from, .sidebar-leave-to { transform: translateX(-100%); }
+
+// 全局确认弹窗（纯 opacity，无位移 — 遵循扁平设计规范）
+.confirm-fade-enter-active { transition: opacity var(--transition-base); }
+.confirm-fade-leave-active { transition: opacity var(--transition-fast); }
+.confirm-fade-enter-from, .confirm-fade-leave-to { opacity: 0; }

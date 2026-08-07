@@ -1,5 +1,5 @@
 <template>
-  <div class="setting-form" v-loading="loading">
+  <div v-loading="loading" class="setting-form">
     <!-- 全局配置 -->
     <div v-if="extras.length" class="setting-section">
       <div class="section-header">通用配置</div>
@@ -111,7 +111,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
 import { Check, Connection } from "@element-plus/icons-vue"
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import type { SettingProvider, SettingExtra } from './types'
 
 const props = withDefaults(defineProps<{
@@ -153,7 +153,7 @@ async function loadSettings() {
     for (const p of props.providers) {
       const raw = all[p.key]
       if (raw) {
-        try { providerData[p.key] = typeof raw === 'string' ? JSON.parse(raw) : raw } catch {}
+        try { providerData[p.key] = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { /* 单条解析失败不影响其他服务商 */ }
       }
       if (props.mode === 'parallel') {
         enabledMap[p.key] = all[`${p.key}_enabled`] || '0'
@@ -162,7 +162,7 @@ async function loadSettings() {
     for (const e of props.extras) {
       if (all[e.name] !== undefined) extraData[e.name] = all[e.name]
     }
-  } catch {}
+  } catch { /* 读取配置失败静默处理 */ }
   loading.value = false
 }
 

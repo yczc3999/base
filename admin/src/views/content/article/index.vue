@@ -1,16 +1,28 @@
 <template>
   <div>
     <!-- 采集统计 -->
-    <div class="stat-cards" v-if="stats">
-      <div class="stat-card" @click="filterBy({source: 1, ai_processed: false})">
+    <div v-if="stats" class="stat-cards">
+      <div
+class="stat-card" role="button" tabindex="0"
+        @click="filterBy({source: 1, ai_processed: false})"
+        @keydown.enter.prevent="filterBy({source: 1, ai_processed: false})"
+        @keydown.space.prevent="filterBy({source: 1, ai_processed: false})">
         <div class="stat-num warning">{{ stats.unprocessed }}</div>
         <div class="stat-label">待润色</div>
       </div>
-      <div class="stat-card" @click="filterBy({source: 1, ai_processed: true})">
+      <div
+class="stat-card" role="button" tabindex="0"
+        @click="filterBy({source: 1, ai_processed: true})"
+        @keydown.enter.prevent="filterBy({source: 1, ai_processed: true})"
+        @keydown.space.prevent="filterBy({source: 1, ai_processed: true})">
         <div class="stat-num success">{{ stats.ai_done }}</div>
         <div class="stat-label">已润色</div>
       </div>
-      <div class="stat-card" @click="filterBy({status: 1})">
+      <div
+class="stat-card" role="button" tabindex="0"
+        @click="filterBy({status: 1})"
+        @keydown.enter.prevent="filterBy({status: 1})"
+        @keydown.space.prevent="filterBy({status: 1})">
         <div class="stat-num primary">{{ stats.published }}</div>
         <div class="stat-label">已发布</div>
       </div>
@@ -20,15 +32,17 @@
       </div>
     </div>
 
-    <CrudTable ref="crudRef" api="admin/article" perms="admin:article"
+    <CrudTable
+ref="crudRef" api="admin/article" perms="admin:article"
       :columns="columns" :search-fields="searchFields"
-      :hasCreate="false" :hasEdit="false" :hasDelete="false">
+      :has-create="false" :has-edit="false" :has-delete="false">
 
       <template #toolbar>
         <el-button type="primary" :icon="Plus" @click="openEditor()">新增</el-button>
         <el-button :icon="Download" @click="showCollect = true">采集文章</el-button>
         <el-button type="primary" :icon="MagicStick" @click="showTagGen = true">按标签生成</el-button>
-        <el-button type="warning" :icon="MagicStick" :disabled="!hasSelection"
+        <el-button
+type="warning" :icon="MagicStick" :disabled="!hasSelection"
           @click="aiRewrite">AI 润色 ({{ selectionCount }})</el-button>
       </template>
 
@@ -51,7 +65,7 @@
 
     <!-- 采集弹窗 -->
     <el-dialog v-model="showCollect" title="采集文章" width="700px" :close-on-click-modal="false">
-      <el-form label-width="80px" v-if="!collecting">
+      <el-form v-if="!collecting" label-width="80px">
         <el-form-item label="采集方式">
           <el-radio-group v-model="collectForm.mode">
             <el-radio label="keyword">按关键词</el-radio>
@@ -64,7 +78,7 @@
         <el-form-item v-else label="URL">
           <el-input v-model="collectForm.url" placeholder="https://..." />
         </el-form-item>
-        <el-form-item label="数量" v-if="collectForm.mode === 'keyword'">
+        <el-form-item v-if="collectForm.mode === 'keyword'" label="数量">
           <el-input-number v-model="collectForm.count" :min="1" :max="10" />
           <span style="margin-left:8px;font-size:12px;color:var(--el-text-color-secondary)">逐页分析，只采正式文章</span>
         </el-form-item>
@@ -77,7 +91,7 @@
             {{ collectDone ? `完成 ${collectSaved} 篇` : '进行中' }}
           </el-tag>
         </div>
-        <div class="log-body" ref="logBodyRef">
+        <div ref="logBodyRef" class="log-body">
           <div v-for="(evt, i) in collectLog" :key="i" class="log-line" :class="evt.type">
             <template v-if="evt.type === 'search'">🔍 搜索 "{{ evt.keyword }}"</template>
             <template v-else-if="evt.type === 'search_done'">📋 找到 {{ evt.found }} 个结果</template>
@@ -92,11 +106,11 @@
       </div>
 
       <template #footer>
-        <el-button @click="showCollect = false" :disabled="collecting">关闭</el-button>
-        <el-button type="primary" :loading="collecting" @click="doCollect" v-if="!collectDone">
+        <el-button :disabled="collecting" @click="showCollect = false">关闭</el-button>
+        <el-button v-if="!collectDone" type="primary" :loading="collecting" @click="doCollect">
           {{ collecting ? '采集中...' : '开始采集' }}
         </el-button>
-        <el-button type="primary" v-else @click="showCollect = false; refresh()">完成</el-button>
+        <el-button v-else type="primary" @click="showCollect = false; refresh()">完成</el-button>
       </template>
     </el-dialog>
 
@@ -112,7 +126,7 @@
             {{ rewriteDone ? '完成' : '处理中' }}
           </el-tag>
         </div>
-        <div class="log-body" ref="rewriteLogRef">
+        <div ref="rewriteLogRef" class="log-body">
           <div v-for="(evt, i) in rewriteLog" :key="i" class="log-line" :class="evt.type">
             <template v-if="evt.type === 'rewriting'">✍️ 开始处理：{{ evt.title }}</template>
             <template v-else-if="evt.type === 'step'">
@@ -127,7 +141,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="showRewrite = false; refresh()" :disabled="rewriting">关闭</el-button>
+        <el-button :disabled="rewriting" @click="showRewrite = false; refresh()">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -137,7 +151,8 @@
         选择已上线的标签，AI 为每个标签生成一篇文章（草稿）。
       </div>
       <div v-if="!tagGenRunning">
-        <el-select v-model="tagGenIds" multiple filterable placeholder="选择标签（可多选）" style="width:100%"
+        <el-select
+v-model="tagGenIds" multiple filterable placeholder="选择标签（可多选）" style="width:100%"
           :loading="tagsLoading" @focus="loadTags">
           <el-option v-for="t in tagOptions" :key="t.id" :label="t.name" :value="t.id" />
         </el-select>
@@ -160,9 +175,10 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="showTagGen = false; refresh()" :disabled="tagGenRunning">关闭</el-button>
-        <el-button type="primary" :loading="tagGenRunning" @click="doTagGen"
-          :disabled="!tagGenIds.length || tagGenRunning" v-if="!tagGenDone">
+        <el-button :disabled="tagGenRunning" @click="showTagGen = false; refresh()">关闭</el-button>
+        <el-button
+v-if="!tagGenDone" type="primary" :loading="tagGenRunning"
+          :disabled="!tagGenIds.length || tagGenRunning" @click="doTagGen">
           生成 {{ tagGenIds.length }} 篇文章
         </el-button>
       </template>
@@ -172,12 +188,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive, defineAsyncComponent } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+defineOptions({ name: 'ContentArticle' })
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Download, MagicStick, Plus } from '@element-plus/icons-vue'
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
-import { get, post } from '@/api/request'
+import { get } from '@/api/request'
 import { useSSE } from '@/hooks/useSSE'
 
 const ArticleEditor = defineAsyncComponent(() => import('@/components/ArticleEditor/index.vue'))
@@ -187,7 +205,7 @@ const hasSelection = computed(() => (crudRef.value?.crud?.selections?.value?.len
 const selectionCount = computed(() => crudRef.value?.crud?.selections?.value?.length ?? 0)
 
 const stats = ref<any>(null)
-async function loadStats() { try { stats.value = await get('/admin/article/collect-stats') } catch {} }
+async function loadStats() { try { stats.value = await get('/admin/article/collect-stats') } catch { /* 统计加载失败静默 */ } }
 onMounted(loadStats)
 
 function filterBy(q: Record<string, any>) { crudRef.value?.crud?.setQuery?.(q); crudRef.value?.crud?.getList?.() }
@@ -276,7 +294,6 @@ const collecting = ref(false)
 const collectDone = ref(false)
 const collectSaved = ref(0)
 const collectLog = ref<any[]>([])
-const logBodyRef = ref<HTMLElement>()
 const collectForm = ref({ mode: 'keyword', keyword: '', url: '', count: 5 })
 
 async function doCollect() {
@@ -306,7 +323,7 @@ const rewriteLog = ref<any[]>([])
 async function aiRewrite() {
   const rows = crudRef.value?.crud?.selections?.value || []
   if (!rows.length) return
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `对 ${rows.length} 篇文章 AI 深度润色？每篇独立请求，过程中请勿关闭。`, 'AI 批量润色', { type: 'warning' })
 
   showRewrite.value = true
@@ -328,20 +345,20 @@ async function aiRewrite() {
 </script>
 
 <style scoped>
-.stat-cards { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-cards { display: flex; gap: var(--space-md); margin-bottom: var(--space-base); }
 .stat-card {
-  flex: 1; padding: 14px; border-radius: 8px; text-align: center; cursor: pointer;
-  border: 1px solid var(--el-border-color-lighter); background: var(--el-bg-color); transition: transform 0.15s;
+  flex: 1; padding: var(--space-md); border-radius: var(--radius); text-align: center; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-card); transition: border-color 0.15s;
 }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.stat-num { font-size: 26px; font-weight: 700; line-height: 1.2; }
-.stat-num.warning { color: var(--el-color-warning); }
-.stat-num.success { color: var(--el-color-success); }
-.stat-num.primary { color: var(--el-color-primary); }
-.stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; }
-.sse-log { margin-top: 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; overflow: hidden; }
-.log-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--el-fill-color-light); font-size: 13px; font-weight: 600; }
-.log-body { max-height: 280px; overflow-y: auto; padding: 8px 12px; font-size: 12px; line-height: 1.8; }
+.stat-card:hover { border-color: var(--border-dark); }
+.stat-num { font-size: var(--text-2xl); font-weight: 700; line-height: 1.2; }
+.stat-num.warning { color: var(--warning); }
+.stat-num.success { color: var(--success); }
+.stat-num.primary { color: var(--primary); }
+.stat-label { font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-xs); }
+.sse-log { margin-top: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.log-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-md); background: var(--bg-subtle); font-size: var(--text-sm); font-weight: 600; }
+.log-body { max-height: 280px; overflow-y: auto; padding: var(--space-sm) var(--space-md); font-size: var(--text-xs); line-height: 1.8; }
 .log-line.saved, .log-line.done_one { color: var(--el-color-success-dark-2); }
 .log-line.step { color: var(--el-color-primary); }
 .step-indicator { animation: pulse 1.5s infinite; }
@@ -357,28 +374,28 @@ async function aiRewrite() {
 /* ---- 全屏编辑层 ---- */
 .editor-layer {
   position: fixed; inset: 0; z-index: 2000;
-  background: rgba(0,0,0,0.4);
-  display: flex; padding: 16px; gap: 12px;
+  background: var(--overlay-strong);
+  display: flex; padding: var(--space-base); gap: var(--space-md);
   justify-content: center;
 }
 .editor-main {
-  flex: 1; max-width: 820px; background: var(--el-bg-color); border-radius: 8px;
+  flex: 1; max-width: 820px; background: var(--bg-card); border-radius: var(--radius);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .editor-top {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-lighter);
+  padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.editor-top h3 { margin: 0; font-size: 16px; }
-.editor-form { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.editor-top h3 { margin: 0; font-size: var(--text-lg); }
+.editor-form { padding: var(--space-base) var(--space-lg); overflow-y: auto; flex: 1; }
 .editor-ai {
-  width: 380px; flex-shrink: 0; background: var(--el-bg-color); border-radius: 8px;
+  width: 380px; flex-shrink: 0; background: var(--bg-card); border-radius: var(--radius);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .ai-panel-header {
-  padding: 12px 16px; background: var(--el-color-primary); color: white;
-  font-size: 14px; font-weight: 600; flex-shrink: 0;
+  padding: var(--space-md) var(--space-base); background: var(--primary); color: white;
+  font-size: var(--text-base); font-weight: 600; flex-shrink: 0;
 }
-.ai-panel-body { padding: 14px; overflow-y: auto; flex: 1; }
+.ai-panel-body { padding: var(--space-md); overflow-y: auto; flex: 1; }
 </style>

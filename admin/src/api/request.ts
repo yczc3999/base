@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { getToken, getRefreshToken, setToken, clearTokens } from '@/utils/auth'
 import type { ApiResponse, RequestOptions } from './types'
 
@@ -43,7 +43,9 @@ async function doRefresh(): Promise<string | null> {
       setToken(data.data.access_token)
       return data.data.access_token
     }
-  } catch {}
+  } catch {
+    // refresh 失败静默：走统一 401 重登逻辑
+  }
   return null
 }
 
@@ -107,7 +109,24 @@ async function request<T = any>(
     throw new Error(res.msg || '操作失败')
   } catch (error: any) {
     if (showError && !error.message?.includes('请登录')) {
-      const msg = error.response?.data?.msg || error.message || '网络错误'
+      let msg: string
+      if (error.response?.data?.msg) {
+        msg = error.response.data.msg
+      } else if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
+        msg = '请求超时，请重试'
+      } else if (error.response?.status === 401) {
+        msg = '请登录'
+      } else if (error.response?.status === 403) {
+        msg = '无权限执行此操作'
+      } else if (error.response?.status === 404) {
+        msg = '资源不存在'
+      } else if (error.response?.status >= 500) {
+        msg = '服务异常，请稍后重试'
+      } else if (error.message === 'Network Error') {
+        msg = '网络异常，请检查连接'
+      } else {
+        msg = '操作失败'
+      }
       ElMessage.error(msg)
     }
     throw error

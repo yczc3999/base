@@ -7,8 +7,9 @@
       <div class="card-title">模型接入</div>
       <el-form label-width="100px">
         <el-form-item label="AI 平台">
-          <el-select v-model="form.provider" @change="onProviderChange" style="width:100%">
-            <el-option v-for="key in Object.keys(providerDefaults)" :key="key"
+          <el-select v-model="form.provider" style="width:100%" @change="onProviderChange">
+            <el-option
+v-for="key in Object.keys(providerDefaults)" :key="key"
               :label="PROVIDER_LABELS[key] || key" :value="key" />
             <el-option label="自定义" value="custom" />
           </el-select>
@@ -36,9 +37,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SettingsAi' })
 import { ref, reactive, onMounted } from 'vue'
 import { createSettingApi } from '@/api/settings'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Check } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
@@ -90,8 +92,8 @@ async function testConnection() {
     await save()
     const res = await post('/admin/setting/ai/test')
     ElMessage.success(res?.message || 'AI 连接正常')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '连接失败')
+  } catch {
+    ElMessage.error('连接失败')
   } finally {
     testing.value = false
   }

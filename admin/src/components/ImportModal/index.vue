@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Download, Upload } from '@element-plus/icons-vue'
 import { getToken } from '@/utils/auth'
 

@@ -2,10 +2,10 @@
   <div>
     <div class="session-header">
       <span class="count">在线会话 <b>{{ sessions.length }}</b> 个</span>
-      <el-button :icon="Refresh" size="small" @click="load" circle />
+      <el-button :icon="Refresh" size="small" circle @click="load" />
     </div>
 
-    <el-table :data="sessions" v-loading="loading" border :empty-text="'暂无在线会话'">
+    <el-table v-loading="loading" :data="sessions" border :empty-text="'暂无在线会话'">
       <el-table-column prop="username" label="用户名" min-width="120" />
       <el-table-column label="端" width="80" align="center">
         <template #default="{ row }">
@@ -42,8 +42,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Session' })
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, SwitchButton } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
@@ -66,11 +68,11 @@ async function load() {
   loading.value = true
   try {
     sessions.value = await get('/admin/session/list') || []
-  } catch {} finally { loading.value = false }
+  } catch { /* 会话列表加载失败静默 */ } finally { loading.value = false }
 }
 
 async function kick(row: any) {
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认将「${row.username}」踢下线？该用户所有设备将立即退出登录。`,
     '踢下线', { type: 'warning' },
   )

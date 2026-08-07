@@ -84,8 +84,9 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SeoSitemap' })
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Refresh } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 

@@ -1,24 +1,26 @@
 <template>
   <div class="dict-page">
-    <!-- 字典类型列表 -->
-    <CrudTable ref="dictTableRef" api="admin/dict" perms="admin:dict"
-      :columns="dictColumns" :search-fields="dictSearchFields" :form-fields="dictFormFields"
-      :action-width="200">
+    <!-- 字典类型列表（schema 驱动） -->
+    <SchemaCrudPage ref="dictTableRef" :schema="dictSchema">
       <template #actions="{ row }">
         <el-button type="primary" link size="small" :icon="Collection" @click="openItems(row)">
           字典项
         </el-button>
-        <el-button type="primary" link size="small" :icon="EditIcon"
-          @click="dictTableRef?.crud.handleEdit(row)">编辑</el-button>
-        <el-button type="danger" link size="small" :icon="DeleteIcon"
-          @click="dictTableRef?.crud.handleDelete(row)">删除</el-button>
+        <el-button
+type="primary" link size="small" :icon="EditIcon"
+          @click="dictTableRef?.crud?.handleEdit(row)">编辑</el-button>
+        <el-button
+type="danger" link size="small" :icon="DeleteIcon"
+          @click="dictTableRef?.crud?.handleDelete(row)">删除</el-button>
       </template>
-    </CrudTable>
+    </SchemaCrudPage>
 
     <!-- 字典项管理弹窗 -->
-    <el-dialog v-model="itemDialogVisible" :title="`字典项 — ${currentDict?.type_name || ''}`"
+    <el-dialog
+v-model="itemDialogVisible" :title="`字典项 — ${currentDict?.type_name || ''}`"
       width="860px" destroy-on-close @opened="onItemsDialogOpened" @closed="onItemsDialogClosed">
-      <CrudTable v-if="currentDict" ref="itemTableRef" api="admin/dict_item" perms="admin:dict"
+      <CrudTable
+v-if="currentDict" ref="itemTableRef" api="admin/dict_item" perms="admin:dict"
         :columns="itemColumns" :search-fields="itemSearchFields" :form-fields="itemFormFields"
         :action-width="160" :show-keyword="true">
         <template #toolbar>
@@ -30,38 +32,52 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Dict' })
 import { ref, computed, watch, nextTick } from 'vue'
 import { Collection, Edit as EditIcon, Delete as DeleteIcon } from '@element-plus/icons-vue'
+import SchemaCrudPage from '@/components/SchemaCrudPage/index.vue'
 import CrudTable from '@/components/CrudTable/index.vue'
+import type { CrudPageSchema } from '@/types/crudSchema'
 import type { CrudColumn, SearchField, FormField } from '@/components/CrudTable/types'
 import { clearDictCache } from '@/api/dict'
 
 const dictTableRef = ref()
 const itemTableRef = ref()
 
-// ---- 字典类型表 ----
+// ---- 字典类型表（schema 驱动） ----
 
-const dictColumns: CrudColumn[] = [
-  { field: 'id', label: 'ID', width: 60 },
-  { field: 'type_name', label: '类型名', minWidth: 120 },
-  { field: 'description', label: '描述', minWidth: 180 },
-  { field: 'status', label: '状态', width: 80, align: 'center', type: 'switch' },
-  { field: 'created_at', label: '创建时间', width: 160, type: 'time' },
-]
-
-const dictSearchFields: SearchField[] = [
-  { field: 'keyword', label: '搜索', type: 'input', placeholder: '类型名 / 描述' },
-  { field: 'status', label: '状态', type: 'select', options: [
-    { label: '启用', value: 1 }, { label: '禁用', value: 0 },
-  ] },
-]
-
-const dictFormFields: FormField[] = [
-  { field: 'type_name', label: '类型名', rules: [{ required: true, message: '请输入类型名' }],
-    placeholder: '如 gender / status / article_type' },
-  { field: 'description', label: '描述', type: 'textarea' },
-  { field: 'status', label: '状态', type: 'switch', default: 1, options: [{ value: 1, label: '启用' }] },
-]
+const dictSchema: CrudPageSchema = {
+  title: '字典管理',
+  subTitle: '系统字典与字典项维护',
+  api: 'admin/dict',
+  perms: 'admin:dict',
+  actionWidth: 200,
+  columns: [
+    { field: 'id', label: 'ID', width: 60 },
+    { field: 'type_name', label: '类型名', minWidth: 120 },
+    { field: 'description', label: '描述', minWidth: 180 },
+    { field: 'status', label: '状态', width: 80, align: 'center', type: 'switch' },
+    { field: 'created_at', label: '创建时间', width: 160, type: 'time' },
+  ],
+  filters: [
+    { field: 'keyword', label: '搜索', type: 'input', placeholder: '类型名 / 描述' },
+    {
+      field: 'status', label: '状态', type: 'select',
+      options: [
+        { label: '启用', value: 1 }, { label: '禁用', value: 0 },
+      ],
+    },
+  ],
+  formFields: [
+    {
+      field: 'type_name', label: '类型名',
+      rules: [{ required: true, message: '请输入类型名' }],
+      placeholder: '如 gender / status / article_type',
+    },
+    { field: 'description', label: '描述', type: 'textarea' },
+    { field: 'status', label: '状态', type: 'switch', default: 1, options: [{ value: 1, label: '启用' }] },
+  ],
+}
 
 // ---- 字典项弹窗 ----
 
@@ -77,7 +93,7 @@ function openItems(row: any) {
 async function onItemsDialogOpened() {
   await nextTick()
   // 只展示当前字典的项
-  itemTableRef.value?.crud.setQuery({ filters: { dict_id: currentDict.value.id } })
+  itemTableRef.value?.crud?.setQuery({ filters: { dict_id: currentDict.value.id } })
 }
 
 function onItemsDialogClosed() {
@@ -115,16 +131,25 @@ const itemColumns: CrudColumn[] = [
 
 const itemSearchFields: SearchField[] = [
   { field: 'keyword', label: '搜索', type: 'input', placeholder: '值 / 标签' },
-  { field: 'status', label: '状态', type: 'select', options: [
-    { label: '启用', value: 1 }, { label: '禁用', value: 0 },
-  ] },
+  {
+    field: 'status', label: '状态', type: 'select',
+    options: [
+      { label: '启用', value: 1 }, { label: '禁用', value: 0 },
+    ],
+  },
 ]
 
 const itemFormFields: FormField[] = [
-  { field: 'value', label: '值', rules: [{ required: true, message: '请输入值' }],
-    placeholder: '存储值，如 1 / male / draft' },
-  { field: 'label', label: '标签', rules: [{ required: true, message: '请输入标签' }],
-    placeholder: '显示文字，如 男 / 草稿' },
+  {
+    field: 'value', label: '值',
+    rules: [{ required: true, message: '请输入值' }],
+    placeholder: '存储值，如 1 / male / draft',
+  },
+  {
+    field: 'label', label: '标签',
+    rules: [{ required: true, message: '请输入标签' }],
+    placeholder: '显示文字，如 男 / 草稿',
+  },
   { field: 'sort', label: '排序', type: 'number', default: 0 },
   { field: 'status', label: '状态', type: 'switch', default: 1, options: [{ value: 1, label: '启用' }] },
 ]

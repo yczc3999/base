@@ -85,19 +85,27 @@
           style="width: 160px; margin-right: 8px;"
         />
         <span class="total-text">共 {{ crud.total.value }} 条</span>
-        <el-button :icon="RefreshIcon" @click="crud.getList" title="刷新" />
+        <el-button :icon="RefreshIcon" title="刷新" @click="crud.getList" />
       </div>
     </div>
 
     <!-- 表格 -->
     <div class="crud-table">
+      <!-- 首次加载（无数据时）：骨架屏，替代全屏 spinner -->
+      <el-skeleton
+        v-if="crud.loading.value && !crud.tableData.value.length"
+        :rows="5"
+        animated
+      />
+      <!-- 后续刷新（已有数据）：保留 v-loading 遮罩，避免整表闪烁 -->
       <el-table
+        v-else
         v-loading="crud.loading.value"
         :data="crud.tableData.value"
         border
+        style="width: 100%"
         @selection-change="crud.handleSelectionChange"
         @sort-change="crud.handleSortChange"
-        style="width: 100%"
       >
         <el-table-column type="selection" width="40" fixed="left" />
         <el-table-column
@@ -335,7 +343,8 @@
     </el-dialog>
 
     <!-- 数据导入 -->
-    <ImportModal v-if="importable && importModule" v-model="importVisible"
+    <ImportModal
+v-if="importable && importModule" v-model="importVisible"
       :module="importModule" @success="crud.getList()" />
   </div>
 </template>

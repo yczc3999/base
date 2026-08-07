@@ -29,8 +29,8 @@
       <template v-else>
         <div v-for="(pair, i) in pairs" :key="i" class="je-row">
           <input
-            class="je-input je-key"
             v-model="pair.key"
+            class="je-input je-key"
             placeholder="key"
             spellcheck="false"
             @input="emitFromPairs"
@@ -39,8 +39,8 @@
           <span class="je-sep">=</span>
           <input
             :ref="el => setValueRef(el, i)"
-            class="je-input je-value"
             v-model="pair.value"
+            class="je-input je-value"
             placeholder="value"
             spellcheck="false"
             @input="emitFromPairs"
@@ -60,13 +60,13 @@
     <!-- 原始 JSON 模式 -->
     <div v-else class="je-raw">
       <div class="je-raw-wrap">
-        <div class="je-lines" ref="linesRef">
+        <div ref="linesRef" class="je-lines">
           <div v-for="n in lineCount" :key="n" class="je-ln">{{ n }}</div>
         </div>
         <textarea
           ref="textareaRef"
-          class="je-code"
           v-model="rawText"
+          class="je-code"
           :placeholder="placeholder || '{}'"
           spellcheck="false"
           @input="handleRawInput"

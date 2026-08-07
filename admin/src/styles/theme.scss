@@ -10,11 +10,13 @@
   --bg-header: #1e293b;
   --bg-input: #0f172a;
   --bg-sidebar: #0b1220;
+  --bg-table-header: #1e293b;
+  --bg-subtle: #263449;
 
   // ── Text ──
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
-  --text-placeholder: #64748b;
+  --text-placeholder: #94a3b8;
   --text-disabled: #475569;
 
   // ── Borders ──
@@ -28,6 +30,10 @@
   --warning-bg: #78350f;
   --danger-bg: #7f1d1d;
   --info-bg: #1e293b;
+
+  // ── Primary light tint（深色下用深蓝 tint，保证对比度） ──
+  --primary-light-5: #1e3a5f;
+  --primary-light-7: #27496d;
 
   // 侧栏文字（深色侧栏在暗色下可读性）
   --text-sidebar: #94a3b8;

@@ -1,16 +1,28 @@
 <template>
   <div>
     <!-- 统计卡片 -->
-    <div class="stat-cards" v-if="statsData">
-      <div class="stat-card pending" @click="filterByStage('candidate')">
+    <div v-if="statsData" class="stat-cards">
+      <div
+class="stat-card pending" role="button" tabindex="0"
+        @click="filterByStage('candidate')"
+        @keydown.enter.prevent="filterByStage('candidate')"
+        @keydown.space.prevent="filterByStage('candidate')">
         <div class="stat-num">{{ statsData.candidate }}</div>
         <div class="stat-label">待审核</div>
       </div>
-      <div class="stat-card online" @click="filterByStage('approved')">
+      <div
+class="stat-card online" role="button" tabindex="0"
+        @click="filterByStage('approved')"
+        @keydown.enter.prevent="filterByStage('approved')"
+        @keydown.space.prevent="filterByStage('approved')">
         <div class="stat-num">{{ statsData.approved }}</div>
         <div class="stat-label">已上线</div>
       </div>
-      <div class="stat-card ignored" @click="filterByStage('archived')">
+      <div
+class="stat-card ignored" role="button" tabindex="0"
+        @click="filterByStage('archived')"
+        @keydown.enter.prevent="filterByStage('archived')"
+        @keydown.space.prevent="filterByStage('archived')">
         <div class="stat-num">{{ statsData.archived }}</div>
         <div class="stat-label">已忽略</div>
       </div>
@@ -24,15 +36,19 @@
       </div>
     </div>
 
-    <CrudTable ref="crudRef" api="admin/keyword" perms="admin:keyword"
+    <CrudTable
+ref="crudRef" api="admin/keyword" perms="admin:keyword"
       :columns="columns" :search-fields="searchFields" :form-fields="formFields">
 
       <template #toolbar>
-        <el-button type="success" :icon="Check" :disabled="!hasSelection"
+        <el-button
+type="success" :icon="Check" :disabled="!hasSelection"
           @click="bulkApprove">上线 ({{ selectionCount }})</el-button>
-        <el-button :icon="Close" :disabled="!hasSelection"
+        <el-button
+:icon="Close" :disabled="!hasSelection"
           @click="bulkReject">忽略 ({{ selectionCount }})</el-button>
-        <el-button type="danger" plain :icon="Remove" :disabled="!hasSelection"
+        <el-button
+type="danger" plain :icon="Remove" :disabled="!hasSelection"
           @click="bulkOffline">下线 ({{ selectionCount }})</el-button>
         <el-divider direction="vertical" />
         <el-button type="warning" :icon="Refresh" :loading="polling" @click="pollHarvest">
@@ -42,7 +58,7 @@
         <el-button :icon="MagicStick" :loading="aiLoading" @click="getAiSeeds">AI 种子词</el-button>
         <el-divider direction="vertical" />
         <el-button :icon="Setting" @click="openPromptDialog">审核规则</el-button>
-        <el-dropdown trigger="click" @command="onReviewCommand" :disabled="aiReviewing">
+        <el-dropdown trigger="click" :disabled="aiReviewing" @command="onReviewCommand">
           <el-button type="primary" :icon="Cpu" :loading="aiReviewing">
             {{ aiReviewing ? `AI 审核中 (${aiScopeLabel})...` : 'AI 审核' }}
             <el-icon v-if="!aiReviewing" class="el-icon--right"><ArrowDown /></el-icon>
@@ -59,7 +75,8 @@
     </CrudTable>
 
     <!-- 采集弹窗 -->
-    <el-dialog v-model="showHarvest" :title="harvestMode === 'poll' ? '轮询采集' : '手动采集'"
+    <el-dialog
+v-model="showHarvest" :title="harvestMode === 'poll' ? '轮询采集' : harvestSource === 'ai' ? 'AI 种子词' : '手动采集'"
       width="620px" :close-on-click-modal="false">
       <!-- 手动：种子表单 -->
       <template v-if="harvestMode === 'manual'">
@@ -69,7 +86,8 @@
         </div>
         <el-form label-width="80px">
           <el-form-item label="种子词">
-            <el-input v-model="harvestForm.seedsText" type="textarea" :rows="8"
+            <el-input
+v-model="harvestForm.seedsText" type="textarea" :rows="8"
               placeholder="每行一个种子关键词，如：&#10;海外看B站&#10;回国VPN推荐&#10;watch bilibili abroad&#10;&#10;建议 10-30 个" />
             <div class="form-hint">当前 {{ seedCount }} 个种子词（上限 50）</div>
           </el-form-item>
@@ -97,7 +115,7 @@
             <i class="el-icon-loading" /> 采集中... {{ harvestTotal }} 个
           </el-tag>
         </div>
-        <div class="log-body" ref="logBody">
+        <div ref="logBody" class="log-body">
           <div v-for="(log, i) in harvestLog" :key="i" class="log-line" :class="log.type">
             <template v-if="log.type === 'level'">📂 第 {{ log.level + 1 }} 层，{{ log.seeds }} 个种子</template>
             <template v-else-if="log.type === 'round_start'">
@@ -121,15 +139,17 @@
       </div>
 
       <template #footer>
-        <el-button @click="showHarvest = false" :disabled="harvesting || polling">关闭</el-button>
+        <el-button :disabled="harvesting || polling" @click="showHarvest = false">关闭</el-button>
         <!-- 手动采集：有种子才能开始 -->
-        <el-button v-if="harvestMode === 'manual'" type="primary"
+        <el-button
+v-if="harvestMode === 'manual'" type="primary"
           :loading="harvesting" :disabled="seedCount === 0 || harvesting"
           @click="doHarvest">
           {{ harvesting ? `采集中 (${harvestTotal})...` : `开始采集 (${seedCount} 个种子)` }}
         </el-button>
         <!-- 轮询完成后：继续下一批 -->
-        <el-button v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
+        <el-button
+v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
           @click="pollHarvest">
           继续下一批
         </el-button>
@@ -150,7 +170,7 @@
       </div>
 
       <!-- 日志 -->
-      <div class="ai-review-log" ref="aiLogBody">
+      <div ref="aiLogBody" class="ai-review-log">
         <template v-for="(evt, i) in aiLog" :key="i">
           <div v-if="evt.type === 'batch_start'" class="log-line level">
             📦 第 {{ Math.floor(i / 2) + 1 }} 批，{{ evt.batch_size }} 个
@@ -173,7 +193,7 @@
       </div>
 
       <template #footer>
-        <el-button @click="showAiResult = false" :disabled="aiReviewing">关闭</el-button>
+        <el-button :disabled="aiReviewing" @click="showAiResult = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -189,11 +209,13 @@
         <div class="ai-assist-title">✨ AI 辅助：描述你的业务，AI 帮你写规则</div>
         <el-form label-width="80px" size="small">
           <el-form-item label="业务">
-            <el-input v-model="genForm.industry" type="textarea" :rows="2"
+            <el-input
+v-model="genForm.industry" type="textarea" :rows="2"
               placeholder="例：海外华人回国加速，提供 VPN 服务让海外用户访问 B 站、爱奇艺、腾讯视频等国内平台" />
           </el-form-item>
           <el-form-item label="目标用户">
-            <el-input v-model="genForm.audience"
+            <el-input
+v-model="genForm.audience"
               placeholder="例：海外华人 / 中国留学生 / 在海外的中国出差人员（可空）" />
           </el-form-item>
           <el-form-item>
@@ -208,11 +230,13 @@
 
       <el-form label-width="80px" size="small">
         <el-form-item label="System">
-          <el-input v-model="reviewForm.tag_system_prompt" type="textarea" :rows="2"
+          <el-input
+v-model="reviewForm.tag_system_prompt" type="textarea" :rows="2"
             placeholder="AI 的身份和约束（短，1-2 行）。例：你是 SEO 关键词严审员，只返回 JSON。宁严勿宽。" />
         </el-form-item>
         <el-form-item label="审核规则">
-          <el-input v-model="reviewForm.tag_user_template" type="textarea" :rows="14"
+          <el-input
+v-model="reviewForm.tag_user_template" type="textarea" :rows="14"
             :placeholder="placeholderUser" />
           <div class="prompt-hint-line">
             必须含 <code>{{ '{keywords}' }}</code> 占位符（后端会把待审词列表注入这里）。
@@ -232,8 +256,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'ContentKeyword' })
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Check, Close, Remove, Download, MagicStick, Refresh, Cpu, ArrowDown, RefreshRight, Delete, Setting } from '@element-plus/icons-vue'
 import { createSettingApi } from '@/api/settings'
 import CrudTable from '@/components/CrudTable/index.vue'
@@ -276,7 +302,7 @@ async function loadPrompt() {
   try {
     const data = await reviewApi.getAll()
     Object.assign(reviewForm, data)
-  } catch {}
+  } catch { /* 加载审核规则失败则用内置默认 */ }
 }
 
 function openPromptDialog() {
@@ -300,13 +326,13 @@ async function loadPromptDefaults() {
     reviewForm.tag_system_prompt = d?.tag_system_prompt || ''
     reviewForm.tag_user_template = d?.tag_user_template || ''
     ElMessage.info('已填入内置默认，点"保存"生效')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '读取默认失败')
+  } catch {
+    ElMessage.error('读取默认失败')
   }
 }
 
 async function clearPrompt() {
-  await ElMessageBox.confirm('清空后将使用系统内置提示词（适合归途项目，新业务可能不准）。继续？', '清空', { type: 'warning' })
+  await confirmDialog('清空后将使用系统内置提示词（适合归途项目，新业务可能不准）。继续？', '清空', { type: 'warning' })
   reviewForm.tag_system_prompt = ''
   reviewForm.tag_user_template = ''
   await reviewApi.setMany(reviewForm)
@@ -323,8 +349,8 @@ async function generatePrompt() {
     reviewForm.tag_system_prompt = res?.system || ''
     reviewForm.tag_user_template = res?.user_template || ''
     ElMessage.success('AI 已生成，检查后点"保存"应用')
-  } catch (e: any) {
-    ElMessage.error(e?.message || 'AI 生成失败')
+  } catch {
+    ElMessage.error('AI 生成失败')
   } finally { generating.value = false }
 }
 
@@ -333,7 +359,7 @@ async function onReviewCommand(scope: 'pending' | 'online' | 'all') {
   await loadPrompt()
   const hasCustom = (reviewForm.tag_user_template || '').trim().length > 0
   if (!hasCustom) {
-    await ElMessageBox.confirm(
+    await confirmDialog(
       '当前审核规则为系统内置（适合归途项目）。\n如果你的业务不同，建议先点「审核规则」按钮配置。\n要继续用默认规则审核吗？',
       '⚠️ 审核规则未配置',
       { confirmButtonText: '继续用默认', cancelButtonText: '去配置', type: 'warning' },
@@ -355,7 +381,7 @@ const statsData = ref<any>(null)
 async function loadStats() {
   try {
     statsData.value = await get('/admin/keyword/stats')
-  } catch {}
+  } catch { /* 统计加载失败静默 */ }
 }
 
 function filterByStage(stage: string) {
@@ -370,7 +396,7 @@ onMounted(() => { loadStats() })
 const columns: CrudColumn[] = [
   { field: 'id', label: 'ID', width: 60 },
   { field: 'keyword', label: '关键词', minWidth: 180 },
-  { field: 'slug', label: 'slug', minWidth: 120 },
+  { field: 'slug', label: '网址标识', minWidth: 120 },
   { field: 'source', label: '来源', width: 80, type: 'tag',
     tagMap: {
       manual: { label: '手动', type: 'info' },
@@ -408,7 +434,7 @@ const searchFields: SearchField[] = [
 
 const formFields: FormField[] = [
   { field: 'keyword', label: '关键词', rules: [{ required: true, message: '请输入' }] },
-  { field: 'slug', label: 'slug', placeholder: '留空自动生成' },
+  { field: 'slug', label: '网址标识', placeholder: '留空自动生成' },
   { field: 'color', label: '颜色', type: 'color' },
   { field: 'description', label: '描述', type: 'textarea' },
   { field: 'sort', label: '排序', type: 'number', default: 0 },
@@ -422,7 +448,7 @@ const formFields: FormField[] = [
 
 async function bulkApprove() {
   const ids = getSelectedIds()
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认上线 ${ids.length} 个标签？上线后会生成 slug 并作为前台着陆页展示。`,
     '批量上线', { type: 'success' }
   )
@@ -433,7 +459,7 @@ async function bulkApprove() {
 
 async function bulkReject() {
   const ids = getSelectedIds()
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认忽略 ${ids.length} 个标签？忽略后不会在前台展示，也不再参与轮询采集。`,
     '批量忽略', { type: 'warning' }
   )
@@ -444,8 +470,8 @@ async function bulkReject() {
 
 async function bulkOffline() {
   const ids = getSelectedIds()
-  await ElMessageBox.confirm(
-    `确认下线 ${ids.length} 个标签？下线后前台着陆页不再展示。`,
+  await confirmDialog(
+    `确认下线 ${ids.length} 个标签？下线后将回到「待审核」状态，前台不再展示。`,
     '批量下线', { type: 'error' }
   )
   const res = await post('/admin/keyword/bulk-stage', { ids, stage: 'candidate' })
@@ -481,6 +507,7 @@ async function pollHarvest() {
 
 function openManualHarvest() {
   harvestMode.value = 'manual'
+  harvestSource.value = 'manual'
   harvestLog.value = []
   harvestDone.value = false
   harvestTotal.value = 0
@@ -491,6 +518,7 @@ function openManualHarvest() {
 
 const showHarvest = ref(false)
 const harvestMode = ref<'manual' | 'poll'>('manual')
+const harvestSource = ref<'manual' | 'ai'>('manual')
 const harvesting = ref(false)
 const harvestForm = ref({ seedsText: '', engines: ['google', 'duckduckgo'] as string[] })
 const seedCount = computed(() =>
@@ -556,10 +584,11 @@ async function getAiSeeds() {
     }
     harvestForm.value.seedsText = seeds.join('\n')
     harvestMode.value = 'manual'
+    harvestSource.value = 'ai'
     showHarvest.value = true
     ElMessage.success(`AI 推荐了 ${seeds.length} 个种子词，检查后点"开始采集"`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || 'AI 请求失败')
+  } catch {
+    ElMessage.error('AI 请求失败')
   } finally {
     aiLoading.value = false
   }
@@ -583,7 +612,7 @@ const aiScopeLabel = computed(() => SCOPE_DESC[aiScope.value].label)
 
 async function aiReview(scope: 'pending' | 'online' | 'all') {
   const desc = SCOPE_DESC[scope]
-  await ElMessageBox.confirm(desc.tip, `AI 审核 — ${desc.label}`, { type: 'warning' })
+  await confirmDialog(desc.tip, `AI 审核 — ${desc.label}`, { type: 'warning' })
   aiScope.value = scope
   aiReviewing.value = true
   showAiResult.value = true

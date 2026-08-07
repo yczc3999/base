@@ -9,7 +9,7 @@
  */
 
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import type { CrudApi } from '@/api/crud'
 import { getExportProgress, downloadExportFile } from '@/api/modules/export'
 
@@ -39,7 +39,7 @@ export function useExport(api: CrudApi) {
       const result = await api.doExport({ filters })
       const key = result?.key
       if (!key) {
-        ElMessage.error('导出失败：未获取到任务标识')
+        ElMessage.error('导出失败，请重试')
         exporting.value = false
         return
       }

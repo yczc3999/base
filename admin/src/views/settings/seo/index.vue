@@ -2,7 +2,7 @@
   <div v-loading="loading" class="seo-settings">
     <header class="page-header">
       <h2>SEO 配置</h2>
-      <span class="subtitle">跨项目通用；站点 URL + 凭据 + 当前策略 + 进阶质量闸</span>
+      <span class="subtitle">跨项目通用；站点 URL + 凭据 + 当前策略 + 进阶发布质量检查</span>
     </header>
 
     <!-- 前置提示 -->
@@ -10,7 +10,7 @@
       <span class="pc-icon">ℹ️</span>
       站点名称 / 前端 URL / 建站日期 / 时区 等通用配置在
       <router-link to="/settings/site">站点设置</router-link> 里管理。
-      本页只放 SEO 专用的凭据和质量闸。
+      本页只放 SEO 专用的凭据和发布质量检查。
     </div>
 
     <!-- 1. 凭据 -->
@@ -23,7 +23,12 @@
         </div>
       </div>
       <el-form label-width="120px" class="form">
-        <el-form-item label="IndexNow Key">
+        <el-form-item>
+          <template #label>
+            <el-tooltip content="IndexNow 协议，用于主动通知 Bing/Yandex 等搜索引擎" placement="top">
+              <span>搜索引擎推送 Key</span>
+            </el-tooltip>
+          </template>
           <div class="row-flex">
             <el-input v-model="credsForm.indexnow_key" placeholder="未生成则禁用 IndexNow" />
             <el-button @click="genIndexNowKey">生成 Key</el-button>
@@ -40,9 +45,10 @@
             <a href="https://www.bing.com/indexnow" target="_blank" rel="noreferrer">Bing 官方介绍 ↗</a>
           </div>
         </el-form-item>
-        <el-form-item label="GSC 凭据">
-          <el-input v-model="credsForm.gsc_service_account_json" type="textarea" :rows="4"
-            placeholder="Phase 2 才会用；留空不影响主功能" />
+        <el-form-item label="Google Search Console 凭据">
+          <el-input
+v-model="credsForm.gsc_service_account_json" type="textarea" :rows="4"
+            placeholder="预留字段，暂未启用；留空不影响主功能" />
           <div class="hint">
             <span class="phase-tag">Phase 2</span>
             <b>干什么用</b>：拉 <b>Google Search Console</b> 的「已收录页面数」。
@@ -59,8 +65,8 @@
             <b>不填会怎样</b>：健康度显示"—"，不影响发布流程。
           </div>
         </el-form-item>
-        <el-form-item label="Bing API Key">
-          <el-input v-model="credsForm.bing_api_key" placeholder="Phase 2 才会用" />
+        <el-form-item label="Bing 站长工具 API Key">
+          <el-input v-model="credsForm.bing_api_key" placeholder="预留字段，暂未启用" />
           <div class="hint">
             <span class="phase-tag">Phase 2</span>
             <b>干什么用</b>：GSC 拉不到数据时的备选源，从 <b>Bing Webmaster Tools</b> 获取收录数。<br/>
@@ -76,13 +82,13 @@
       </div>
     </section>
 
-    <!-- 2. 进阶 质量闸 -->
+    <!-- 2. 进阶 发布质量检查 -->
     <el-collapse class="advanced-wrap">
       <el-collapse-item name="quality">
         <template #title>
           <div class="collapse-title">
             <span class="tag-gear">⚙️</span>
-            <b>进阶：质量闸</b>
+            <b>进阶：发布质量检查</b>
             <span class="warn-note">默认值有研究依据，慎调</span>
           </div>
         </template>
@@ -121,7 +127,7 @@
               </div>
             </el-form-item>
             <el-form-item>
-              <el-button type="warning" @click="saveQuality">保存质量闸（将弹窗确认）</el-button>
+              <el-button type="warning" @click="saveQuality">保存质量检查（将弹窗确认）</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -131,8 +137,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SettingsSeo' })
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { get, post } from '@/api/request'
 
 const loading = ref(false)
@@ -174,9 +182,9 @@ async function saveCreds() {
 }
 
 async function saveQuality() {
-  await ElMessageBox.confirm(
-    '调整质量闸会影响后续发布判定。文档 §3 有阈值依据。继续？',
-    '保存质量闸', { type: 'warning' }
+  await confirmDialog(
+    '调整发布质量检查会影响后续发布判定。文档 §3 有阈值依据。继续？',
+    '保存质量检查', { type: 'warning' }
   )
   await saveSection('seo', qualityForm as any)
   ElMessage.success('已保存')
@@ -196,10 +204,10 @@ async function testIndexNow() {
   if (!url) return ElMessage.warning('请先到「站点设置」填前端 URL')
   await saveCreds()
   try {
-    const res = await post('/admin/seo/indexnow/test', { urls: [`${url}/`] })
-    ElMessage.success(`IndexNow 测试 OK: ${JSON.stringify(res)}`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || 'IndexNow 测试失败')
+    await post('/admin/seo/indexnow/test', { urls: [`${url}/`] })
+    ElMessage.success('IndexNow 测试通过')
+  } catch {
+    ElMessage.error('IndexNow 测试失败')
   }
 }
 

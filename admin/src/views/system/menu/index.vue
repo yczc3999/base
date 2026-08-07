@@ -65,11 +65,13 @@
   </div>
 </template>
 <script setup lang="ts">
+defineOptions({ name: 'SystemMenu' })
 import { ref, computed, onMounted } from 'vue'
 import { Plus, Edit, Delete, Check, RefreshRight as Refresh } from "@element-plus/icons-vue"
 import IconPicker from "@/components/IconPicker/index.vue"
 import menuApi from '@/api/modules/menu'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 const menuIconMap: Record<string, string> = {
   Settings: '⚙', Users: '👤', Shield: '🛡', Menu: '☰',
   Sliders: '⊞', FileText: '📄', Activity: '◉', LogIn: '→',
@@ -88,7 +90,7 @@ const rules = { slug: [{ required: true, message: '请输入标识' }], label: [
 const parentOptions = computed(() => [{ id: 0, label: '顶级', children: treeData.value }])
 async function loadTree() {
   loading.value = true
-  try { treeData.value = await menuApi.tree() } catch {}
+  try { treeData.value = await menuApi.tree() } catch { /* 菜单树加载失败静默 */ }
   loading.value = false
 }
 function handleAdd() { formMode.value='create'; formData.value={ type:1, parent_id:0, sort:0, status:1 }; formVisible.value=true }
@@ -98,7 +100,7 @@ async function handleEdit(row:any) {
   formVisible.value=true
 }
 async function handleDelete(row:any) {
-  await ElMessageBox.confirm('确定删除此菜单？','提示',{type:'warning'})
+  await confirmDialog('确定删除此菜单？','提示',{type:'warning'})
   await menuApi.doDelete(row.id)
   ElMessage.success('删除成功')
   loadTree()
@@ -107,7 +109,7 @@ async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(()=>false)
   if(!valid) return
   submitLoading.value=true
-  try { await menuApi.doEdit(formData.value); ElMessage.success('操作成功'); formVisible.value=false; loadTree() } catch {}
+  try { await menuApi.doEdit(formData.value); ElMessage.success('操作成功'); formVisible.value=false; loadTree() } catch { /* 保存失败静默处理 */ }
   submitLoading.value=false
 }
 onMounted(loadTree)

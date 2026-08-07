@@ -2,7 +2,7 @@
   <div class="task-monitor">
     <!-- 队列状态卡片 -->
     <div class="queue-cards">
-      <div class="queue-card" v-for="q in queueCards" :key="q.key">
+      <div v-for="q in queueCards" :key="q.key" class="queue-card">
         <div class="queue-num" :class="q.color">{{ queueData?.[q.key] ?? '—' }}</div>
         <div class="queue-label">{{ q.label }}</div>
         <el-tag v-if="q.key === 'dead' && (queueData?.dead ?? 0) > 0" type="danger" size="small">需关注</el-tag>
@@ -21,7 +21,7 @@
         <span class="section-title">定时任务</span>
         <span class="section-hint">上次刷新 {{ lastUpdated }} · 手动触发走队列，由 worker 执行（防并发锁）</span>
       </div>
-      <el-table :data="tasks" v-loading="loading" border size="default" :empty-text="'暂无任务'">
+      <el-table v-loading="loading && !tasks.length" :data="tasks" border size="default" :empty-text="'暂无任务'">
         <el-table-column prop="name" label="任务名" min-width="120" />
         <el-table-column prop="class_name" label="类名" min-width="180">
           <template #default="{ row }">
@@ -55,7 +55,8 @@
         </el-table-column>
         <el-table-column label="操作" width="110" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" :icon="VideoPlay"
+            <el-button
+type="primary" link size="small" :icon="VideoPlay"
               :disabled="!row.enabled" @click="triggerTask(row)">
               立即执行
             </el-button>
@@ -67,16 +68,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+defineOptions({ name: 'TaskMonitor' })
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
-const tasks = ref<any[]>([])
-const queueData = ref<any>(null)
-const loading = ref(false)
-const autoRefresh = ref(true)
+const autoRefresh = ref(localStorage.getItem('task_monitor_auto_refresh') !== '0')
 const lastUpdated = ref('—')
+
+// F1 · TanStack Query 轮询：5s 拉取任务/队列；autoRefresh 关闭时暂停（refetchInterval=false）
+const pollInterval = computed(() => (autoRefresh.value ? 5000 : false))
+
+const tasksQuery = useQuery({
+  queryKey: ['task_monitor', 'tasks'],
+  queryFn: () => get<any[]>('/admin/task_monitor/tasks'),
+  refetchInterval: pollInterval,
+})
+const queueQuery = useQuery({
+  queryKey: ['task_monitor', 'queue'],
+  queryFn: () => get<any>('/admin/task_monitor/queue'),
+  refetchInterval: pollInterval,
+})
+
+const tasks = computed(() => tasksQuery.data.value ?? [])
+const queueData = computed(() => queueQuery.data.value ?? null)
+const loading = computed(() => tasksQuery.isFetching.value)
+
+// 持久化自动刷新开关
+watch(autoRefresh, (v) => {
+  localStorage.setItem('task_monitor_auto_refresh', v ? '1' : '0')
+})
 
 const queueCards = [
   { key: 'default', label: '默认队列', color: 'c-primary' },
@@ -85,7 +109,7 @@ const queueCards = [
   { key: 'task', label: '任务队列', color: 'c-secondary' },
   { key: 'processing', label: '处理中', color: 'c-processing' },
   { key: 'delayed', label: '延迟中', color: 'c-delayed' },
-  { key: 'dead', label: '死信', color: 'c-danger' },
+  { key: 'dead', label: '失败任务', color: 'c-danger' },
 ]
 
 function formatTime(epoch: number) {
@@ -95,41 +119,25 @@ function formatTime(epoch: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-async function loadTasks() {
-  try {
-    tasks.value = await get('/admin/task_monitor/tasks')
-  } catch {}
-}
-
-async function loadQueue() {
-  try {
-    queueData.value = await get('/admin/task_monitor/queue')
-  } catch {}
-}
-
 async function loadAll() {
-  loading.value = true
-  await Promise.all([loadTasks(), loadQueue()])
+  await Promise.all([tasksQuery.refetch(), queueQuery.refetch()])
   lastUpdated.value = new Date().toLocaleTimeString()
-  loading.value = false
 }
 
 async function triggerTask(row: any) {
-  await ElMessageBox.confirm(
+  await confirmDialog(
     `确认立即执行「${row.name}」？将推入队列由 worker 执行。`,
     '手动触发', { type: 'warning' },
   )
   const res = await post('/admin/task_monitor/trigger', { task: row.class_name })
   ElMessage.success(res?.msg || '已触发')
-  setTimeout(loadAll, 2000)  // 稍后刷新看执行状态
+  refreshTimer = window.setTimeout(loadAll, 2000)  // 稍后刷新看执行状态
 }
 
-let timer: number | undefined
-onMounted(() => {
-  loadAll()
-  timer = window.setInterval(() => { if (autoRefresh.value) loadAll() }, 5000)
+let refreshTimer: number | undefined
+onBeforeUnmount(() => {
+  if (refreshTimer) clearTimeout(refreshTimer)
 })
-onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <style scoped>

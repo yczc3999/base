@@ -57,7 +57,7 @@ export const useUserStore = defineStore('user', {
     },
 
     async logout() {
-      try { await authApi.logout() } catch {}
+      try { await authApi.logout() } catch { /* 登出接口失败也继续本地清理 */ }
       this.token = ''
       this.userInfo = null
       this.permissions = []

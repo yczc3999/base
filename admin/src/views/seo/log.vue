@@ -7,13 +7,14 @@
       </div>
     </section>
 
-    <CrudTable ref="crudRef" api="admin/publish_log" perms="admin:seo"
+    <CrudTable
+ref="crudRef" api="admin/publish_log" perms="admin:seo"
       :columns="columns" :search-fields="searchFields"
-      :hasCreate="false" :hasEdit="false" :hasDelete="false">
+      :has-create="false" :has-edit="false" :has-delete="false">
       <template #expand="{ row }">
         <div class="payload-detail">
           <div v-if="row.payload" class="payload-block">
-            <div class="payload-label">PAYLOAD</div>
+            <div class="payload-label">请求内容</div>
             <pre>{{ formatPayload(row.payload) }}</pre>
           </div>
           <div v-else class="payload-empty">无 payload</div>
@@ -24,11 +25,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+defineOptions({ name: 'SeoLog' })
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
-
-const crudRef = ref()
 
 const columns: CrudColumn[] = [
   { field: 'id', label: 'ID', width: 80 },

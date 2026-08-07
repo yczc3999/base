@@ -9,6 +9,8 @@
   --primary-hover: #2563EB;
   --primary-active: #1D4ED8;
   --primary-light: #60A5FA;
+  --primary-light-5: #93C5FD;
+  --primary-light-7: #BFDBFE;
   --primary-bg: #EFF6FF;
   --primary-glow: rgba(59, 130, 246, 0.1);
 
@@ -28,11 +30,13 @@
   --bg-sidebar: #0F172A;
   --bg-header: #FFFFFF;
   --bg-input: #F8FAFC;
+  --bg-table-header: #F8FAFC;
+  --bg-subtle: #FAFBFC;
 
   // ── Text ──
   --text-primary: #0F172A;
   --text-secondary: #64748B;
-  --text-placeholder: #94A3B8;
+  --text-placeholder: #64748B;
   --text-disabled: #CBD5E1;
   --text-inverse: #FFFFFF;
   --text-sidebar: #94A3B8;
@@ -42,6 +46,12 @@
   --border: #E2E8F0;
   --border-light: #F1F5F9;
   --border-dark: #CBD5E1;
+
+  // ── Overlays（遮罩/覆盖层） ──
+  --overlay-light: rgba(0, 0, 0, 0.08);
+  --overlay-mid: rgba(0, 0, 0, 0.12);
+  --overlay-strong: rgba(0, 0, 0, 0.4);
+  --overlay-white-80: rgba(255, 255, 255, 0.8);
 
   // ── Geometry（极小圆角） ──
   --radius: 2px;
@@ -56,6 +66,8 @@
   --space-lg: 20px;
   --space-xl: 24px;
   --space-2xl: 32px;
+  --space-3xl: 48px;
+  --space-4xl: 64px;
 
   // ── Typography ──
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -66,7 +78,7 @@
   --text-lg: 16px;
   --text-xl: 18px;
   --text-2xl: 24px;
-  --text-3xl: 30px;
+  --text-3xl: 32px;
 
   // ── Layout ──
   --sidebar-width: 220px;

@@ -9,8 +9,9 @@
           <p>{{ enabled ? 'worker 按节奏自动采集 / 排期 / 发布' : '所有 worker 任务暂停；点开关启动' }}</p>
         </div>
       </div>
-      <el-switch v-model="enabled" :loading="toggling" @change="onToggle" size="large"
-        active-text="开" inactive-text="关" inline-prompt />
+      <el-switch
+v-model="enabled" :loading="toggling" size="large" active-text="开"
+        inactive-text="关" inline-prompt @change="onToggle" />
     </section>
 
     <!-- 1. 阶段状态卡 -->
@@ -23,7 +24,7 @@
         </div>
       </div>
       <div class="phase-actions">
-        <el-button :icon="Refresh" :loading="recomputing" @click="recompute" class="btn-ghost">重算阶段</el-button>
+        <el-button :icon="Refresh" :loading="recomputing" class="btn-ghost" @click="recompute">重算阶段</el-button>
       </div>
     </section>
 
@@ -35,7 +36,8 @@
           <div class="quota-num">{{ data?.usage?.today ?? 0 }} / {{ quotaDaily }}</div>
         </div>
         <div class="quota-progress">
-          <div class="qp-bar"
+          <div
+class="qp-bar"
                :style="{ width: quotaDaily > 0 ? Math.min((data?.usage?.today ?? 0) / quotaDaily * 100, 100) + '%' : '0%' }"></div>
         </div>
       </div>
@@ -46,14 +48,15 @@
           <div class="quota-num">{{ data?.usage?.this_week ?? 0 }} / {{ quotaWeekly }}</div>
         </div>
         <div class="quota-progress">
-          <div class="qp-bar"
+          <div
+class="qp-bar"
                :style="{ width: quotaWeekly > 0 ? Math.min((data?.usage?.this_week ?? 0) / quotaWeekly * 100, 100) + '%' : '0%' }"></div>
         </div>
       </div>
 
       <div class="quota-card">
         <div>
-          <span class="quota-label">索引健康度</span>
+          <span class="quota-label">搜索引擎收录健康度</span>
           <div class="quota-num-row">
             <span class="quota-num">{{ healthDisplay }}</span>
             <span v-if="health !== null" class="health-pill" :class="`hp-${healthClass}`">
@@ -62,7 +65,8 @@
           </div>
         </div>
         <div class="health-bar">
-          <div class="health-bar-fill" :class="`hp-${healthClass}`"
+          <div
+class="health-bar-fill" :class="`hp-${healthClass}`"
                :style="{ width: healthPercent + '%' }"></div>
         </div>
       </div>
@@ -218,7 +222,7 @@
               <p>pipeline 补货 → scheduler 排期 → publisher 发到点。<br>
                  用于 dev 验证 / 应急加速。生产环境通常不用，信任 worker 自动节奏。</p>
             </div>
-            <el-button :icon="VideoPlay" :loading="running" @click="runNow" type="primary" plain>跑一次</el-button>
+            <el-button :icon="VideoPlay" :loading="running" type="primary" plain @click="runNow">跑一次</el-button>
           </div>
         </div>
       </el-collapse-item>
@@ -227,8 +231,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'SeoDashboard' })
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { confirmDialog } from '@/utils/confirm'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { get, post } from '@/api/request'
 
@@ -299,7 +305,7 @@ async function onToggle(val: any) {
   toggling.value = true
   try {
     if (!v) {
-      await ElMessageBox.confirm(
+      await confirmDialog(
         '关闭后所有 worker 任务（采集 / 排期 / 发布）都会停止，已排队的文章不会发出。',
         '关闭自动发布', { type: 'warning' }
       )
@@ -333,14 +339,14 @@ async function runNow() {
       `skipped ${pub?.skipped ?? 0}，errored ${pub?.errored ?? 0}`,
     )
     await load()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '运行失败')
+  } catch {
+    ElMessage.error('运行失败')
   } finally { running.value = false }
 }
 
 async function setKillSwitch(on: boolean, duration: string | null) {
   if (on) {
-    await ElMessageBox.confirm(
+    await confirmDialog(
       `确认 ${duration === 'forever' ? '永久' : duration === 'week' ? '本周' : '24 小时'} 禁发？`,
       '紧急禁发', { type: 'warning' }
     )

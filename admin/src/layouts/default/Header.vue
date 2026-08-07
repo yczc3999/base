@@ -1,5 +1,5 @@
 <template>
-  <div class="header">
+  <header class="header">
     <div class="header-left">
       <button class="toggle-btn" @click="appStore.toggleSidebar">
         <span>☰</span>
@@ -19,7 +19,7 @@
       </button>
 
       <!-- 主题切换 (P2-4) -->
-      <button class="header-action" @click="themeStore.toggle()" :title="themeStore.theme === 'dark' ? '切换亮色' : '切换暗色'">
+      <button class="header-action" :title="themeStore.theme === 'dark' ? '切换亮色' : '切换暗色'" @click="themeStore.toggle()">
         <span>{{ themeStore.theme === 'dark' ? '🌙' : '☀️' }}</span>
       </button>
 
@@ -51,7 +51,7 @@
         </template>
       </el-dropdown>
     </div>
-  </div>
+  </header>
 </template>
 
 <script setup lang="ts">
@@ -88,7 +88,7 @@ async function fetchUnread() {
   try {
     const data = await messageApi.unreadCount()
     unreadCount.value = data?.count || 0
-  } catch {}
+  } catch { /* 未读数获取失败保持为 0 */ }
 }
 
 function handleCommand(cmd: string) {

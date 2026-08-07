@@ -7,9 +7,9 @@
   >
     <template #reference>
       <div class="icon-picker-trigger">
-        <component v-if="modelValue && iconComponent" :is="iconComponent" :size="18" />
+        <component :is="iconComponent" v-if="modelValue && iconComponent" :size="18" />
         <span v-else class="placeholder">选择图标</span>
-        <span class="icon-name" v-if="modelValue">{{ modelValue }}</span>
+        <span v-if="modelValue" class="icon-name">{{ modelValue }}</span>
         <span class="trigger-arrow">▾</span>
       </div>
     </template>
@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, shallowRef } from 'vue'
+import { ref, computed } from 'vue'
 import { Search as SearchIcon } from '@element-plus/icons-vue'
 import * as icons from 'lucide-vue-next'
 import { iconCategories, allIcons } from './icons'
