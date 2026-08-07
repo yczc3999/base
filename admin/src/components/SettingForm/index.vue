@@ -253,7 +253,7 @@ onMounted(loadSettings)
   gap: 6px;
 
   .tab-icon { font-size: 16px; }
-  .tab-tag { margin-left: 4px; transform: scale(0.85); }
+  .tab-tag { margin-left: 4px; font-size: var(--text-xs); } // 用字号缩小替代 scale（禁缩放立体）
 }
 
 .tab-content {

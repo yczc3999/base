@@ -49,7 +49,7 @@
   transition: background-color 0.1s, opacity 0.1s !important;
 
   &:hover { opacity: 0.85; }
-  &:active { transform: scale(0.97); opacity: 1; }
+  &:active { filter: brightness(0.92); opacity: 1; } // 纯色变暗，无位移/缩放
 
   .el-icon { margin-right: var(--space-xs); font-size: var(--text-base); }
 
@@ -135,10 +135,44 @@
   &:focus { border-color: var(--primary) !important; }
 }
 
-// ── Select / Dropdown：扁平 ──
+// ── Select / Dropdown / Popper：扁平（零阴影，1px 边框区分层级） ──
 .el-select .el-input__wrapper { box-shadow: none !important; }
-.el-select-dropdown { border-radius: var(--radius) !important; box-shadow: 0 2px 8px var(--overlay-light) !important; }
-.el-dropdown-menu { border-radius: var(--radius) !important; box-shadow: 0 2px 8px var(--overlay-light) !important; }
+// el-select 默认用 inset box-shadow 模拟边框 → 改为真实边框（零阴影合规）
+.el-select__wrapper {
+  box-shadow: none !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  &.is-focused { border-color: var(--primary) !important; }
+}
+.el-select-dropdown,
+.el-dropdown-menu,
+.el-popper {
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+  border: 1px solid var(--border) !important;
+}
+// 压掉 Element Plus popper 默认阴影变量（tooltip/popover/datepicker 等全部弹层）
+:root {
+  --el-box-shadow-light: none !important;
+  --el-box-shadow: none !important;
+  --el-box-shadow-dark: none !important;
+  --el-box-shadow-lighter: none !important;
+  // 圆角统一压到 4px 上限（用户规范）
+  --el-border-radius-base: 4px !important;
+  --el-border-radius-small: 2px !important;
+  --el-border-radius-round: 4px !important;
+  --el-border-radius-circle: 50% !important;
+  // 行高统一为 1.5（Geist 排版，消除 Element 默认 1.4 的 19.5px 混入）
+  --el-font-line-height-primary: 21px !important;
+  // 字体族统一 Geist
+  --el-font-family: var(--font-sans) !important;
+}
+
+// switch 滑块：10px 胶囊 → 4px 色块（纯平面）
+.el-switch__core {
+  border-radius: 4px !important;
+  .el-switch__action { border-radius: 3px !important; }
+}
 
 // ── 表格：扁平 ──
 .el-table {
