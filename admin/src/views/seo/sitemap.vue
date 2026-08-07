@@ -12,9 +12,9 @@
 
     <!-- 文件列表卡 -->
     <section class="card">
-      <div class="card-title">📁 sitemap 文件</div>
+      <div class="card-title">sitemap 文件</div>
       <div v-if="files.length === 0" class="empty">
-        <div class="empty-icon">🗺️</div>
+        <div class="empty-icon"><Map :size="28" /></div>
         <p class="empty-title">还没有 sitemap 文件</p>
         <p class="empty-subtitle">点击右上角「强制重建」生成</p>
       </div>
@@ -49,7 +49,7 @@
 
     <!-- 上次重建 stats -->
     <section v-if="lastBuild" class="card stats-card">
-      <div class="card-title">⚡ 上次重建</div>
+      <div class="card-title">上次重建</div>
       <div class="stats-row">
         <div class="stat">
           <span class="stat-label">URL 总数</span>
@@ -72,7 +72,7 @@
 
     <!-- 策略说明 -->
     <section class="card info-card">
-      <div class="card-title">💡 策略说明</div>
+      <div class="card-title">策略说明</div>
       <ul class="info-list">
         <li><b>单文件最大 5,000 URL</b>（Google 硬限 50k，留余量便于增量更新）</li>
         <li><b>只写 &lt;lastmod&gt;</b>，不写 priority/changefreq（Google 已忽略）</li>
@@ -88,6 +88,7 @@ defineOptions({ name: 'SeoSitemap' })
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { Refresh } from '@element-plus/icons-vue'
+import { Map } from 'lucide-vue-next'
 import { get, post } from '@/api/request'
 
 const files = ref<any[]>([])

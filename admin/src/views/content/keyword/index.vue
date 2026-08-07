@@ -81,7 +81,7 @@ v-model="showHarvest" :title="harvestMode === 'poll' ? '轮询采集' : harvestS
       <!-- 手动：种子表单 -->
       <template v-if="harvestMode === 'manual'">
         <div class="harvest-tip">
-          <span class="tip-icon">💡</span>
+          
           <span>输入种子关键词，从搜索引擎建议中扩展相关词，自动入库为「待审核」。单次上限 200 个。</span>
         </div>
         <el-form label-width="80px">
@@ -103,7 +103,7 @@ v-model="harvestForm.seedsText" type="textarea" :rows="8"
 
       <!-- 轮询：直接提示 -->
       <div v-else class="harvest-tip">
-        <span class="tip-icon">🔄</span>
+        
         <span>从库里未采集标签持续滚动采集（每轮 20 个种子 × 多搜索引擎，直到池空或上限 5000），无需反复点击。</span>
       </div>
       <!-- 采集进度（SSE 实时） -->
@@ -123,16 +123,16 @@ v-model="harvestForm.seedsText" type="textarea" :rows="8"
               <span class="kw-list">{{ log.seeds.join('、') }}</span>
             </template>
             <template v-else-if="log.type === 'round_done'">
-              🏁 第 {{ log.round }} 轮完成：新增 {{ log.found }}，入库 {{ log.imported }}
+               第 {{ log.round }} 轮完成：新增 {{ log.found }}，入库 {{ log.imported }}
               <span class="kw-list">（累计 {{ log.cumulative_imported }}/{{ log.cumulative_found }}）</span>
             </template>
-            <template v-else-if="log.type === 'seed'">🔍 {{ log.seed }}</template>
+            <template v-else-if="log.type === 'seed'"> {{ log.seed }}</template>
             <template v-else-if="log.type === 'found'">
-              ✅ [{{ log.engine }}] {{ log.seed }} → <strong>+{{ log.keywords.length }}</strong>
+               [{{ log.engine }}] {{ log.seed }} → <strong>+{{ log.keywords.length }}</strong>
               <span class="kw-list">{{ log.keywords.join('、') }}</span>
             </template>
             <template v-else-if="log.type === 'done'">
-              🏁 采集完成：{{ log.total }} 个，入库 {{ log.imported }} 个
+               采集完成：{{ log.total }} 个，入库 {{ log.imported }} 个
             </template>
           </div>
         </div>
@@ -160,20 +160,20 @@ v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
     <el-dialog v-model="showAiResult" :title="`AI 审核 — ${aiScopeLabel}`" width="750px" :close-on-click-modal="false">
       <!-- 汇总 -->
       <div v-if="aiSummary" class="ai-summary">
-        <span class="approve">✅ 上线 {{ aiSummary.approved_total }}</span>
-        <span class="reject">❌ 删除 {{ aiSummary.rejected_total }}</span>
-        <span v-if="aiSummary.demoted_total" class="demoted">↩️ 降回 {{ aiSummary.demoted_total }}</span>
-        <span class="uncertain">⏳ 保留 {{ aiSummary.uncertain_total }}</span>
+        <span class="approve"> 上线 {{ aiSummary.approved_total }}</span>
+        <span class="reject"> 删除 {{ aiSummary.rejected_total }}</span>
+        <span v-if="aiSummary.demoted_total" class="demoted">↩ 降回 {{ aiSummary.demoted_total }}</span>
+        <span class="uncertain"> 保留 {{ aiSummary.uncertain_total }}</span>
       </div>
       <div v-else-if="aiReviewing" style="margin-bottom:12px;color:var(--el-color-warning);font-size:13px">
-        ⏳ AI 正在逐批审核（{{ aiScopeLabel }}）...
+         AI 正在逐批审核（{{ aiScopeLabel }}）...
       </div>
 
       <!-- 日志 -->
       <div ref="aiLogBody" class="ai-review-log">
         <template v-for="(evt, i) in aiLog" :key="i">
           <div v-if="evt.type === 'batch_start'" class="log-line level">
-            📦 第 {{ Math.floor(i / 2) + 1 }} 批，{{ evt.batch_size }} 个
+            第 {{ Math.floor(i / 2) + 1 }} 批，{{ evt.batch_size }} 个
           </div>
           <div v-else-if="evt.type === 'batch_done'" class="log-line">
             <div v-for="r in evt.results" :key="r.keyword" class="review-item">
@@ -184,10 +184,10 @@ v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
             </div>
           </div>
           <div v-else-if="evt.type === 'error'" class="log-line" style="color:var(--el-color-danger)">
-            ⚠️ {{ evt.msg }}
+             {{ evt.msg }}
           </div>
           <div v-else-if="evt.type === 'done'" class="log-line done">
-            🏁 全部完成：上线 {{ evt.approved_total }}，删除 {{ evt.rejected_total }}，保留 {{ evt.uncertain_total }}
+             全部完成：上线 {{ evt.approved_total }}，删除 {{ evt.rejected_total }}，保留 {{ evt.uncertain_total }}
           </div>
         </template>
       </div>
@@ -198,7 +198,7 @@ v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
     </el-dialog>
 
     <!-- 审核规则配置弹窗 -->
-    <el-dialog v-model="showPromptDialog" title="🤖 AI 审核规则" width="780px" :close-on-click-modal="false">
+    <el-dialog v-model="showPromptDialog" title="AI 审核规则" width="780px" :close-on-click-modal="false">
       <div class="prompt-intro">
         AI 按照这套规则判断每个标签是 <b>approve / reject / uncertain</b>。<br>
         不同项目目标受众不同，建议自己写或让 AI 帮你生成。
@@ -282,16 +282,16 @@ const placeholderUser = `例如：
 
 ★ 关键判断：搜索者是不是我们的目标用户？
 
-✅ approve（这些是目标用户在搜）：
+ approve（这些是目标用户在搜）：
   - 例 1
   - 例 2
   - 例 3
 
-❌ reject（明确无关或反方向）：
+ reject（明确无关或反方向）：
   - 例 1
   - 例 2
 
-⚠️ uncertain：只在真的无法判断时用，默认宁严勿宽。
+ uncertain：只在真的无法判断时用，默认宁严勿宽。
 
 待审关键词：
 {keywords}
@@ -361,7 +361,7 @@ async function onReviewCommand(scope: 'pending' | 'online' | 'all') {
   if (!hasCustom) {
     await confirmDialog(
       '当前审核规则为系统内置（适合归途项目）。\n如果你的业务不同，建议先点「审核规则」按钮配置。\n要继续用默认规则审核吗？',
-      '⚠️ 审核规则未配置',
+      ' 审核规则未配置',
       { confirmButtonText: '继续用默认', cancelButtonText: '去配置', type: 'warning' },
     ).catch(() => {
       showPromptDialog.value = true

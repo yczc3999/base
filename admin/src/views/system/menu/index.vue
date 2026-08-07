@@ -17,7 +17,9 @@
         </el-table-column>
         <el-table-column prop="icon" label="图标" width="60" align="center">
           <template #default="{ row }">
-            <span v-if="row.icon" :title="row.icon">{{ menuIconMap[row.icon] || row.icon }}</span>
+            <el-icon v-if="row.icon" :title="row.icon" :size="16">
+              <component :is="getMenuIcon(row.icon)" />
+            </el-icon>
             <span v-else style="color:#CBD5E1">—</span>
           </template>
         </el-table-column>
@@ -72,13 +74,7 @@ import IconPicker from "@/components/IconPicker/index.vue"
 import menuApi from '@/api/modules/menu'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { confirmDialog } from '@/utils/confirm'
-const menuIconMap: Record<string, string> = {
-  Settings: '⚙', Users: '👤', Shield: '🛡', Menu: '☰',
-  Sliders: '⊞', FileText: '📄', Activity: '◉', LogIn: '→',
-  LayoutDashboard: '▦', UserCircle: '◎', Bell: '🔔',
-  Globe: '🌐', MessageSquare: '💬', HardDrive: '💾',
-  CreditCard: '💳', Mail: '✉',
-}
+import { getMenuIcon } from '@/utils/menuIcons'
 const loading = ref(false)
 const treeData = ref<any[]>([])
 const formVisible = ref(false)

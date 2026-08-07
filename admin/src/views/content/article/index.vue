@@ -2,34 +2,21 @@
   <div>
     <!-- 采集统计 -->
     <div v-if="stats" class="stat-cards">
-      <div
-class="stat-card" role="button" tabindex="0"
+      <StatCard
+        :icon="Sparkles" :value="stats.unprocessed" label="待润色" accent="var(--warning)" :count="true"
         @click="filterBy({source: 1, ai_processed: false})"
-        @keydown.enter.prevent="filterBy({source: 1, ai_processed: false})"
-        @keydown.space.prevent="filterBy({source: 1, ai_processed: false})">
-        <div class="stat-num warning">{{ stats.unprocessed }}</div>
-        <div class="stat-label">待润色</div>
-      </div>
-      <div
-class="stat-card" role="button" tabindex="0"
+      />
+      <StatCard
+        :icon="CheckCheck" :value="stats.ai_done" label="已润色" accent="var(--success)" :count="true"
         @click="filterBy({source: 1, ai_processed: true})"
-        @keydown.enter.prevent="filterBy({source: 1, ai_processed: true})"
-        @keydown.space.prevent="filterBy({source: 1, ai_processed: true})">
-        <div class="stat-num success">{{ stats.ai_done }}</div>
-        <div class="stat-label">已润色</div>
-      </div>
-      <div
-class="stat-card" role="button" tabindex="0"
+      />
+      <StatCard
+        :icon="Send" :value="stats.published" label="已发布" accent="var(--primary)" :count="true"
         @click="filterBy({status: 1})"
-        @keydown.enter.prevent="filterBy({status: 1})"
-        @keydown.space.prevent="filterBy({status: 1})">
-        <div class="stat-num primary">{{ stats.published }}</div>
-        <div class="stat-label">已发布</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num">{{ stats.collected }}</div>
-        <div class="stat-label">采集总量</div>
-      </div>
+      />
+      <StatCard
+        :icon="Database" :value="stats.collected" label="采集总量" accent="var(--info)" :count="true"
+      />
     </div>
 
     <CrudTable
@@ -93,14 +80,14 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
         </div>
         <div ref="logBodyRef" class="log-body">
           <div v-for="(evt, i) in collectLog" :key="i" class="log-line" :class="evt.type">
-            <template v-if="evt.type === 'search'">🔍 搜索 "{{ evt.keyword }}"</template>
-            <template v-else-if="evt.type === 'search_done'">📋 找到 {{ evt.found }} 个结果</template>
-            <template v-else-if="evt.type === 'analyzing'">📄 分析 #{{ evt.index }}：{{ evt.url }}</template>
-            <template v-else-if="evt.type === 'extracted'">✅ <strong>{{ evt.title }}</strong>（{{ evt.word_count }}字）</template>
-            <template v-else-if="evt.type === 'saved'">💾 入库：{{ evt.title }}</template>
-            <template v-else-if="evt.type === 'skip'">⏭️ 跳过：{{ evt.reason }}</template>
-            <template v-else-if="evt.type === 'error'">⚠️ {{ evt.msg }}</template>
-            <template v-else-if="evt.type === 'done'">🏁 完成：{{ evt.saved }}/{{ evt.total }} 篇</template>
+            <template v-if="evt.type === 'search'"> 搜索 "{{ evt.keyword }}"</template>
+            <template v-else-if="evt.type === 'search_done'"> 找到 {{ evt.found }} 个结果</template>
+            <template v-else-if="evt.type === 'analyzing'">分析 #{{ evt.index }}：{{ evt.url }}</template>
+            <template v-else-if="evt.type === 'extracted'"> <strong>{{ evt.title }}</strong>（{{ evt.word_count }}字）</template>
+            <template v-else-if="evt.type === 'saved'"> 入库：{{ evt.title }}</template>
+            <template v-else-if="evt.type === 'skip'"> 跳过：{{ evt.reason }}</template>
+            <template v-else-if="evt.type === 'error'"> {{ evt.msg }}</template>
+            <template v-else-if="evt.type === 'done'"> 完成：{{ evt.saved }}/{{ evt.total }} 篇</template>
           </div>
         </div>
       </div>
@@ -117,7 +104,7 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
     <!-- AI 润色进度 -->
     <el-dialog v-model="showRewrite" title="AI 润色" width="650px" :close-on-click-modal="false" :close-on-press-escape="false">
       <div v-if="rewriting" style="margin-bottom:10px;padding:8px 12px;background:var(--el-color-warning-light-9);border-radius:4px;font-size:13px;color:var(--el-color-warning-dark-2)">
-        ⚠️ 润色进行中，每篇文章需要 30-60 秒，请勿关闭此窗口。
+         润色进行中，每篇文章需要 30-60 秒，请勿关闭此窗口。
       </div>
       <div class="sse-log">
         <div class="log-header">
@@ -128,15 +115,15 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
         </div>
         <div ref="rewriteLogRef" class="log-body">
           <div v-for="(evt, i) in rewriteLog" :key="i" class="log-line" :class="evt.type">
-            <template v-if="evt.type === 'rewriting'">✍️ 开始处理：{{ evt.title }}</template>
+            <template v-if="evt.type === 'rewriting'"> 开始处理：{{ evt.title }}</template>
             <template v-else-if="evt.type === 'step'">
-              <span class="step-indicator">⏳ {{ evt.step }}</span>
+              <span class="step-indicator"> {{ evt.step }}</span>
             </template>
-            <template v-else-if="evt.type === 'done_one'">✅ <strong>{{ evt.new_title }}</strong>（{{ evt.word_count }}字）</template>
+            <template v-else-if="evt.type === 'done_one'"> <strong>{{ evt.new_title }}</strong>（{{ evt.word_count }}字）</template>
             <template v-else-if="evt.type === 'error'">
-              <span style="color:var(--el-color-danger)">❌ 失败：{{ evt.msg }}</span>
+              <span style="color:var(--el-color-danger)"> 失败：{{ evt.msg }}</span>
             </template>
-            <template v-else-if="evt.type === 'done'">🏁 完成 {{ evt.processed }}/{{ evt.total }} 篇</template>
+            <template v-else-if="evt.type === 'done'"> 完成 {{ evt.processed }}/{{ evt.total }} 篇</template>
           </div>
         </div>
       </div>
@@ -166,11 +153,11 @@ v-model="tagGenIds" multiple filterable placeholder="选择标签（可多选）
         </div>
         <div class="log-body">
           <div v-for="(evt, i) in tagGenLog" :key="i" class="log-line" :class="evt.type">
-            <template v-if="evt.type === 'start'">📝 准备生成 {{ evt.total }} 篇</template>
-            <template v-else-if="evt.type === 'generating'">✍️ [{{ evt.index }}/{{ evt.total }}] {{ evt.tag }}</template>
-            <template v-else-if="evt.type === 'created'">✅ {{ evt.title }}</template>
-            <template v-else-if="evt.type === 'error'">⚠️ {{ evt.tag }}：{{ evt.msg }}</template>
-            <template v-else-if="evt.type === 'done'">🏁 完成 {{ evt.created }}/{{ evt.total }} 篇</template>
+            <template v-if="evt.type === 'start'">准备生成 {{ evt.total }} 篇</template>
+            <template v-else-if="evt.type === 'generating'"> [{{ evt.index }}/{{ evt.total }}] {{ evt.tag }}</template>
+            <template v-else-if="evt.type === 'created'"> {{ evt.title }}</template>
+            <template v-else-if="evt.type === 'error'"> {{ evt.tag }}：{{ evt.msg }}</template>
+            <template v-else-if="evt.type === 'done'"> 完成 {{ evt.created }}/{{ evt.total }} 篇</template>
           </div>
         </div>
       </div>
@@ -193,6 +180,8 @@ import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { confirmDialog } from '@/utils/confirm'
 import { Download, MagicStick, Plus } from '@element-plus/icons-vue'
+import { Sparkles, CheckCheck, Send, Database } from 'lucide-vue-next'
+import StatCard from '@/components/StatCard/index.vue'
 import CrudTable from '@/components/CrudTable/index.vue'
 import type { CrudColumn, SearchField } from '@/components/CrudTable/types'
 import { get } from '@/api/request'
@@ -345,17 +334,7 @@ async function aiRewrite() {
 </script>
 
 <style scoped>
-.stat-cards { display: flex; gap: var(--space-md); margin-bottom: var(--space-base); }
-.stat-card {
-  flex: 1; padding: var(--space-md); border-radius: var(--radius); text-align: center; cursor: pointer;
-  border: 1px solid var(--border); background: var(--bg-card); transition: border-color 0.15s;
-}
-.stat-card:hover { border-color: var(--border-dark); }
-.stat-num { font-size: var(--text-2xl); font-weight: 700; line-height: 1.2; }
-.stat-num.warning { color: var(--warning); }
-.stat-num.success { color: var(--success); }
-.stat-num.primary { color: var(--primary); }
-.stat-label { font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-xs); }
+.stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-base); margin-bottom: var(--space-base); }
 .sse-log { margin-top: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .log-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-md); background: var(--bg-subtle); font-size: var(--text-sm); font-weight: 600; }
 .log-body { max-height: 280px; overflow-y: auto; padding: var(--space-sm) var(--space-md); font-size: var(--text-xs); line-height: 1.8; }

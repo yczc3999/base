@@ -17,7 +17,9 @@ v-model="enabled" :loading="toggling" size="large" active-text="开"
     <!-- 1. 阶段状态卡 -->
     <section class="phase-card">
       <div class="phase-left">
-        <div class="phase-emoji">{{ phaseEmoji[currentPhase] }}</div>
+        <div class="phase-emoji">
+          <component :is="phaseIcon[currentPhase]" :size="34" :stroke-width="1.8" />
+        </div>
         <div class="phase-text">
           <h2>{{ phaseName[currentPhase] }}</h2>
           <p>{{ phaseSubtitle }}</p>
@@ -76,7 +78,7 @@ class="health-bar-fill" :class="`hp-${healthClass}`"
     <section class="col-row">
       <div class="col-card">
         <div class="col-head">
-          <h3>📦 文章池</h3>
+          <h3>文章池</h3>
         </div>
         <div class="col-body stats-grid">
           <div class="stat-cell">
@@ -112,7 +114,7 @@ class="health-bar-fill" :class="`hp-${healthClass}`"
 
       <div class="col-card">
         <div class="col-head">
-          <h3>📜 最近活动</h3>
+          <h3>最近活动</h3>
         </div>
         <div v-if="!data?.recent_activity?.length" class="empty-state">
           <div class="empty-icon">·</div>
@@ -166,7 +168,7 @@ class="health-bar-fill" :class="`hp-${healthClass}`"
     <!-- 4. Sitemap 状态条 -->
     <section class="status-bar">
       <div class="status-left">
-        <span class="status-label">🗺️ sitemap：</span>
+        <span class="status-label">sitemap：</span>
         <span class="chip">{{ sitemapInfo.files }} 分片</span>
         <span class="chip">{{ sitemapInfo.urls }} URL</span>
         <span class="chip chip-info">{{ sitemapInfo.freshness }}</span>
@@ -186,7 +188,7 @@ class="health-bar-fill" :class="`hp-${healthClass}`"
     <!-- 5. 紧急禁发 -->
     <section class="emergency-panel" :class="{ active: data?.kill_switch?.on }">
       <div class="eh">
-        <span class="eh-icon">🚨</span>
+        
         <h3>紧急禁发</h3>
         <span v-if="data?.kill_switch?.on" class="ks-badge">
           已禁发{{ data.kill_switch.until ? '（截止 ' + formatTime(data.kill_switch.until) + '）' : '' }}
@@ -212,7 +214,7 @@ class="health-bar-fill" :class="`hp-${healthClass}`"
     <el-collapse class="debug-wrap">
       <el-collapse-item name="debug">
         <template #title>
-          <span class="debug-title">🔧 调试工具</span>
+          <span class="debug-title">调试工具</span>
           <span class="debug-hint">手动触发 / 跳过等待</span>
         </template>
         <div class="debug-grid">
@@ -236,6 +238,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { confirmDialog } from '@/utils/confirm'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { Snowflake, Sprout, TrendingUp, Landmark } from 'lucide-vue-next'
 import { get, post } from '@/api/request'
 
 const data = ref<any>(null)
@@ -245,8 +248,10 @@ const running = ref(false)
 const enabled = ref(false)
 const toggling = ref(false)
 
-const phaseEmoji: Record<string, string> = { cold: '❄️', new: '🌱', growing: '📈', stable: '🏛️' }
 const phaseName: Record<string, string> = { cold: '冷启动', new: '新站', growing: '成长期', stable: '稳定期' }
+const phaseIcon: Record<string, any> = {
+  cold: Snowflake, new: Sprout, growing: TrendingUp, stable: Landmark,
+}
 
 const currentPhase = computed(() => data.value?.phase?.phase || 'cold')
 const phaseSubtitle = computed(() => data.value?.phase?.reason || '加载中...')

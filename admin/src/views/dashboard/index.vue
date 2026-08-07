@@ -5,13 +5,15 @@
   >
   <div class="dashboard">
     <div class="stat-cards">
-      <div v-for="stat in statCards" :key="stat.label" class="stat-card" :style="{ '--accent': stat.color }">
-        <div class="stat-icon">{{ stat.icon }}</div>
-        <div class="stat-info">
-          <div class="stat-value">{{ stat.value }}</div>
-          <div class="stat-label">{{ stat.label }}</div>
-        </div>
-      </div>
+      <StatCard
+        v-for="stat in statCards"
+        :key="stat.label"
+        :icon="stat.icon"
+        :value="stat.value"
+        :label="stat.label"
+        :accent="stat.color"
+        :count="stat.count"
+      />
     </div>
 
     <div class="dashboard-row">
@@ -65,6 +67,8 @@ import { useQuery } from '@tanstack/vue-query'
 import { useUserStore } from '@/stores/user'
 import { get } from '@/api/request'
 import PageShell from '@/components/PageShell/index.vue'
+import StatCard from '@/components/StatCard/index.vue'
+import { Users, LogIn, Activity, Bell } from 'lucide-vue-next'
 
 const userStore = useUserStore()
 
@@ -87,10 +91,10 @@ const sys = computed(() => systemQuery.data.value ?? {})
 const recentLogs = computed(() => recentQuery.data.value ?? [])
 
 const statCards = computed(() => [
-  { label: '用户总数', value: sd.value.total_users ?? '—', icon: '👤', color: 'var(--primary)' },
-  { label: '今日登录', value: sd.value.today_logins ?? '—', icon: '→', color: 'var(--success)' },
-  { label: '本月操作', value: sd.value.month_operations ?? '—', icon: '◉', color: 'var(--warning)' },
-  { label: '未读消息', value: sd.value.unread_messages ?? '—', icon: '🔔', color: 'var(--danger)' },
+  { label: '用户总数', value: sd.value.total_users ?? '—', icon: Users, color: 'var(--primary)', count: true },
+  { label: '今日登录', value: sd.value.today_logins ?? '—', icon: LogIn, color: 'var(--success)', count: true },
+  { label: '本月操作', value: sd.value.month_operations ?? '—', icon: Activity, color: 'var(--warning)', count: true },
+  { label: '未读消息', value: sd.value.unread_messages ?? '—', icon: Bell, color: 'var(--danger)', count: true },
 ])
 
 function healthy(v: any) { return v !== undefined && v !== null && v !== '' }
@@ -111,19 +115,6 @@ function fmt(v: string) { return v ? v.replace('T',' ').substring(11,19) : '—'
 
 <style scoped lang="scss">
 .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-base); margin: var(--space-lg) 0; }
-
-.stat-card {
-  background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
-  border-radius: var(--radius); padding: var(--space-base) var(--space-lg); display: flex; align-items: center; gap: var(--space-md);
-}
-
-.stat-icon {
-  width: 38px; height: 38px; background: color-mix(in srgb, var(--accent) 10%, transparent);
-  display: flex; align-items: center; justify-content: center; border-radius: var(--radius); font-size: var(--text-lg);
-}
-
-.stat-value { font-size: var(--text-2xl); font-weight: 700; color: var(--text-primary); line-height: 1; }
-.stat-label { font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-xs); }
 
 .dashboard-row { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-base); }
 

@@ -12,14 +12,14 @@ import type { SettingProvider } from '@/components/SettingForm/types'
 
 const providers: SettingProvider[] = [
   {
-    key: 'local', label: '本地存储', icon: '💾', desc: '服务器本地磁盘',
+    key: 'local', label: '本地存储', desc: '服务器本地磁盘',
     fields: [
       { name: 'path', label: '存储路径', placeholder: '/uploads', required: true },
       { name: 'domain', label: '访问域名', placeholder: 'https://cdn.example.com', tip: '文件访问的域名前缀' },
     ],
   },
   {
-    key: 'aliyun_oss', label: '阿里云 OSS', icon: '☁',
+    key: 'aliyun_oss', label: '阿里云 OSS',
     fields: [
       { name: 'access_key_id', label: 'AccessKey ID', required: true },
       { name: 'access_key_secret', label: 'AccessKey Secret', type: 'password', required: true },
@@ -29,7 +29,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'qcloud_cos', label: '腾讯云 COS', icon: '🐧',
+    key: 'qcloud_cos', label: '腾讯云 COS',
     fields: [
       { name: 'secret_id', label: 'SecretId', required: true },
       { name: 'secret_key', label: 'SecretKey', type: 'password', required: true },
@@ -39,7 +39,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'qiniu', label: '七牛云', icon: '💎',
+    key: 'qiniu', label: '七牛云',
     fields: [
       { name: 'access_key', label: 'AccessKey', required: true },
       { name: 'secret_key', label: 'SecretKey', type: 'password', required: true },
@@ -48,7 +48,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 's3', label: 'AWS S3 / 兼容', icon: '📦', desc: '支持 AWS S3 及兼容存储（MinIO、R2 等）',
+    key: 's3', label: 'AWS S3 / 兼容', desc: '支持 AWS S3 及兼容存储（MinIO、R2 等）',
     fields: [
       { name: 'access_key', label: 'Access Key', required: true },
       { name: 'secret_key', label: 'Secret Key', type: 'password', required: true },

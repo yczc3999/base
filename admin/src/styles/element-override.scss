@@ -41,7 +41,6 @@
   --el-button-border-radius: var(--radius) !important;
   font-weight: 500;
   letter-spacing: 0.01em;
-  border: none !important;
   box-shadow: none !important;
   height: 32px !important;
   padding: 0 var(--space-md) !important;
@@ -64,6 +63,14 @@
     padding: 0 var(--space-lg) !important;
     font-size: var(--text-base) !important;
   }
+}
+
+// 主色按钮实心无边框；默认按钮描边区分层级（禁全局 border:none 把默认按钮隐形）
+.el-button--primary,
+.el-button--danger,
+.el-button--success,
+.el-button--warning {
+  border: none !important;
 }
 
 .el-button--default {
@@ -179,6 +186,8 @@
   --el-table-border-color: var(--border) !important;
   --el-table-header-bg-color: var(--bg-table-header) !important;
   --el-table-row-hover-bg-color: var(--bg-table-header) !important;
+  --el-table-text-color: var(--text-primary) !important;
+  --el-table-header-text-color: var(--text-secondary) !important;
   font-size: var(--text-sm) !important;
 
   th.el-table__cell {
@@ -190,7 +199,13 @@
     background: var(--bg-table-header) !important;
   }
 
-  .el-table__row { height: 52px; }
+  td.el-table__cell {
+    padding: 6px 0 !important;
+    color: var(--text-primary) !important;
+    .cell { line-height: 24px !important; }
+  }
+
+  .el-table__row { height: 48px !important; }
 
   &::before { display: none !important; } // 去掉底部边线
 }

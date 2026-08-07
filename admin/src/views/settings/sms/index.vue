@@ -12,7 +12,7 @@ import type { SettingProvider } from '@/components/SettingForm/types'
 
 const providers: SettingProvider[] = [
   {
-    key: 'aliyun', label: '阿里云短信', icon: '☁', desc: '阿里云短信服务（国内）',
+    key: 'aliyun', label: '阿里云短信', desc: '阿里云短信服务（国内）',
     fields: [
       { name: 'access_key_id', label: 'AccessKey ID', required: true },
       { name: 'access_key_secret', label: 'AccessKey Secret', type: 'password', required: true },
@@ -21,7 +21,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'aliyun_intl', label: '阿里云国际', icon: '🌏', desc: '阿里云短信服务（国际/港澳台）',
+    key: 'aliyun_intl', label: '阿里云国际', desc: '阿里云短信服务（国际/港澳台）',
     fields: [
       { name: 'access_key_id', label: 'AccessKey ID', required: true },
       { name: 'access_key_secret', label: 'AccessKey Secret', type: 'password', required: true },
@@ -30,7 +30,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'qcloud', label: '腾讯云短信', icon: '🐧', desc: '腾讯云短信（SMS）',
+    key: 'qcloud', label: '腾讯云短信', desc: '腾讯云短信（SMS）',
     fields: [
       { name: 'secret_id', label: 'SecretId', required: true },
       { name: 'secret_key', label: 'SecretKey', type: 'password', required: true },
@@ -40,7 +40,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'huawei', label: '华为云短信', icon: '📱',
+    key: 'huawei', label: '华为云短信',
     fields: [
       { name: 'app_key', label: 'APP Key', required: true },
       { name: 'app_secret', label: 'APP Secret', type: 'password', required: true },
@@ -50,7 +50,7 @@ const providers: SettingProvider[] = [
     ],
   },
   {
-    key: 'qiniu', label: '七牛云短信', icon: '💎',
+    key: 'qiniu', label: '七牛云短信',
     fields: [
       { name: 'access_key', label: 'AccessKey', required: true },
       { name: 'secret_key', label: 'SecretKey', type: 'password', required: true },

@@ -467,20 +467,21 @@ defineExpose({ crud })
 .crud-view {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-base);
 }
 
 .crud-search {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 16px 0;
+  padding: var(--space-base);
 }
 
 .crud-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0 var(--space-base);
 
   .toolbar-left { display: flex; gap: 8px; }
   .toolbar-right { display: flex; align-items: center; gap: 10px; }
@@ -492,6 +493,12 @@ defineExpose({ crud })
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+.crud-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-base) var(--space-xs);
 }
 
 .crud-pagination {
