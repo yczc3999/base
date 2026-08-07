@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">存储配置</h2>
+    <h2 class="settings-title">存储配置</h2>
     <SettingForm category="storage" :providers="providers" mode="single" />
   </div>
 </template>

@@ -1,6 +1,6 @@
 <template>
   <div v-loading="loading" style="max-width:820px">
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">AI 配置</h2>
+    <h2 class="settings-title">AI 配置</h2>
 
     <!-- ===== 1. Provider ===== -->
     <div class="card">

@@ -1,6 +1,6 @@
 <template>
   <div v-loading="loading" style="max-width:700px">
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">站点设置</h2>
+    <h2 class="settings-title">站点设置</h2>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
       <el-form label-width="100px">
         <el-form-item label="站点名称"><el-input v-model="form.name" placeholder="Base Platform" /></el-form-item>

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">通知配置</h2>
+    <h2 class="settings-title">通知配置</h2>
     <SettingForm category="notify" :providers="providers" mode="single" />
   </div>
 </template>

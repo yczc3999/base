@@ -28,6 +28,14 @@
   box-shadow: 0 0 6px var(--primary), 0 0 2px var(--primary) !important;
 }
 
+// 设置类页面统一标题（对齐 PageShell 视觉）
+.settings-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-base);
+}
+
 // 全局扁平滚动条（细、低对比，不抢内容）
 * {
   scrollbar-width: thin;
