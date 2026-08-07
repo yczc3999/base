@@ -5,9 +5,9 @@
 
 ---
 
-## 🟢 [已修 2026-08-06] vue-router 根路径/未知路径 未登录时渲染 404 而非跳登录
+## 🟢 [已修 2026-08-07 · base] vue-router 根路径/未知路径 未登录时渲染 404 而非跳登录
 
-**来源**: pillarwise-ops 克隆 base 后台时发现并修复。
+**来源**: pillarwise-ops 克隆 base 后台时发现并修复; 2026-08-07 在 base 复现并应用同一修法。
 
 ### 症状
 - 未登录访问后台根路径 `/` → 显示"404 页面不存在", 而不是跳到登录页。
@@ -43,6 +43,11 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 
 注意: 不要试图给 `rootRoute`(path: `/`) 或 `redirect` 路由加 beforeEnter, 它们不生效。
 
+### base 落地
+- 文件: `admin/src/router/static.ts`
+- 提交: 待提交
+- 验证: `npm run build` PASS（1.19s）
+
 ### 验证方法(headless)
 用 puppeteer-core + 系统 Chrome:
 - 未登录访问 `/` → 应 `#/login?redirect=/dashboard`
@@ -51,6 +56,29 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 ### 参考
 - vue-router 4: redirect 与 beforeEnter 的时序关系。
 - 修复提交: pillarwise-ops `38670e1`。
+
+---
+
+## 🔴 [已修 2026-08-07] messages 表 schema 漂移 → dashboard 数据全空
+
+**症状**: dashboard 四个统计卡 + 最近操作全显示 `—`。接口返回 HTTP 200 但前端静默全空。
+
+### 根因
+`messages` 表被某次**非受控手改**改成了多接收者事件化设计（`recipient_id` + `recipient_type` + event/biz/payload/idempotency 等扩展列），但:
+- schema_migrations 无任何迁移改过它（init.sql 与迁移 013 均为 `user_id`）
+- 整个 serve 后端 **0 处代码**使用 recipient 列
+- 模型 `app/models/message.py` 用 `user_id`
+- 表内 **0 行数据**
+
+`dashboard_stats` 查 `Message.user_id` → SQL 生成 `messages.user_id` → 列不存在 → `UndefinedColumn` → `main.py` 全局 `exception_handler(Exception)` 转成 **HTTP 200 + {code:500}** → 前端 `showError:false` 静默吞掉 → 显示空。
+
+### 修复
+- 迁移 `030_messages_rebuild.sql`: DROP 漂移表 + 按 init.sql/迁移 013 重建 `user_id` 结构
+- 原 recipient 结构备份: `databases/backups/messages_recipient_schema_20260707.sql`
+- 验证: dashboard_stats 核心查询全通过（admin=2, month_operations=2507）
+
+### 教训
+**任何改表都必须走迁移 + 同步模型 + 同步代码**。手工改表是漂移根源。若未来确需多接收者消息（admin/customer/parttime），走正式迁移，勿再手改。
 
 ---
 
