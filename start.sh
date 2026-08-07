@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 一键启动前后端 + worker（dev 模式）
-#   - 后端 uvicorn: 从 9000 起找空闲端口
+# 一键启动前后端 + worker
+#   - 后端 uvicorn: 从 9000 起找空闲端口（dev 单进程 --reload；PROD=1 时 --workers 4）
 #   - 前端 vite:    从 9200 起找空闲端口
 #   - Worker:       SEO 4 任务 + 其他定时
 #   - 两端都绑 0.0.0.0，输出局域网 IP
@@ -55,7 +55,11 @@ echo ""
   cd serve
   # shellcheck disable=SC1091
   source .venv/bin/activate
-  exec uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" --reload
+  if [ "$PROD" = "1" ]; then
+    exec uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" --workers 4 --timeout-graceful-shutdown 30
+  else
+    exec uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" --reload
+  fi
 ) &
 BACKEND_PID=$!
 

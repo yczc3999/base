@@ -41,17 +41,15 @@ class RoleLogic(BaseLogic):
         pass
 
     async def do_delete(self, db: AsyncSession, ids: list[int]):
-        """覆写删除：校验关联 + 清理 role_menus"""
-        for pk_value in ids:
-            # 校验关联用户
-            stmt = select(AdminUserRole).where(AdminUserRole.role_id == pk_value)
+        """覆写删除：校验关联 + 清理 role_menus（批量：IN 查询替代逐 id 查询）"""
+        if ids:
+            # 校验关联用户（批量）
+            stmt = select(AdminUserRole.role_id).where(AdminUserRole.role_id.in_(ids)).limit(1)
             result = await db.execute(stmt)
-            if result.scalar_one_or_none():
+            if result.scalar_one_or_none() is not None:
                 raise BizError("该角色下有关联用户，无法删除")
-
-        # 先删关联
-        for pk_value in ids:
-            await db.execute(delete(RoleMenu).where(RoleMenu.role_id == pk_value))
+            # 先删关联（批量）
+            await db.execute(delete(RoleMenu).where(RoleMenu.role_id.in_(ids)))
 
         await super().do_delete(db, ids)
 
@@ -97,8 +95,9 @@ class RoleLogic(BaseLogic):
         stmt = select(AdminUserRole.admin_user_id).where(AdminUserRole.role_id == role_id)
         result = await db.execute(stmt)
         user_ids = [row[0] for row in result.all()]
-        for uid in user_ids:
-            await cache_del(f"{settings.APP_NAME}:user_perms:{uid}")
+        if user_ids:
+            # 批量清缓存：一次 cache_del 传多个 key，替代逐用户调用
+            await cache_del(*[f"{settings.APP_NAME}:user_perms:{uid}" for uid in user_ids])
 
 
 role_logic = RoleLogic()

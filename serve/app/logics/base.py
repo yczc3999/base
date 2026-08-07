@@ -3,6 +3,7 @@ import logging
 from typing import Any, Type
 from sqlalchemy import select, func, delete, update, asc, desc, null
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.services.redis import cache_get, cache_set, cache_del, cache_del_pattern
 from app.utils.query import apply_filters, apply_keyword
 
@@ -55,6 +56,9 @@ class BaseLogic:
     bind_user_column: str = (
         ""  # 绑定用户字段（如 "user_id"），非空时 CRUD 自动按当前用户过滤
     )
+    # 列表查询时预加载的关系名（selectinload），避免逐行 N+1 查询。
+    # 子类按需开启，如 ArticleLogic.eager_loads = ["keywords"]。
+    eager_loads: list[str] = []
     create_rules: dict = {}  # 创建时的校验规则（传给 validate）
     edit_rules: dict = {}  # 编辑时的校验规则（传给 validate，partial=True）
 
@@ -108,6 +112,17 @@ class BaseLogic:
     def _has_deleted_at(self) -> bool:
         """模型是否有 deleted_at 列（软删除支持）"""
         return hasattr(self.model, "deleted_at")
+
+    def _eager_options(self) -> list:
+        """根据 eager_loads 生成 selectinload 选项（无效关系名安全跳过）"""
+        if not self.eager_loads:
+            return []
+        options = []
+        for name in self.eager_loads:
+            attr = getattr(self.model, name, None)
+            if attr is not None:
+                options.append(selectinload(attr))
+        return options
 
     # ==================== 列表 ====================
 
@@ -171,6 +186,7 @@ class BaseLogic:
         # 查询（捕获类型不匹配等数据库错误，返回空结果而非 500）
         stmt = (
             select(self.model)
+            .options(*self._eager_options())
             .where(*conditions)
             .order_by(order)
             .offset((page - 1) * page_size)
@@ -241,6 +257,7 @@ class BaseLogic:
 
         stmt = (
             select(self.model)
+            .options(*self._eager_options())
             .where(*conditions)
             .order_by(order)
             .offset((page - 1) * page_size)

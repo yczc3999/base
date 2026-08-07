@@ -76,11 +76,11 @@ class MenuLogic(BaseLogic):
         pass
 
     async def do_delete(self, db: AsyncSession, ids: list[int]):
-        """覆写删除，增加子菜单校验"""
-        for pk_value in ids:
-            stmt = select(Menu).where(Menu.parent_id == pk_value)
+        """覆写删除，增加子菜单校验（批量：单条 IN 查询替代逐 id 查询）"""
+        if ids:
+            stmt = select(Menu.id).where(Menu.parent_id.in_(ids)).limit(1)
             result = await db.execute(stmt)
-            if result.scalar_one_or_none():
+            if result.scalar_one_or_none() is not None:
                 raise BizError("请先删除子菜单")
         await super().do_delete(db, ids)
 

@@ -1,1 +1,35 @@
 Generic single-database configuration.
+
+# Base Platform — Alembic 使用说明
+
+## 双迁移系统共存（ADDITIVE，互不干扰）
+
+- **Alembic**（本目录 + alembic.ini）→ 负责 **schema 演进**（建表/加列/索引等 DDL）。
+  版本记录在 `alembic_version` 表。新 schema 变更请产 revision：
+  `alembic revision --autogenerate -m "描述"`，review 后再 `alembic upgrade head`。
+- **python -m app.migrate**（`databases/migrations/*.sql` + `schema_migrations` 表）
+  → 负责 **种子数据 / 菜单权限等业务迁移**。持续可用，勿删。
+
+两者表名不同（`alembic_version` vs `schema_migrations`），互不冲突。
+
+## 常用命令
+
+```bash
+.venv/bin/alembic current                # 当前 revision
+.venv/bin/alembic upgrade head           # 应用未执行的迁移
+.venv/bin/alembic revision --autogenerate -m "add x column"   # 生成迁移
+.venv/bin/alembic downgrade -1           # 回滚一步
+```
+
+## 连接串
+
+`alembic/env.py` 从 `app.config`（与运行时 `.env` 同源变量）动态构建
+**同步驱动 URL** `postgresql+psycopg://...`（应用运行时用 asyncpg 异步驱动）。
+不要在 alembic.ini 里写死密码。
+
+## 基线说明
+
+首个 revision `cdabba1e3903_baseline_existing_schema` 是 **空基线**：alembic 引入时
+DB 已由 migrate.py 建好 schema，故基线不执行任何 DDL，只标记状态。
+模型↔DB 存在历史漂移（手写 `idx_*`/`uq_*` 命名 vs 模型 `index=True`、JSON vs JSONB 等），
+`--autogenerate` 会报出这些差异 —— 消解漂移请单独出「对齐迁移」，不要混入业务迁移。

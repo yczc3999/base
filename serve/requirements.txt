@@ -8,3 +8,7 @@ pydantic-settings>=2.0
 bcrypt>=4.0
 python-multipart>=0.0.9
 openpyxl>=3.1
+# schema 迁移（Alembic，ADDITIVE；种子/业务迁移仍走 python -m app.migrate）
+alembic>=1.13
+# Alembic 同步驱动（应用运行时用 asyncpg，Alembic 用 psycopg 3）
+psycopg[binary]>=3.1

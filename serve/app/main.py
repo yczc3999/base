@@ -1,11 +1,22 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, ORJSONResponse
+from sqlalchemy import text
 from app.config import settings
 from app.logics.base import BizError
 from app.middleware.operation_log import OperationLogMiddleware
 from app.middleware.cors import CORSMiddleware, CORS_CONFIG
-from app.services.redis import close_redis
+from app.services.database import get_db
+from app.services.redis import get_redis, close_redis
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 from app.controllers.admin import user as admin_user
 from app.controllers.admin import setting as admin_setting
 from app.controllers.admin import log as admin_log
@@ -36,6 +47,20 @@ from app.controllers import dict as dict_public
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ---- startup prewarm ----
+    try:
+        async for session in get_db():
+            await session.execute(text("SELECT 1"))
+        logger.info("startup prewarm db: ok")
+    except Exception as e:  # noqa: BLE001
+        logger.error("startup prewarm db failed: %s", e)
+    try:
+        r = await get_redis()
+        await r.ping()
+        logger.info("startup prewarm redis: ok")
+    except Exception as e:  # noqa: BLE001
+        logger.error("startup prewarm redis failed: %s", e)
+    logger.info("startup prewarm complete")
     yield
     await close_redis()
 
@@ -45,6 +70,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.APP_DEBUG else None,
     redoc_url=None,
+    default_response_class=ORJSONResponse,
 )
 
 # ---- 中间件（注册顺序与执行顺序相反）----
@@ -73,6 +99,31 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/health/live")
+async def health_live():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    db_ok, redis_ok = True, True
+    try:
+        async for session in get_db():
+            await session.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001
+        db_ok = False
+    try:
+        r = await get_redis()
+        await r.ping()
+    except Exception:  # noqa: BLE001
+        redis_ok = False
+    if db_ok and redis_ok:
+        return {"status": "ready"}
+    return JSONResponse(
+        {"status": "unready", "db": db_ok, "redis": redis_ok}, status_code=503
+    )
 
 
 # ---- 路由 ----

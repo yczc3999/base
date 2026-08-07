@@ -39,6 +39,7 @@ from app.logics.base import BaseLogic, BizError
 from app.services.database import get_db
 from app.deps import AuthInfo, require_auth, require_perms
 from app.utils.response import ok, fail
+from app.schemas.base import ListResponse, DetailResponse
 
 DEFAULT_ACTIONS = {
     "read": ["getList", "getDetail"],
@@ -80,17 +81,19 @@ def crud_router(
 
     # ==================== getList ====================
 
+    # response_model 描述 {code, msg, data} 信封（见 app/schemas/base.py），
+    # 不改契约，仅做 OpenAPI 文档 + 响应校验。data 为 ListData。
     if _needs_auth("getList"):
         if _perm_list:
-            @router.get("/getList")
+            @router.get("/getList", response_model=ListResponse)
             async def get_list(request: Request, auth: AuthInfo = Depends(_perm_list), db: AsyncSession = Depends(get_db)):
                 return await _do_get_list(request, db, auth.user_id, auth.is_super_admin)
         else:
-            @router.get("/getList")
+            @router.get("/getList", response_model=ListResponse)
             async def get_list(request: Request, auth: AuthInfo = Depends(_auth_dep), db: AsyncSession = Depends(get_db)):
                 return await _do_get_list(request, db, auth.user_id, auth.is_super_admin)
     else:
-        @router.get("/getList")
+        @router.get("/getList", response_model=ListResponse)
         async def get_list_public(request: Request, db: AsyncSession = Depends(get_db)):
             return await _do_get_list(request, db, None, False)
 
@@ -104,17 +107,18 @@ def crud_router(
 
     # ==================== getDetail ====================
 
+    # response_model 描述 {code, msg, data} 信封，data 为单行 dict。
     if _needs_auth("getDetail"):
         if _perm_detail:
-            @router.get("/getDetail")
+            @router.get("/getDetail", response_model=DetailResponse)
             async def get_detail(request: Request, auth: AuthInfo = Depends(_perm_detail), db: AsyncSession = Depends(get_db)):
                 return await _do_get_detail(request, db, auth.user_id, auth.is_super_admin)
         else:
-            @router.get("/getDetail")
+            @router.get("/getDetail", response_model=DetailResponse)
             async def get_detail(request: Request, auth: AuthInfo = Depends(_auth_dep), db: AsyncSession = Depends(get_db)):
                 return await _do_get_detail(request, db, auth.user_id, auth.is_super_admin)
     else:
-        @router.get("/getDetail")
+        @router.get("/getDetail", response_model=DetailResponse)
         async def get_detail_public(request: Request, db: AsyncSession = Depends(get_db)):
             return await _do_get_detail(request, db, None, False)
 

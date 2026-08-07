@@ -14,6 +14,8 @@ class ArticleLogic(BaseLogic):
     model = Article
     cache_prefix = "article"
     except_keys = ["updated_at"]
+    # 列表查询预加载 keywords（多对多），避免逐文章 N+1 查询
+    eager_loads = ["keywords"]
     # 允许前端显式传 null 清空的字段（支持"取消定时"、"重置发布时间"等场景）
     nullable_fields = {"scheduled_at", "published_at"}
 
