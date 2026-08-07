@@ -28,6 +28,20 @@
   box-shadow: 0 0 6px var(--primary), 0 0 2px var(--primary) !important;
 }
 
+// 全局扁平滚动条（细、低对比，不抢内容）
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-dark) transparent;
+
+  &::-webkit-scrollbar { width: 6px; height: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-dark);
+    border-radius: var(--radius-sm);
+    &:hover { background: var(--text-disabled); }
+  }
+}
+
 // P2-4: 尊重系统减弱动效偏好（prefers-reduced-motion）
 @media (prefers-reduced-motion: reduce) {
   *,
