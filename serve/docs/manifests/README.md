@@ -10,7 +10,8 @@
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
 | WP-00 | 00a typed config 与数据库连接基础 | ✅ DONE | `wp-00a-config-database.md` | `1834d4fcf93192b24ee9e684c1c5a63bbd181ed79321eb5cdbe24e2d7db55663` | 2026-08-08 |
-| WP-00 | 00b Control Redis / Cache Redis | ✅ DONE | `wp-00b-redis.md` | `fd1ff118254c440deb1f62c33dec5542e7e130c743d4f0106a96c258211775ef` | 2026-08-08 |
+| WP-00 | 00b Control Redis / Cache Redis | ⚠ DONE，审查要求 R1 | `wp-00b-redis.md` | `fd1ff118254c440deb1f62c33dec5542e7e130c743d4f0106a96c258211775ef` | 2026-08-08 |
+| WP-00 | 00b-r1 Redis 基础不变量整改 | ⏳ pending | 预定 `wp-00b-r1-redis-remediation.md` | — | — |
 | WP-00 | 00c Artifact Store | ⏳ pending | — | — | — |
 | WP-00 | 00d Observability / lifespan | ⏳ pending | — | — | — |
 | WP-01A | 0001/0002 迁移、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
@@ -30,6 +31,7 @@
 1. 打开目标 WP 的 manifest，核对：修改文件（§1）、实现内容（§2）、命令与真实结果（§3）、配置/预算证据（§4）、未解决 blocker（§5）、回滚方式（§6）、manifest 路径 + SHA（§7）。
 2. 复验命令见各 manifest §3；全量验收 = 编译 + 目标测试 + `git diff --check` + 全量回归。
 3. SHA-256 口径：对 manifest **删除"恰好为 64 位十六进制"的哈希行**后的内容计算，与存储值无关、可复现。
+4. `DONE` 是实现者交付状态，审查接受状态以 [`../tasks/README.md`](../tasks/README.md) 为准。
 
 ```bash
 # 复验某个 manifest 的哈希

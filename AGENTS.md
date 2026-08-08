@@ -48,3 +48,9 @@ messages follow repository history: `type(scope): concise summary`, for example
 `feat(v2-market): persist Gamma keyset frames`. UI implementation remains blocked until the user approves
 the product palette/tokens and one high-fidelity business-page preview.
 
+`serve/docs/tasks/README.md` is the single current-task pointer. Every task has an exact task document and
+an exact completion-manifest filename. When the user says only “完成”, read the manifest and repository
+state, rerun the task evidence, and record the review verdict. If accepted, create the next task document;
+if defects exist, create a remediation task document and block advancement. Do not ask the user to copy
+results already recorded in the repository, and do not treat an implementer-written `DONE` as reviewer
+acceptance.

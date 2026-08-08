@@ -437,6 +437,15 @@ WP-05 之前不需要交易密钥，且不得有真实下单路径。WP-07B 之�
 
 ## 13. DeepSeek 单次任务模板
 
+任务文件统一位于 `serve/docs/tasks/<task-id>-<slug>.md`；当前唯一任务由
+`serve/docs/tasks/README.md` 指向。实现者必须把完成证据写入任务文件预先指定的
+`serve/docs/manifests/<task-id>-<slug>.md`，不得临时改名。
+
+用户只说“完成”时，审查者必须直接读取当前任务、completion manifest、Git 状态与实际改动，
+复跑任务规定的验收证据：通过则在任务索引记录 `ACCEPTED` 并落地下一任务文档；发现问题则
+记录 `REMEDIATION_REQUIRED`，下一任务文档优先修复问题，不得越过依赖继续施工。实现者声明
+`DONE` 只表示待审，不等于审查通过。
+
 ```text
 Work package: WP-XX / 子任务名称
 Objective and user value: ...

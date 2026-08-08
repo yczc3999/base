@@ -36,6 +36,7 @@ Request → AuthMiddleware → OperationLogMiddleware → Router → Logic → M
 - [Polymarket 接入实现设计](docs/polymarket-integration-design.md)：市场发现、行情、鉴权、下单、对账与结算。
 - [性能、缓存与数据库设计](docs/performance-cache-database-design.md)：实时路径、缓存层、分区索引、队列、容量和压测。
 - [V2 逐文件实施合同](docs/v2-implementation-contract.md)：文件职责、依赖方向、工作包与验收证据。
+- [当前任务与交接状态](docs/tasks/README.md)：实现者只执行这里指向的任务；用户回复“完成”后自动审查并生成下一任务。
 
 ## 核心设计
 
