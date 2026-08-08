@@ -10,7 +10,7 @@ type="warning" :icon="VideoPlay" :loading="running" :disabled="pendingCount === 
       <span class="tip">CLI 等价命令：<code>python -m app.migrate</code></span>
     </div>
 
-    <el-table v-loading="loading" :data="list" border>
+    <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="version" label="迁移文件" min-width="260">
         <template #default="{ row }">
           <code class="ver-name">{{ row.version }}</code>

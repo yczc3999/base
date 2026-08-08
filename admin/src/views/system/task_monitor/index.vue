@@ -21,7 +21,7 @@
         <span class="section-title">定时任务</span>
         <span class="section-hint">上次刷新 {{ lastUpdated }} · 手动触发走队列，由 worker 执行（防并发锁）</span>
       </div>
-      <el-table v-loading="loading && !tasks.length" :data="tasks" border size="default" :empty-text="'暂无任务'">
+      <el-table v-loading="loading && !tasks.length" :data="tasks" stripe size="default" :empty-text="'暂无任务'">
         <el-table-column prop="name" label="任务名" min-width="120" />
         <el-table-column prop="class_name" label="类名" min-width="180">
           <template #default="{ row }">
