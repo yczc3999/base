@@ -4,16 +4,21 @@
     :sub-title="$t('dashboard.welcome', { name: userStore.userInfo?.nickname || 'Admin' })"
   >
   <div class="dashboard">
-    <div class="stat-cards">
-      <StatCard
-        v-for="stat in statCards"
-        :key="stat.label"
-        :icon="stat.icon"
-        :value="stat.value"
-        :label="stat.label"
-        :accent="stat.color"
-        :count="stat.count"
-      />
+    <!-- 欢迎 hero：深色大色块 + 数据概览 -->
+    <div class="hero">
+      <div class="hero-left">
+        <div class="hero-live" aria-label="系统状态运行中"></div>
+        <div>
+          <div class="hero-title">{{ $t('dashboard.welcome', { name: userStore.userInfo?.nickname || 'Admin' }) }}</div>
+          <div class="hero-sub">今天也要高效运营</div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div v-for="stat in statCards" :key="stat.label" class="hero-stat">
+          <div class="hero-stat-num">{{ stat.value }}</div>
+          <div class="hero-stat-label">{{ stat.label }}</div>
+        </div>
+      </div>
     </div>
 
     <div class="dashboard-row">
@@ -70,9 +75,8 @@ import { useQuery } from '@tanstack/vue-query'
 import { useUserStore } from '@/stores/user'
 import { get } from '@/api/request'
 import PageShell from '@/components/PageShell/index.vue'
-import StatCard from '@/components/StatCard/index.vue'
 import EmptyState from '@/components/EmptyState/index.vue'
-import { Users, LogIn, Activity, Bell } from 'lucide-vue-next'
+import { Activity } from 'lucide-vue-next'
 
 const userStore = useUserStore()
 
@@ -95,10 +99,10 @@ const sys = computed(() => systemQuery.data.value ?? {})
 const recentLogs = computed(() => recentQuery.data.value ?? [])
 
 const statCards = computed(() => [
-  { label: '用户总数', value: sd.value.total_users ?? '—', icon: Users, color: 'var(--primary)', count: true },
-  { label: '今日登录', value: sd.value.today_logins ?? '—', icon: LogIn, color: 'var(--success)', count: true },
-  { label: '本月操作', value: sd.value.month_operations ?? '—', icon: Activity, color: 'var(--warning)', count: true },
-  { label: '未读消息', value: sd.value.unread_messages ?? '—', icon: Bell, color: 'var(--danger)', count: true },
+  { label: '用户总数', value: sd.value.total_users ?? '—' },
+  { label: '今日登录', value: sd.value.today_logins ?? '—' },
+  { label: '本月操作', value: sd.value.month_operations ?? '—' },
+  { label: '未读消息', value: sd.value.unread_messages ?? '—' },
 ])
 
 function healthy(v: any) { return v !== undefined && v !== null && v !== '' }
@@ -118,6 +122,63 @@ function fmt(v: string) { return v ? v.replace('T',' ').substring(11,19) : '—'
 </script>
 
 <style scoped lang="scss">
+/* ── 欢迎 hero ── */
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-sidebar);
+  border-radius: var(--radius);
+  padding: var(--space-lg) var(--space-2xl);
+  margin-bottom: var(--space-lg);
+}
+
+.hero-left { display: flex; align-items: center; gap: var(--space-base); }
+
+.hero-live {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: hero-pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes hero-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.hero-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-inverse);
+}
+
+.hero-sub {
+  font-size: var(--text-xs);
+  color: var(--text-sidebar);
+  margin-top: var(--space-xs);
+}
+
+.hero-stats { display: flex; gap: var(--space-2xl); }
+
+.hero-stat { text-align: right; }
+
+.hero-stat-num {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-inverse);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-sidebar);
+  margin-top: var(--space-xs);
+}
+
+@media (max-width: 1100px) {
+  .hero { flex-direction: column; align-items: flex-start; gap: var(--space-base); }
+  .hero-stats { width: 100%; justify-content: space-between; }
+  .hero-stat { text-align: left; }
+}
+
 .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-base); margin: var(--space-lg) 0; }
 
 .dashboard-row { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-base); }
