@@ -187,6 +187,15 @@ class Settings(BaseSettings):
     REDIS_CACHE_TTL_JITTER_S: int = Field(30, ge=0)
     REDIS_CACHE_BYPASS_ON_ERROR: bool = True
 
+    # ---- V2 Artifact Store（performance 设计 §6.2 / §14）----
+    ARTIFACT_DRIVER: str = "local"
+    ARTIFACT_LOCAL_ROOT: str = "./storage/v2-artifacts"
+    ARTIFACT_INLINE_THRESHOLD_BYTES: int = Field(16384, ge=0)
+    ARTIFACT_COMPRESSION_THRESHOLD_BYTES: int = Field(16384, ge=0)
+    ARTIFACT_ZSTD_LEVEL: int = Field(6, ge=1)
+    ARTIFACT_MAX_OBJECT_BYTES: int = Field(67_108_864, ge=1)
+    ARTIFACT_VERIFY_ON_READ: bool = True
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -310,6 +319,26 @@ class Settings(BaseSettings):
                 f"reserved={budget.reserved}). Raise DB_MAX_CONNECTIONS or lower "
                 f"pool sizes; do not reuse the legacy 20+10 per-process default."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_artifact_thresholds(self) -> "Settings":
+        """Artifact 阈值交叉校验：0 <= inline <= compression <= max（design §8）。"""
+        if not (0 <= self.ARTIFACT_INLINE_THRESHOLD_BYTES <= self.ARTIFACT_COMPRESSION_THRESHOLD_BYTES):
+            raise ValueError(
+                "artifact thresholds must satisfy "
+                "0 <= ARTIFACT_INLINE_THRESHOLD_BYTES <= ARTIFACT_COMPRESSION_THRESHOLD_BYTES, "
+                f"got inline={self.ARTIFACT_INLINE_THRESHOLD_BYTES} "
+                f"compression={self.ARTIFACT_COMPRESSION_THRESHOLD_BYTES}"
+            )
+        if not (self.ARTIFACT_COMPRESSION_THRESHOLD_BYTES <= self.ARTIFACT_MAX_OBJECT_BYTES):
+            raise ValueError(
+                "artifact thresholds must satisfy compression_threshold <= max_object_bytes, "
+                f"got compression={self.ARTIFACT_COMPRESSION_THRESHOLD_BYTES} "
+                f"max={self.ARTIFACT_MAX_OBJECT_BYTES}"
+            )
+        if self.ARTIFACT_DRIVER not in ("local", "s3"):
+            raise ValueError(f"ARTIFACT_DRIVER must be 'local' or 's3', got {self.ARTIFACT_DRIVER!r}")
         return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}

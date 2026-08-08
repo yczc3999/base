@@ -12,3 +12,5 @@ openpyxl>=3.1
 alembic>=1.13
 # Alembic 同步驱动（应用运行时用 asyncpg，Alembic 用 psycopg 3）
 psycopg[binary]>=3.1
+# Artifact Store 压缩（有上界：锁定主版本）
+zstandard>=0.22,<1

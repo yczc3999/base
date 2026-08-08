@@ -73,7 +73,7 @@ outbox_pending` 等平行物理表。
 | `app/services/artifact_store/service.py` | content-addressed put/get/range、hash/size/MIME | 判断 artifact 业务有效性 | `test_v2_artifact_store.py` |
 | `app/services/artifact_store/contracts.py` | `ArtifactRef/ArtifactDriver` Protocol 与统一错误 | 选择 retention/Gate | `test_v2_artifact_driver_contract.py` |
 | `app/services/artifact_store/drivers/local.py` | 开发/测试原子落盘、safe path | 生产共享存储假设 | `test_v2_artifact_local.py` |
-| `app/services/artifact_store/drivers/s3.py` | S3 multipart/range/version metadata | content hash 判断 | `test_v2_artifact_s3.py` |
+| `app/services/artifact_store/drivers/s3.py` | S3 conditional PUT/range/对象元数据 | content hash 判断 | `test_v2_artifact_s3.py` |
 | `app/services/vault/service.py` | 以 secret ref/version 做授权解密、轮换与审计 | 明文投影到 settings/Redis/log/API | `test_v2_vault.py` |
 | `app/services/vault/envelope.py` | KMS/env keyring、AES-GCM、identity-bound AAD | 业务判断、保存 master key | `test_v2_vault_crypto.py` |
 | `app/db/uow.py` | 外层事务、commit/rollback、after-commit hooks | 外部网络请求、业务 Gate | `test_v2_uow.py` |

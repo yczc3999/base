@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 总状态：IN PROGRESS**（00a/00b 已审查接受，00c1 当前待实施）
+> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1 已接受；当前执行 00c2）
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -13,8 +13,10 @@
 | WP-00 | 00b Control Redis / Cache Redis | ⚠ DONE，审查要求 R1 | `wp-00b-redis.md` | `fd1ff118254c440deb1f62c33dec5542e7e130c743d4f0106a96c258211775ef` | 2026-08-08 |
 | WP-00 | 00b-r1 Redis 基础不变量整改 | ⚠ DONE，审查要求 R2 | `wp-00b-r1-redis-remediation.md` | `bdb27c6de1079ea6a8383c01b495b79072d9d91588f72c1b87a00cdfd469cf32` | 2026-08-08 |
 | WP-00 | 00b-r2 Redis identity 与测试稳定性整改 | ✅ DONE，审查通过 | `wp-00b-r2-redis-identity-test-stability.md` | `8f406ad4cee49fbc81383858613c4ade25c0afeaf2584b31194f5706c46b02a6` | 2026-08-08 |
-| WP-00 | 00c1 Local Artifact Store | ▶ READY | 预定 `wp-00c1-artifact-local.md` | — | — |
-| WP-00 | 00c2 S3-compatible Artifact Driver | ⏳ pending | — | — | — |
+| WP-00 | 00c1 Local Artifact Store | ⚠ DONE，审查要求 R1 | `wp-00c1-artifact-local.md` | `be062516eac9a64a888f3e30852e760508b68e4268872dc77f4bd6bc2123df19` | 2026-08-08 |
+| WP-00 | 00c1-r1 Artifact 正确性整改 | ⚠ DONE，审查要求 R2 | `wp-00c1-r1-artifact-correctness.md` | `119e0710e20468e3c7b5a18a915fad50eac3831ce4b2179007091dd0f339cc85` | 2026-08-08 |
+| WP-00 | 00c1-r2 Artifact 最终边界整改 | ✅ DONE，审查通过 | `wp-00c1-r2-artifact-final-boundaries.md` | `40cfd5f7be09ff368ecad9737f5febaccde96a2b3314309cc6d30b0c379b3220` | 2026-08-08 |
+| WP-00 | 00c2 S3-compatible Artifact Driver | ▶ READY | — | — | — |
 | WP-00 | 00d Observability / lifespan | ⏳ pending | — | — | — |
 | WP-01A | 0001/0002 迁移、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |

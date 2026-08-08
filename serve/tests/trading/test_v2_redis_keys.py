@@ -71,6 +71,24 @@ def test_boundary_is_reserved_and_unique():
     assert "%7E" in k
 
 
+def test_exact_key_format_no_double_colon():
+    """精确格式 {namespace}:~:{encoded...}，不得出现 :~::。"""
+    # 有段：ns:~:seg（一个冒号边界，非两个）
+    assert build_redis_key("pm:v2:prod:cache", "a", "b") == "pm:v2:prod:cache:~:a:b"
+    # 多段段间以 : 分隔
+    assert build_redis_key("pm:v2:prod:cache", "x:y", "z") == "pm:v2:prod:cache:~:x%3Ay:z"
+    # 无 :~:: 子串
+    k = build_redis_key("pm:v2:prod:cache", "a", "b")
+    assert ":~::" not in k
+    assert k.count(":~:") == 1
+
+
+def test_zero_segments_behavior():
+    """build_redis_key(namespace) 零动态段 → 返回 {namespace}:~:。"""
+    assert build_redis_key("pm:v2:prod:cache") == "pm:v2:prod:cache:~:"
+    assert build_redis_key("pm:v2:prod:cache") != "pm:v2:prod:cache"
+
+
 # ---------------- 无碰撞 ----------------
 
 def test_collision_regression_exact_review_case():

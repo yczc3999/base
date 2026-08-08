@@ -101,8 +101,11 @@ def build_redis_key(namespace: str, *segments: str) -> str:
     不同 namespace/segment 分割不碰撞；相同输入稳定。
     """
     ns = validate_namespace(namespace)
+    # 精确格式 {namespace}:~:{encoded...}；BOUNDARY 含 :~:，故以 ":" 拼接段
+    if not segments:
+        return f"{ns}:~:"
     encoded = [encode_key_segment(seg) for seg in segments]
-    return ":".join([ns + BOUNDARY, *encoded])
+    return f"{ns}:~:" + ":".join(encoded)
 
 
 def decode_key_segment(encoded: str) -> str:
