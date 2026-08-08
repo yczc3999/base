@@ -16,3 +16,8 @@ psycopg[binary]>=3.1
 zstandard>=0.22,<1
 # Artifact Store S3-compatible 共享存储 Driver（有上界：锁定主版本）
 boto3>=1.43,<2
+# 技术可观测性：低基数 Prometheus + OTel Trace（WP-00d1；有上界：锁定主版本）
+prometheus-client>=0.21,<1
+opentelemetry-api>=1.29,<2
+opentelemetry-sdk>=1.29,<2
+opentelemetry-exporter-otlp-proto-http>=1.29,<2

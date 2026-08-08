@@ -209,6 +209,18 @@ class Settings(BaseSettings):
     ARTIFACT_S3_EXPECTED_BUCKET_OWNER: str = ""
     ARTIFACT_S3_ALLOW_INSECURE_HTTP: bool = False
 
+    # ---- V2 技术可观测性（WP-00d1；performance 设计 §12 / platform 设计 §4）----
+    OBS_LOG_LEVEL: str = "INFO"
+    OBS_LOG_JSON: bool = True
+    OBS_SERVICE_NAME: str = "pollymarket-v2"
+    OBS_SERVICE_VERSION: str = "dev"
+    PROMETHEUS_ENABLED: bool = True
+    OTEL_ENABLED: bool = False
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_ALLOW_INSECURE_HTTP: bool = False
+    OTEL_TRACE_SAMPLE_RATIO: float = Field(0.05, ge=0.0, le=1.0)
+    OTEL_EXPORT_TIMEOUT_S: float = Field(5.0, gt=0)
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -482,6 +494,120 @@ class Settings(BaseSettings):
                     "ARTIFACT_S3_ENDPOINT_URL uses http:// but "
                     "ARTIFACT_S3_ALLOW_INSECURE_HTTP=false"
                 )
+        return self
+
+    # ---- OTel OTLP endpoint 校验（WP-00d1）----
+
+    @staticmethod
+    def _validate_otel_endpoint(url: str) -> str:
+        """OTel OTLP endpoint：绝对 http(s) URL；禁 userinfo/query/fragment/control/
+        whitespace；path 仅允许空、`/` 或 `/v1/traces`（原样保留，不 normalize）。
+        必须访问并验证 parsed port；返回 scheme。启用 OTel 时必填（由调用方保证）。"""
+        if not isinstance(url, str) or not url:
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT must be a non-empty absolute http(s) URL, "
+                f"got {url!r}"
+            )
+        if any(ch.isspace() for ch in url):
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT must not contain whitespace: {url!r}"
+            )
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in url):
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT contains control characters: {url!r}"
+            )
+        if "?" in url or "#" in url:
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT must not contain query or fragment: {url!r}"
+            )
+        if "@" in url:
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT must not contain userinfo: {url!r}"
+            )
+        try:
+            p = urlsplit(url)
+        except ValueError:
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT is not parseable: {url!r}"
+            ) from None
+        if p.scheme not in ("http", "https"):
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT scheme must be http(s), got {url!r}"
+            )
+        if not p.hostname:
+            raise ValueError(f"OTEL_EXPORTER_OTLP_ENDPOINT missing host: {url!r}")
+        if p.path not in ("", "/", "/v1/traces"):
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT path must be empty, '/', or '/v1/traces': "
+                f"{url!r}"
+            )
+        try:
+            port = p.port
+        except ValueError:
+            raise ValueError(
+                f"OTEL_EXPORTER_OTLP_ENDPOINT has invalid port: {url!r}"
+            ) from None
+        if port is not None:
+            if port <= 0 or port > 65535:
+                raise ValueError(
+                    f"OTEL_EXPORTER_OTLP_ENDPOINT port out of range 1..65535: {url!r}"
+                )
+        else:
+            if p.netloc.endswith(":"):
+                raise ValueError(
+                    f"OTEL_EXPORTER_OTLP_ENDPOINT has empty port: {url!r}"
+                )
+        return p.scheme
+
+    @model_validator(mode="after")
+    def _validate_observability(self) -> "Settings":
+        """可观测性交叉校验：level 枚举、service name/version 格式、OTLP endpoint 严格
+        origin（启用时必填、http 需 opt-in）、sample ratio 与 export timeout 边界。"""
+        if self.OBS_LOG_LEVEL not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+            raise ValueError(
+                f"OBS_LOG_LEVEL must be one of DEBUG/INFO/WARNING/ERROR/CRITICAL, "
+                f"got {self.OBS_LOG_LEVEL!r}"
+            )
+        import re as _re
+
+        if not (1 <= len(self.OBS_SERVICE_NAME) <= 64) or not _re.fullmatch(
+            r"[a-zA-Z0-9._-]+", self.OBS_SERVICE_NAME
+        ):
+            raise ValueError(
+                f"OBS_SERVICE_NAME must be 1-64 chars of [a-zA-Z0-9._-], "
+                f"got {self.OBS_SERVICE_NAME!r}"
+            )
+        if not (1 <= len(self.OBS_SERVICE_VERSION) <= 64) or any(
+            ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F
+            for ch in self.OBS_SERVICE_VERSION
+        ):
+            raise ValueError(
+                f"OBS_SERVICE_VERSION must be 1-64 chars without control/whitespace, "
+                f"got {self.OBS_SERVICE_VERSION!r}"
+            )
+        if self.OTEL_ENABLED:
+            if not self.OTEL_EXPORTER_OTLP_ENDPOINT:
+                raise ValueError(
+                    "OTEL_EXPORTER_OTLP_ENDPOINT must be set when OTEL_ENABLED=true"
+                )
+            scheme = self._validate_otel_endpoint(self.OTEL_EXPORTER_OTLP_ENDPOINT)
+            if scheme == "http" and not self.OTEL_ALLOW_INSECURE_HTTP:
+                raise ValueError(
+                    "OTEL_EXPORTER_OTLP_ENDPOINT uses http:// but "
+                    "OTEL_ALLOW_INSECURE_HTTP=false"
+                )
+        elif self.OTEL_EXPORTER_OTLP_ENDPOINT:
+            # 未启用时即使填了 endpoint 也做格式校验，fail-fast 而非延迟到 boto/OTel
+            self._validate_otel_endpoint(self.OTEL_EXPORTER_OTLP_ENDPOINT)
+        if not (0.0 <= self.OTEL_TRACE_SAMPLE_RATIO <= 1.0):
+            raise ValueError(
+                f"OTEL_TRACE_SAMPLE_RATIO must be in [0.0, 1.0], "
+                f"got {self.OTEL_TRACE_SAMPLE_RATIO}"
+            )
+        if self.OTEL_EXPORT_TIMEOUT_S <= 0:
+            raise ValueError(
+                f"OTEL_EXPORT_TIMEOUT_S must be > 0, got {self.OTEL_EXPORT_TIMEOUT_S}"
+            )
         return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}

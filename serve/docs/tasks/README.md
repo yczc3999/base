@@ -7,13 +7,13 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-00d1` |
+| Task | `WP-00d2` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-00d1-observability-foundation.md`](wp-00d1-observability-foundation.md) |
-| 前置实现 | `WP-00c2-r3`（ACCEPTED） |
-| 前置审查 | 独立复验 117 S3、315 trading、526 full；三条 ClientError traceback 脱敏全关；manifest SHA 一致 |
-| 实现范围 | typed observability config + JSON/redaction logging + low-cardinality Prometheus + W3C/OTel tracing primitives |
-| 后续候选 | `WP-00d2 Lifespan / health / metrics endpoint / Artifact factory`，00d1 接受前不得创建 |
+| 任务文档 | [`wp-00d2-runtime-lifespan-health.md`](wp-00d2-runtime-lifespan-health.md) |
+| 前置实现 | `WP-00d1-r5`（ACCEPTED） |
+| 前置审查 | 独立复验 134 log、88 trace、93 config、33 metric、608 trading、819 full；manifest SHA 与 diff 通过，无 P0/P1 |
+| 实现范围 | Artifact factory、RuntimeResources、DB/Redis/Artifact health、lifespan、metrics、Trading Admin runtime endpoint |
+| 后续候选 | `WP-01A`；WP-00d2 接受前不得创建 |
 
 ## 固定交接协议
 
@@ -40,4 +40,9 @@
 | `WP-00c2-r1` | DONE | REMEDIATION_REQUIRED | 91 S3、279 trading、490 full 均过；主体整改有效，但 body.read 原生异常泄出、endpoint 校验与 exists 完整性尚未关闭；见当前 R2 |
 | `WP-00c2-r2` | DONE | REMEDIATION_REQUIRED | 114 S3、55 config、312 trading、523 full 与 SHA 均通过；PUT ClientError 三个分支未抑制 traceback context；见当前 R3 |
 | `WP-00c2-r3` | DONE | ACCEPTED | 独立复验：117 S3、315 trading、526 full；三分支 traceback 脱敏全关；compileall/diff/SHA 通过 |
-| `WP-00d1` | — | READY | 技术可观测性 primitives；接受前不得推进 lifespan 集成 |
+| `WP-00d1` | DONE | REMEDIATION_REQUIRED | 157 定向、417 trading、628 full 与 SHA 通过；span value 脱敏、坏 str 日志、provider 重配置生命周期三项 P1；见当前 R1 |
+| `WP-00d1-r1` | DONE | REMEDIATION_REQUIRED | 实际 20 log + 38 trace、444 trading、655 full 与 SHA 通过；private-key/body/tool/raw/token/Set-Cookie 仍泄露；见当前 R2 |
+| `WP-00d1-r2` | DONE | REMEDIATION_REQUIRED | 61 log、80 trace、527 trading、738 full 与 SHA 通过；长 PEM/quoted value/Cookie 解析边界仍泄露；见当前 R3 |
+| `WP-00d1-r3` | DONE | REMEDIATION_REQUIRED | 91 log、80 trace、557 trading、768 full 与 SHA 通过；未闭合 quote 相反/转义引号仍泄露；见当前 R4 |
+| `WP-00d1-r4` | DONE | REMEDIATION_REQUIRED | 101 log + 80 trace、567 trading、778 full 与 SHA 通过；`prefix token=` / `INFO Cookie:` 等前导文本使敏感 key 被贪婪吞并，见 R5 |
+| `WP-00d1-r5` | DONE | ACCEPTED | 独立复验 134 log、88 trace、93 config、33 metric、608 trading、819 full；prefix/multi-key/negative/fuzz 与 SHA/diff 全过，无 P0/P1 |

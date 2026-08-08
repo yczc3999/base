@@ -27,9 +27,19 @@ _READ_ENV_KEYS = [
     "ARTIFACT_S3_CONNECT_TIMEOUT_S", "ARTIFACT_S3_READ_TIMEOUT_S",
     "ARTIFACT_S3_MAX_POOL_CONNECTIONS", "ARTIFACT_S3_MAX_ATTEMPTS",
     "ARTIFACT_S3_EXPECTED_BUCKET_OWNER", "ARTIFACT_S3_ALLOW_INSECURE_HTTP",
+    "OBS_LOG_LEVEL", "OBS_LOG_JSON", "OBS_SERVICE_NAME", "OBS_SERVICE_VERSION",
+    "PROMETHEUS_ENABLED", "OTEL_ENABLED", "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_ALLOW_INSECURE_HTTP", "OTEL_TRACE_SAMPLE_RATIO", "OTEL_EXPORT_TIMEOUT_S",
 ]
 for _triplet in PROFILE_FIELDS.values():
     _READ_ENV_KEYS.extend(_triplet)
+
+# WP-00d1 技术可观测性的固定 env 键集合（用于 .env.example 契约测试）
+_OBS_ENV_KEYS = [
+    "OBS_LOG_LEVEL", "OBS_LOG_JSON", "OBS_SERVICE_NAME", "OBS_SERVICE_VERSION",
+    "PROMETHEUS_ENABLED", "OTEL_ENABLED", "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_ALLOW_INSECURE_HTTP", "OTEL_TRACE_SAMPLE_RATIO", "OTEL_EXPORT_TIMEOUT_S",
+]
 
 # WP-00c2 S3 Driver 的固定 env 键集合（用于 .env.example 契约测试）
 _S3_ENV_KEYS = [
@@ -347,3 +357,128 @@ def test_env_example_s3_no_credentials():
     assert "AWS_SECRET_ACCESS_KEY" not in content
     assert "aws_access_key_id" not in content
     assert "aws_secret_access_key" not in content
+
+
+# ---------------- WP-00d1 技术可观测性配置 ----------------
+
+def test_obs_defaults(clean_env):
+    s = Settings(_env_file=None)
+    assert s.OBS_LOG_LEVEL == "INFO"
+    assert s.OBS_LOG_JSON is True
+    assert s.OBS_SERVICE_NAME == "pollymarket-v2"
+    assert s.OBS_SERVICE_VERSION == "dev"
+    assert s.PROMETHEUS_ENABLED is True
+    assert s.OTEL_ENABLED is False
+    assert s.OTEL_EXPORTER_OTLP_ENDPOINT == ""
+    assert s.OTEL_ALLOW_INSECURE_HTTP is False
+    assert s.OTEL_TRACE_SAMPLE_RATIO == 0.05
+    assert s.OTEL_EXPORT_TIMEOUT_S == 5.0
+
+
+def test_obs_env_override(clean_env):
+    s = Settings(_env_file=None, OBS_LOG_LEVEL="DEBUG", OBS_LOG_JSON=False,
+                 OBS_SERVICE_NAME="pm-prod", OBS_SERVICE_VERSION="1.2.3",
+                 PROMETHEUS_ENABLED=False, OTEL_ENABLED=True,
+                 OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.example:4318",
+                 OTEL_ALLOW_INSECURE_HTTP=False, OTEL_TRACE_SAMPLE_RATIO=0.5,
+                 OTEL_EXPORT_TIMEOUT_S=10)
+    assert s.OBS_LOG_LEVEL == "DEBUG"
+    assert s.OBS_LOG_JSON is False
+    assert s.OBS_SERVICE_NAME == "pm-prod"
+    assert s.OBS_SERVICE_VERSION == "1.2.3"
+    assert s.PROMETHEUS_ENABLED is False
+    assert s.OTEL_ENABLED is True
+    assert s.OTEL_EXPORTER_OTLP_ENDPOINT == "https://otel.example:4318"
+    assert s.OTEL_TRACE_SAMPLE_RATIO == 0.5
+    assert s.OTEL_EXPORT_TIMEOUT_S == 10.0
+
+
+def test_obs_level_validation(clean_env):
+    for level in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        assert Settings(_env_file=None, OBS_LOG_LEVEL=level).OBS_LOG_LEVEL == level
+    with pytest.raises(ValidationError, match="OBS_LOG_LEVEL"):
+        Settings(_env_file=None, OBS_LOG_LEVEL="TRACE")
+
+
+@pytest.mark.parametrize("name", ["", "x" * 65, "bad name", "bad/name", "bad:name"])
+def test_obs_service_name_invalid(clean_env, name):
+    with pytest.raises(ValidationError, match="OBS_SERVICE_NAME"):
+        Settings(_env_file=None, OBS_SERVICE_NAME=name)
+
+
+def test_obs_service_name_valid(clean_env):
+    for name in ("pollymarket-v2", "pm_ingest_1", "a.b-c_d.e"):
+        assert Settings(_env_file=None, OBS_SERVICE_NAME=name).OBS_SERVICE_NAME == name
+
+
+@pytest.mark.parametrize("version", ["", "x" * 65, "has space", "ctl\x01", "nl\n"])
+def test_obs_service_version_invalid(clean_env, version):
+    with pytest.raises(ValidationError, match="OBS_SERVICE_VERSION"):
+        Settings(_env_file=None, OBS_SERVICE_VERSION=version)
+
+
+def test_obs_service_version_valid(clean_env):
+    for version in ("dev", "1.2.3", "v2-rc.1_build9"):
+        assert Settings(_env_file=None, OBS_SERVICE_VERSION=version).OBS_SERVICE_VERSION == version
+
+
+@pytest.mark.parametrize("ratio", [-0.1, 1.5])
+def test_obs_ratio_bounds(clean_env, ratio):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, OTEL_TRACE_SAMPLE_RATIO=ratio)
+
+
+def test_obs_timeout_bounds(clean_env):
+    assert Settings(_env_file=None, OTEL_EXPORT_TIMEOUT_S=0.1).OTEL_EXPORT_TIMEOUT_S == 0.1
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, OTEL_EXPORT_TIMEOUT_S=0)
+
+
+@pytest.mark.parametrize("url", [
+    "https://otel.example:4318", "https://otel.example",
+    "https://otel.example/", "https://otel.example/v1/traces",
+])
+def test_obs_otel_endpoint_valid(clean_env, url):
+    s = Settings(_env_file=None, OTEL_ENABLED=True, OTEL_EXPORTER_OTLP_ENDPOINT=url)
+    assert s.OTEL_EXPORTER_OTLP_ENDPOINT == url     # 原样保留，不 normalize
+
+
+@pytest.mark.parametrize("url", [
+    "ftp://host", "https://user:pw@host", "https://host?q=1", "https://host#f",
+    "https://host/other", "https://host:abc", "https://host:99999", "https://host:",
+    "https://exa mple.com", "http://host", "https://host\x01.com", "//host",
+])
+def test_obs_otel_endpoint_invalid(clean_env, url):
+    with pytest.raises(ValidationError, match="OTEL_EXPORTER_OTLP_ENDPOINT"):
+        Settings(_env_file=None, OTEL_ENABLED=True, OTEL_EXPORTER_OTLP_ENDPOINT=url)
+
+
+def test_obs_otel_enabled_requires_endpoint(clean_env):
+    with pytest.raises(ValidationError, match="OTEL_EXPORTER_OTLP_ENDPOINT"):
+        Settings(_env_file=None, OTEL_ENABLED=True)
+
+
+def test_obs_otel_http_requires_allow_insecure(clean_env):
+    with pytest.raises(ValidationError, match="ALLOW_INSECURE_HTTP"):
+        Settings(_env_file=None, OTEL_ENABLED=True,
+                 OTEL_EXPORTER_OTLP_ENDPOINT="http://otel.example:4318")
+    s = Settings(_env_file=None, OTEL_ENABLED=True,
+                 OTEL_EXPORTER_OTLP_ENDPOINT="http://otel.example:4318",
+                 OTEL_ALLOW_INSECURE_HTTP=True)
+    assert s.OTEL_ALLOW_INSECURE_HTTP is True
+
+
+def test_obs_endpoint_validated_when_disabled_too(clean_env):
+    """未启用 OTel 时也做格式校验（fail-fast，不延迟到 exporter）。"""
+    with pytest.raises(ValidationError, match="OTEL_EXPORTER_OTLP_ENDPOINT"):
+        Settings(_env_file=None, OTEL_ENABLED=False,
+                 OTEL_EXPORTER_OTLP_ENDPOINT="https://user:pw@host")
+    s = Settings(_env_file=None, OTEL_ENABLED=False,
+                 OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.example:4318")
+    assert s.OTEL_EXPORTER_OTLP_ENDPOINT == "https://otel.example:4318"
+
+
+def test_env_example_contains_all_obs_keys():
+    content = ENV_EXAMPLE.read_text(encoding="utf-8")
+    for key in _OBS_ENV_KEYS:
+        assert key in content, f".env.example missing {key}"

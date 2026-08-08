@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1/00c2 已接受；当前 00d1 READY）
+> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1/00c2/00d1 已接受；当前 WP-00d2 READY）
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -20,8 +20,13 @@
 | WP-00 | 00c2-r1 S3 Driver 正确性整改 | ⚠ DONE，审查要求 R2 | `wp-00c2-r1-artifact-s3-correctness.md` | `10f4008387fac5696f0a1cce438189dae5392c4e94c5fff3d25a7732bca705c4` | 2026-08-08 |
 | WP-00 | 00c2-r2 S3 stream/endpoint 最终整改 | ⚠ DONE，审查要求 R3 | `wp-00c2-r2-artifact-stream-endpoint.md` | `081126a9ddc31322c2d45bfd75bd1622461c436bce7eeb7ee5a58fb8b0774d7a` | 2026-08-08 |
 | WP-00 | 00c2-r3 Provider ClientError traceback 脱敏 | ✅ DONE，审查通过 | `wp-00c2-r3-provider-error-redaction.md` | `acb0ed5796b9c1b76289c6dd984f5371dcdb70bb97ba8434e0d8b0990495679d` | 2026-08-08 |
-| WP-00 | 00d1 Observability primitives | 🚧 READY | — | — | — |
-| WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⏳ pending | — | — | — |
+| WP-00 | 00d1 Observability primitives | ⚠ DONE，审查要求 R1 | `wp-00d1-observability-foundation.md` | `cd10e0cf26b60077fc0d673a860b1576899684ac46ba5dadc0b44f559c53e427` | 2026-08-08 |
+| WP-00 | 00d1-r1 Observability boundaries | ⚠ DONE，审查要求 R2 | `wp-00d1-r1-observability-boundaries.md` | `a8e6ce006f8859c3c1af820428ea2d174820a7b3387eaeb454b80453ff86cffd` | 2026-08-08 |
+| WP-00 | 00d1-r2 Sensitive text coverage | ⚠ DONE，审查要求 R3 | `wp-00d1-r2-sensitive-text-coverage.md` | `e2d08336a9dff253e53782220c7e17b5a614b510eb934d4e7e8f4eaaff5edf8b` | 2026-08-08 |
+| WP-00 | 00d1-r3 Redactor parser boundaries | ⚠ DONE，审查要求 R4 | `wp-00d1-r3-redactor-parser-boundaries.md` | `67b71a901da3942354509e8a7212d6607fe52bbe82c7574b4a68d2d466131015` | 2026-08-08 |
+| WP-00 | 00d1-r4 Deterministic bounded redactor | ⚠ DONE，审查要求 R5 | `wp-00d1-r4-deterministic-redactor.md` | `4d8cf0200bcaaaa2d98a798adac4ab0a48c2e944505ed1f9932097a7155b0e2d` | 2026-08-08 |
+| WP-00 | 00d1-r5 Redactor sensitive-key boundaries | ✅ DONE，审查通过 | `wp-00d1-r5-redactor-key-boundaries.md` | `4b1928363da625035fa714018e99ffec175c30c978fabb7d294e92f878753d3e` | 2026-08-08 |
+| WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⏳ pending | `wp-00d2-runtime-lifespan-health.md` | — | — |
 | WP-01A | 0001/0002 迁移、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |
