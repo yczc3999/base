@@ -335,6 +335,7 @@ async function aiRewrite() {
 
 <style scoped>
 .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-base); margin-bottom: var(--space-base); }
+@media (max-width: 1200px) { .stat-cards { grid-template-columns: repeat(2, 1fr); } }
 .sse-log { margin-top: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .log-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-md); background: var(--bg-subtle); font-size: var(--text-sm); font-weight: 600; }
 .log-body { max-height: 280px; overflow-y: auto; padding: var(--space-sm) var(--space-md); font-size: var(--text-xs); line-height: 1.8; }
