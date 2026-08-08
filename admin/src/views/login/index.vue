@@ -322,6 +322,11 @@ async function handleLogin() {
     border-radius: var(--radius);
     overflow: hidden;
     flex-shrink: 0;
+    transition: border-color var(--transition-fast);
+    background: var(--bg-input);
+
+    &:hover { border-color: var(--primary); }
+    &:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 
     svg { display: block; }
   }
