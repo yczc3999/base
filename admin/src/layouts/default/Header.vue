@@ -1,8 +1,9 @@
 <template>
   <header class="header">
     <div class="header-left">
-      <button class="toggle-btn" @click="appStore.toggleSidebar">
-        <span>☰</span>
+      <button class="toggle-btn" @click="appStore.toggleSidebar" :aria-label="appStore.sidebarCollapsed ? '展开菜单' : '折叠菜单'">
+        <PanelLeftClose v-if="appStore.sidebarCollapsed" :size="18" />
+        <PanelLeftOpen v-else :size="18" />
       </button>
       <el-breadcrumb separator="/">
         <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
@@ -60,6 +61,7 @@ import { useUserStore } from '@/stores/user'
 import { useThemeStore } from '@/stores/theme'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
 import { saveLocale } from '@/locales'
 import messageApi from '@/api/modules/message'
 
