@@ -24,6 +24,7 @@ import redis.asyncio as aioredis
 from redis.exceptions import RedisError
 
 from app.config import ControlRedisEndpoint, settings
+from app.services.redis_keys import build_redis_key
 
 # ---- Lua 脚本（Redis 服务端原子执行）----
 
@@ -67,17 +68,23 @@ return 1
 """
 
 _CAS = """
--- KEYS[1] = cas_key  ARGV[1]=expected（空串哨兵=期望"不存在"）  ARGV[2]=new
--- ARGV[3]=ttl_s(<=0 则不过期)
+-- KEYS[1] = cas_key
+-- ARGV[1] = expect_missing（'1' 表示期望键不存在；'0' 表示期望等于 ARGV[2]）
+-- ARGV[2] = expected 值（仅当 expect_missing='0' 时参与比较）
+-- ARGV[3] = new 值  ARGV[4] = ttl_s（<=0 则不过期）
+-- EXPECT_MISSING 与 EXPECT_VALUE 显式区分：expected=''（合法空串）可正确比较。
 local cur = redis.call('GET', KEYS[1])
-local missing = (cur == false)
-local expected_missing = (ARGV[1] == '')
-if (missing and expected_missing)
-    or (not missing and not expected_missing and cur == ARGV[1]) then
-    if tonumber(ARGV[3]) > 0 then
-        redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+local matched
+if ARGV[1] == '1' then
+    matched = (cur == false)
+else
+    matched = (cur ~= false and cur == ARGV[2])
+end
+if matched then
+    if tonumber(ARGV[4]) > 0 then
+        redis.call('SET', KEYS[1], ARGV[3], 'EX', ARGV[4])
     else
-        redis.call('SET', KEYS[1], ARGV[2])
+        redis.call('SET', KEYS[1], ARGV[3])
     end
     return 1
 end
@@ -130,7 +137,7 @@ class ControlRedisClient:
         return self._client.connection_pool
 
     def _key(self, *parts: str) -> str:
-        return f"{self._namespace}:{':'.join(parts)}"
+        return build_redis_key(self._namespace, *parts)
 
     async def aclose(self) -> None:
         """关闭全部连接；幂等。"""
@@ -160,6 +167,10 @@ class ControlRedisClient:
         if ttl_s <= 0:
             raise ValueError(f"ttl_s must be > 0, got {ttl_s}")
         ttl_ms = int(ttl_s * 1000)
+        if ttl_ms < 1:
+            raise ValueError(
+                f"lease TTL must be >= 1ms after ms conversion, got {ttl_s}s"
+            )
         fence = await self._client.eval(
             _LEASE_ACQUIRE, 2,
             self._key("lease", name), self._key("fence", name),
@@ -174,6 +185,10 @@ class ControlRedisClient:
         if ttl_s <= 0:
             raise ValueError(f"ttl_s must be > 0, got {ttl_s}")
         ttl_ms = int(ttl_s * 1000)
+        if ttl_ms < 1:
+            raise ValueError(
+                f"lease TTL must be >= 1ms after ms conversion, got {ttl_s}s"
+            )
         res = await self._client.eval(
             _LEASE_RENEW, 1,
             self._key("lease", handle.lease_name),
@@ -200,14 +215,24 @@ class ControlRedisClient:
     async def compare_and_swap(self, name: str, expected: str | None, new: str, *,
                                ttl_s: int = 0) -> bool:
         """
-        原子 CAS；expected=None 表示期望键"不存在"（首次创建）。
+        原子 CAS。
+
+        - expected=None → EXPECT_MISSING：仅当键不存在时成功（首次创建）；
+        - expected="..." → EXPECT_VALUE：仅当键存在且值等于 expected 时成功；
+          合法空串 expected="" 可正确比较已有空串值。
         ttl_s<=0 表示不设过期（由调用方决定）。
         """
         if ttl_s < 0:
             raise ValueError(f"ttl_s must be >= 0, got {ttl_s}")
-        exp = "" if expected is None else expected
+        if expected is None:
+            expect_missing = 1
+            expected_arg = ""
+        else:
+            expect_missing = 0
+            expected_arg = expected
         res = await self._client.eval(
-            _CAS, 1, self._key("cas", name), exp, new, int(ttl_s)
+            _CAS, 1, self._key("cas", name),
+            expect_missing, expected_arg, new, int(ttl_s),
         )
         return res == 1
 

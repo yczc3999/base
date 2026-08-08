@@ -7,12 +7,13 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-00b-r1` |
-| 状态 | `READY — REMEDIATION_REQUIRED` |
-| 任务文档 | [`wp-00b-r1-redis-foundation-remediation.md`](wp-00b-r1-redis-foundation-remediation.md) |
-| 前置实现 | `WP-00b` |
-| 前置审查 | 26 tests passed；manifest hash 一致；发现 3 项基础不变量缺陷和 1 项边界偏差 |
-| 后续候选 | `WP-00c1 Artifact Store contracts/service/local`，本任务接受前不得创建 |
+| Task | `WP-00c1` |
+| 状态 | `READY` |
+| 任务文档 | [`wp-00c1-artifact-local.md`](wp-00c1-artifact-local.md) |
+| 前置实现 | `WP-00b-r2`（ACCEPTED） |
+| 前置审查 | 49/80/291 tests 通过；100 次重复零失败；双前缀残留 0；manifest SHA 一致 |
+| 强制前置修正 | Redis key 边界当前多一个分隔符；作为 P2 在本任务开始时修正并测试 |
+| 后续候选 | `WP-00c2 S3-compatible Artifact Driver`，本任务接受前不得创建 |
 
 ## 固定交接协议
 
@@ -30,3 +31,5 @@
 |---|---|---|---|
 | `WP-00a` | DONE | ACCEPTED | 31 targeted tests；manifest SHA 一致 |
 | `WP-00b` | DONE | REMEDIATION_REQUIRED | 见当前 `WP-00b-r1` 任务文档 |
+| `WP-00b-r1` | DONE | REMEDIATION_REQUIRED | 功能修复有效；见当前 `WP-00b-r2` 任务文档 |
+| `WP-00b-r2` | DONE | ACCEPTED | 49/80/291 tests；100x TTL；双前缀 0；SHA 一致；1 个 P2 转入 00c1 |

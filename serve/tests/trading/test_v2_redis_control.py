@@ -19,6 +19,7 @@ from redis.exceptions import RedisError
 from app.config import CacheRedisEndpoint, ControlRedisEndpoint
 from app.services.redis_cache import CacheRedisClient
 from app.services.redis_control import ControlRedisClient, LeaseHandle
+from app.services.redis_keys import build_redis_key
 
 HOST = "localhost"
 PORT = 6379
@@ -86,12 +87,12 @@ def test_control_namespace_isolated_from_cache_namespace():
     async def _t():
         control = _client(_control_endpoint(url=f"redis://{HOST}:{PORT}/2"))
         cache = CacheRedisClient(_cache_endpoint(db=2))
-        lease_key = f"{control.namespace}:lease:shared"
+        lease_key = build_redis_key(control.namespace, "lease", "shared")
         try:
             assert await control.acquire_lease("shared", "a", 5.0) is not None
             assert await cache.get("lease:shared", "lease:shared") is None
         finally:
-            await _cleanup(control, [lease_key, f"{control.namespace}:fence:shared"])
+            await _cleanup(control, [lease_key, build_redis_key(control.namespace, "fence", "shared")])
             await control.aclose()
             await cache.aclose()
 
@@ -119,7 +120,10 @@ def test_lease_contention_and_ownership():
             assert b is not None
             assert b.token > a.token                                    # fencing 递增
         finally:
-            await _cleanup(c, [f"{c.namespace}:lease:{name}", f"{c.namespace}:fence:{name}"])
+            await _cleanup(c, [
+                build_redis_key(c.namespace, "lease", name),
+                build_redis_key(c.namespace, "fence", name),
+            ])
             await c.aclose()
 
     _run(_t())
@@ -140,7 +144,10 @@ def test_fencing_token_monotonic_across_owners():
             assert len(set(tokens)) == 3
             assert await c.fencing_token(name) == max(tokens)
         finally:
-            await _cleanup(c, [f"{c.namespace}:lease:{name}", f"{c.namespace}:fence:{name}"])
+            await _cleanup(c, [
+                build_redis_key(c.namespace, "lease", name),
+                build_redis_key(c.namespace, "fence", name),
+            ])
             await c.aclose()
 
     _run(_t())
@@ -160,7 +167,10 @@ def test_lease_reacquire_after_expiry():
             assert b is not None
             assert b.token > a.token
         finally:
-            await _cleanup(c, [f"{c.namespace}:lease:{name}", f"{c.namespace}:fence:{name}"])
+            await _cleanup(c, [
+                build_redis_key(c.namespace, "lease", name),
+                build_redis_key(c.namespace, "fence", name),
+            ])
             await c.aclose()
 
     _run(_t())
@@ -175,18 +185,59 @@ def test_acquire_rejects_non_positive_ttl():
     _run(_t())
 
 
+def test_lease_sub_ms_ttl_rejected_before_network():
+    async def _t():
+        c = _client()
+        name = "msbound"
+        try:
+            # 0.0001s=0.1ms → int→0ms → 网络调用前拒绝
+            with pytest.raises(ValueError, match="1ms"):
+                await c.acquire_lease(name, "a", 0.0001)
+            with pytest.raises(ValueError, match="1ms"):
+                await c.renew_lease(LeaseHandle(name, "a", 1, 0.0001), 0.0001)
+            # 1ms 边界允许，获取后必须清理 lease + fence（fence 不自动过期）
+            h = await c.acquire_lease(name, "a", 0.001)
+            assert h is not None
+            assert await c.release_lease(h) is True
+        finally:
+            # 精确 key 清理 + 关闭；证明 1ms 边界不残留
+            await _cleanup(c, [
+                build_redis_key(c.namespace, "lease", name),
+                build_redis_key(c.namespace, "fence", name),
+            ])
+            await c.aclose()
+
+    _run(_t())
+
+
+def test_control_uses_shared_encoder():
+    c = _client()
+    assert c._key("lease", "l1") == build_redis_key(c.namespace, "lease", "l1")
+    # 复现审查用例：不同 segment tuple 不碰撞
+    assert c._key("a:b", "c") != c._key("a", "b:c")
+    asyncio.run(c.aclose())
+
+
 # ---------------- CAS ----------------
 
-def test_cas_success_and_conflict():
+def test_cas_four_paths():
     async def _t():
         c = _client()
         name = "cas1"
-        key = f"{c.namespace}:cas:{name}"
+        key = build_redis_key(c.namespace, "cas", name)
         try:
-            assert await c.compare_and_swap(name, None, "new") is True   # 首次创建
-            assert await c.compare_and_swap(name, "old", "x") is False   # 冲突
-            assert await c.compare_and_swap(name, "new", "newer", ttl_s=60) is True
-            assert await c._client.get(key) == "newer"
+            # 1) EXPECT_MISSING：键不存在 → 成功
+            assert await c.compare_and_swap(name, None, "v1") is True
+            # 2) EXPECT_VALUE：当前是 "v1" → 成功
+            assert await c.compare_and_swap(name, "v1", "v2") is True
+            # 3) 冲突：当前不是 "v1" → 失败
+            assert await c.compare_and_swap(name, "v1", "x") is False
+            # 4) EXPECT_MISSING 但键已存在 → 失败
+            assert await c.compare_and_swap(name, None, "y") is False
+            # 已有空串可被 expected="" 正确比较（EXPECT_VALUE，非 MISSING 哨兵）
+            assert await c.compare_and_swap(name, "v2", "", ttl_s=60) is True
+            assert await c.compare_and_swap(name, "", "final") is True
+            assert await c._client.get(key) == "final"
         finally:
             await _cleanup(c, [key])
             await c.aclose()
@@ -200,7 +251,7 @@ def test_stream_write_and_read():
     async def _t():
         c = _client()
         name = "s1"
-        key = f"{c.namespace}:stream:{name}"
+        key = build_redis_key(c.namespace, "stream", name)
         try:
             mid = await c.stream_add(name, {"a": "1", "b": "2"})
             assert isinstance(mid, str) and "-" in mid
@@ -256,3 +307,4 @@ def test_no_scan_or_pattern_delete_api():
     c = _client()
     for attr in ("scan", "scan_iter", "delete_pattern", "cache_del_pattern"):
         assert not hasattr(c, attr), f"Control client must not expose {attr}"
+    asyncio.run(c.aclose())

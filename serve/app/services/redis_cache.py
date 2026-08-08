@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import json
 import random
-from typing import Any
+from typing import Any, NamedTuple, Sequence
 
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
 
 from app.config import CacheRedisEndpoint
+from app.services.redis_keys import build_redis_key
 
 _CAS = """
 -- KEYS[1] = key  ARGV[1]=expected  ARGV[2]=new  ARGV[3]=ttl_s
@@ -49,12 +50,35 @@ def canonical_json(value: Any) -> str:
 
 
 def effective_ttl(base_ttl_s: int, jitter_s: int) -> int:
-    """有限 TTL + [0, jitter) 均匀抖动；base<=0 或 jitter<0 抛 ValueError。"""
+    """
+    有限 TTL + [0, jitter) 均匀抖动（半开区间，不含上界）。
+
+    - jitter=0 → 精确返回 base；
+    - base<=0 或 jitter<0 抛 ValueError。
+    """
     if base_ttl_s <= 0:
         raise ValueError(f"base TTL must be > 0, got {base_ttl_s}")
     if jitter_s < 0:
         raise ValueError(f"jitter must be >= 0, got {jitter_s}")
-    return base_ttl_s + random.randint(0, jitter_s)
+    if jitter_s == 0:
+        return base_ttl_s
+    return base_ttl_s + random.randrange(jitter_s)
+
+
+class BatchSet(NamedTuple):
+    """typed batch SET 操作（frozen）。"""
+
+    name: str
+    value: Any
+    version: str
+    ttl_s: int | None = None
+
+
+class BatchDelete(NamedTuple):
+    """typed batch DELETE 操作（frozen）。"""
+
+    name: str
+    version: str
 
 
 class CacheRedisClient:
@@ -87,7 +111,7 @@ class CacheRedisClient:
         return self._client.connection_pool
 
     def _key(self, version: str, name: str) -> str:
-        return f"{self._namespace}:{version}:{name}"
+        return build_redis_key(self._namespace, version, name)
 
     def _ttl_or_default(self, ttl_s: int | None) -> int:
         base = self._default_ttl if ttl_s is None else ttl_s
@@ -139,11 +163,43 @@ class CacheRedisClient:
                 return False
             raise
 
-    # ---- pipeline / CAS ----
+    # ---- 受控批量操作 / CAS ----
 
-    def pipeline(self) -> Any:
-        """redis-py pipeline（调用方负责 execute）。"""
-        return self._client.pipeline()
+    async def execute_batch(self, ops: Sequence[BatchSet | BatchDelete]) -> list[bool]:
+        """
+        执行 typed 批量缓存操作（SET/DELETE），返回与 ops 等长的结果列表。
+
+        - 每个 SET 在加入内部 pipeline 前完成 canonical JSON、versioned key、
+          有限 TTL+jitter 校验；程序错误（TypeError/ValueError）立即抛出，
+          不产生部分执行；
+        - 调用方无法取得底层 pipeline/client（禁止绕过 version/TTL/降级）；
+        - 连接故障按 bypass：返回 [False]*len(ops)；bypass=False 时抛 RedisError。
+        """
+        prepared: list[tuple[str, str, Any]] = []  # (cmd, key, payload_or_none)
+        for op in ops:
+            if isinstance(op, BatchSet):
+                payload = canonical_json(op.value)      # TypeError 传播
+                ttl = self._ttl_or_default(op.ttl_s)    # ValueError 传播
+                prepared.append(("set", self._key(op.version, op.name), (payload, ttl)))
+            elif isinstance(op, BatchDelete):
+                prepared.append(("delete", self._key(op.version, op.name), None))
+            else:
+                raise TypeError(f"unsupported batch op: {op!r}")
+
+        try:
+            pipe = self._client.pipeline()
+            for cmd, key, extra in prepared:
+                if cmd == "set":
+                    payload, ttl = extra
+                    pipe.set(key, payload, ex=ttl)
+                else:
+                    pipe.delete(key)
+            results = await pipe.execute()
+        except (RedisError, OSError):
+            if self._bypass:
+                return [False] * len(prepared)
+            raise
+        return [bool(r) for r in results]
 
     async def cas(self, name: str, version: str, expected: Any, new: Any,
                   *, ttl_s: int | None = None) -> bool:
