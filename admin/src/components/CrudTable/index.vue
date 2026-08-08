@@ -495,6 +495,14 @@ defineExpose({ crud })
   overflow: hidden;
 }
 
+// 窄屏：表格卡内部横向滚动（min-width 触发），页面本身不滚动
+@media (max-width: 768px) {
+  .crud-table {
+    overflow-x: auto;
+    .el-table { min-width: 680px; }
+  }
+}
+
 .crud-pagination {
   display: flex;
   justify-content: flex-end;
