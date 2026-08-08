@@ -165,7 +165,7 @@ v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
         <span v-if="aiSummary.demoted_total" class="demoted">↩ 降回 {{ aiSummary.demoted_total }}</span>
         <span class="uncertain"> 保留 {{ aiSummary.uncertain_total }}</span>
       </div>
-      <div v-else-if="aiReviewing" style="margin-bottom:12px;color:var(--el-color-warning);font-size:13px">
+      <div v-else-if="aiReviewing" style="margin-bottom:12px;color:var(--warning);font-size:13px">
          AI 正在逐批审核（{{ aiScopeLabel }}）...
       </div>
 
@@ -183,7 +183,7 @@ v-if="harvestMode === 'poll' && harvestDone && !polling" type="warning"
               <span class="kw-text">{{ r.keyword }}</span>
             </div>
           </div>
-          <div v-else-if="evt.type === 'error'" class="log-line" style="color:var(--el-color-danger)">
+          <div v-else-if="evt.type === 'error'" class="log-line" style="color:var(--danger)">
              {{ evt.msg }}
           </div>
           <div v-else-if="evt.type === 'done'" class="log-line done">
@@ -670,20 +670,20 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   text-align: center;
   cursor: pointer;
   transition: transform 0.15s;
-  border: 1px solid var(--el-border-color-lighter);
-  background: var(--el-bg-color);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
 }
 .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 .stat-num { font-size: 28px; font-weight: 700; line-height: 1.2; }
-.stat-label { font-size: 13px; color: var(--el-text-color-secondary); margin-top: 4px; }
-.stat-card.pending .stat-num { color: var(--el-color-warning); }
-.stat-card.online .stat-num { color: var(--el-color-success); }
-.stat-card.ignored .stat-num { color: var(--el-color-info); }
-.stat-card.harvest .stat-num { color: var(--el-color-danger); }
-.stat-card.total .stat-num { color: var(--el-color-primary); }
+.stat-label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.stat-card.pending .stat-num { color: var(--warning); }
+.stat-card.online .stat-num { color: var(--success); }
+.stat-card.ignored .stat-num { color: var(--info); }
+.stat-card.harvest .stat-num { color: var(--danger); }
+.stat-card.total .stat-num { color: var(--primary); }
 .form-hint {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--text-secondary);
   margin-top: 4px;
 }
 .harvest-tip {
@@ -693,15 +693,15 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   padding: 12px 16px;
   margin-bottom: 16px;
   border-radius: 6px;
-  background: var(--el-fill-color-light);
-  color: var(--el-text-color-regular);
+  background: var(--bg-input);
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.6;
 }
 .tip-icon { flex-shrink: 0; font-size: 15px; }
 .harvest-log {
   margin-top: 16px;
-  border: 1px solid var(--el-border-color-lighter);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -710,7 +710,7 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: var(--el-fill-color-light);
+  background: var(--bg-input);
   font-size: 13px;
   font-weight: 600;
 }
@@ -722,14 +722,14 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   line-height: 1.8;
   font-family: 'SF Mono', Monaco, Menlo, monospace;
 }
-.log-line.level { color: var(--el-color-primary); font-weight: 600; }
-.log-line.seed { color: var(--el-text-color-secondary); }
-.log-line.found { color: var(--el-color-success-dark-2); }
-.log-line.done { color: var(--el-color-primary); font-weight: 600; margin-top: 4px; }
+.log-line.level { color: var(--primary); font-weight: 600; }
+.log-line.seed { color: var(--text-secondary); }
+.log-line.found { color: var(--success); }
+.log-line.done { color: var(--primary); font-weight: 600; margin-top: 4px; }
 .kw-list {
   display: inline;
   margin-left: 6px;
-  color: var(--el-text-color-regular);
+  color: var(--text-primary);
   font-size: 11px;
 }
 .ai-summary {
@@ -739,14 +739,14 @@ async function aiReview(scope: 'pending' | 'online' | 'all') {
   font-size: 15px;
   font-weight: 600;
 }
-.ai-summary .approve { color: var(--el-color-success); }
-.ai-summary .reject { color: var(--el-color-danger); }
-.ai-summary .uncertain { color: var(--el-color-warning); }
+.ai-summary .approve { color: var(--success); }
+.ai-summary .reject { color: var(--danger); }
+.ai-summary .uncertain { color: var(--warning); }
 .ai-review-log {
   max-height: 400px;
   overflow-y: auto;
   padding: 8px 12px;
-  border: 1px solid var(--el-border-color-lighter);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   font-size: 13px;
   line-height: 1.6;

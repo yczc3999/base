@@ -67,7 +67,7 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
         </el-form-item>
         <el-form-item v-if="collectForm.mode === 'keyword'" label="数量">
           <el-input-number v-model="collectForm.count" :min="1" :max="10" />
-          <span style="margin-left:8px;font-size:12px;color:var(--el-text-color-secondary)">逐页分析，只采正式文章</span>
+          <span style="margin-left:8px;font-size:12px;color:var(--text-secondary)">逐页分析，只采正式文章</span>
         </el-form-item>
       </el-form>
 
@@ -103,7 +103,7 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
 
     <!-- AI 润色进度 -->
     <el-dialog v-model="showRewrite" title="AI 润色" width="650px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <div v-if="rewriting" style="margin-bottom:10px;padding:8px 12px;background:var(--el-color-warning-light-9);border-radius:4px;font-size:13px;color:var(--el-color-warning-dark-2)">
+      <div v-if="rewriting" style="margin-bottom:10px;padding:8px 12px;background:var(--warning-bg);border-radius:4px;font-size:13px;color:var(--warning)">
          润色进行中，每篇文章需要 30-60 秒，请勿关闭此窗口。
       </div>
       <div class="sse-log">
@@ -121,7 +121,7 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
             </template>
             <template v-else-if="evt.type === 'done_one'"> <strong>{{ evt.new_title }}</strong>（{{ evt.word_count }}字）</template>
             <template v-else-if="evt.type === 'error'">
-              <span style="color:var(--el-color-danger)"> 失败：{{ evt.msg }}</span>
+              <span style="color:var(--danger)"> 失败：{{ evt.msg }}</span>
             </template>
             <template v-else-if="evt.type === 'done'"> 完成 {{ evt.processed }}/{{ evt.total }} 篇</template>
           </div>
@@ -134,7 +134,7 @@ type="warning" :icon="MagicStick" :disabled="!hasSelection"
 
     <!-- 按标签生成文章 -->
     <el-dialog v-model="showTagGen" title="按标签生成文章" width="700px" :close-on-click-modal="false">
-      <div v-if="!tagGenRunning" style="margin-bottom:12px;color:var(--el-text-color-secondary);font-size:13px">
+      <div v-if="!tagGenRunning" style="margin-bottom:12px;color:var(--text-secondary);font-size:13px">
         选择已上线的标签，AI 为每个标签生成一篇文章（草稿）。
       </div>
       <div v-if="!tagGenRunning">
@@ -338,13 +338,13 @@ async function aiRewrite() {
 .sse-log { margin-top: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .log-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-md); background: var(--bg-subtle); font-size: var(--text-sm); font-weight: 600; }
 .log-body { max-height: 280px; overflow-y: auto; padding: var(--space-sm) var(--space-md); font-size: var(--text-xs); line-height: 1.8; }
-.log-line.saved, .log-line.done_one { color: var(--el-color-success-dark-2); }
-.log-line.step { color: var(--el-color-primary); }
+.log-line.saved, .log-line.done_one { color: var(--success); }
+.log-line.step { color: var(--primary); }
 .step-indicator { animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-.log-line.skip { color: var(--el-text-color-secondary); }
-.log-line.error { color: var(--el-color-danger); }
-.log-line.done { color: var(--el-color-primary); font-weight: 600; }
+.log-line.skip { color: var(--text-secondary); }
+.log-line.error { color: var(--danger); }
+.log-line.done { color: var(--primary); font-weight: 600; }
 
 .ai-result-md :deep(strong) { font-weight: 600; }
 </style>

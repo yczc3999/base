@@ -21,7 +21,7 @@
 }
 .nf-content h1 {
   font-size: 96px;
-  color: var(--el-color-primary, #2563eb);
+  color: var(--primary);
   margin: 0;
   line-height: 1;
 }

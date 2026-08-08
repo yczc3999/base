@@ -109,7 +109,7 @@ async function testConnection() {
   font-size: 15px; font-weight: 600; margin-bottom: 16px;
   display: flex; align-items: baseline; gap: 10px;
 }
-.card-subtitle { font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
-.form-hint { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; line-height: 1.6; }
-.form-hint code { background: var(--el-fill-color); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+.card-subtitle { font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+.form-hint { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.6; }
+.form-hint code { background: var(--bg-input); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
 </style>
