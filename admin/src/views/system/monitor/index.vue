@@ -531,8 +531,10 @@ onBeforeUnmount(() => {
 /* ── 响应式 ── */
 @media (max-width: 1200px) {
   .grid-3 { grid-template-columns: 1fr 1fr; }
-  .queue-grid { grid-template-columns: repeat(4, 1fr); }
+  .queue-grid { grid-template-columns: repeat(3, 1fr); }
   .load-row { grid-template-columns: repeat(2, 1fr); }
+  .hero-stats { grid-template-columns: 1fr; }
+  .hero-stat { text-align: center; }
 }
 @media (max-width: 720px) {
   .grid-3 { grid-template-columns: 1fr; }
