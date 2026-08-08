@@ -16,7 +16,7 @@ type="danger" :icon="Delete" :disabled="!hasPerms('admin:trash:purge')"
       </template>
     </div>
 
-    <el-table v-loading="loading" :data="list" border :empty-text="'回收站为空'" @selection-change="selection = $event">
+    <el-table v-loading="loading" :data="list" stripe :empty-text="'回收站为空'" @selection-change="selection = $event">
       <el-table-column type="selection" width="45" />
       <el-table-column prop="id" label="ID" width="70" align="center" />
       <el-table-column label="记录内容" min-width="260">

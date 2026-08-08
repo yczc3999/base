@@ -1,6 +1,6 @@
 <template>
-  <div style="max-width:600px">
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">个人中心</h2>
+  <PageShell title="个人中心" sub-title="账号资料与安全">
+    <div style="max-width:600px">
     <!-- P2-2: 密码过期提示 -->
     <div
 v-if="userStore.passwordExpired"
@@ -34,7 +34,8 @@ v-if="userStore.passwordExpired"
         </el-form-item>
       </el-form>
     </div>
-  </div>
+    </div>
+  </PageShell>
 </template>
 <script setup lang="ts">
 defineOptions({ name: 'Profile' })
@@ -42,6 +43,7 @@ import { Check } from "@element-plus/icons-vue"
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import authApi from '@/api/modules/auth'
+import PageShell from '@/components/PageShell/index.vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { useRouter } from 'vue-router'
 const userStore = useUserStore()

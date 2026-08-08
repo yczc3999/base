@@ -5,7 +5,7 @@
       <el-button :icon="Refresh" size="small" circle @click="load" />
     </div>
 
-    <el-table v-loading="loading" :data="sessions" border :empty-text="'暂无在线会话'">
+    <el-table v-loading="loading" :data="sessions" stripe :empty-text="'暂无在线会话'">
       <el-table-column prop="username" label="用户名" min-width="120" />
       <el-table-column label="端" width="80" align="center">
         <template #default="{ row }">
