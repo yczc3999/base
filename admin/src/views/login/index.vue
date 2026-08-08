@@ -359,6 +359,31 @@ async function handleLogin() {
 }
 
 @media (max-width: 992px) {
-  .brand-panel { display: none; }
+  // 移动端：品牌面板变顶部精简头（logo + 名），不再整块隐藏
+  .login-page { flex-direction: column; }
+  .brand-panel {
+    width: 100%;
+    min-width: 0;
+    height: 120px;
+    padding: var(--space-lg) var(--space-xl);
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-md);
+    overflow: hidden;
+  }
+  .brand-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+  .brand-logo {
+    width: 40px; height: 40px;
+    font-size: var(--text-lg);
+    margin: 0;
+  }
+  .brand-title { font-size: var(--text-lg); }
+  .brand-divider, .brand-desc, .brand-footer { display: none; }
+  .form-panel { padding: var(--space-2xl) var(--space-lg); }
+  .brand-deco { display: none; }
 }
 </style>
