@@ -179,6 +179,10 @@ function fmt(v: string) { return v ? v.replace('T',' ').substring(11,19) : '—'
   .hero-stat { text-align: left; }
 }
 
+@media (max-width: 1200px) {
+  .dashboard-row { grid-template-columns: 1fr !important; }
+}
+
 .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-base); margin: var(--space-lg) 0; }
 
 .dashboard-row { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-base); }
