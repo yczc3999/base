@@ -84,23 +84,23 @@ function formatPayload(p: any): string {
   padding: 32px;
   max-width: 1400px;
   margin: 0 auto;
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-sans);
 }
 .header-bar { margin-bottom: 24px; }
-.header-bar h2 { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em; }
-.subtitle { font-size: 13px; color: #64748b; }
+.header-bar h2 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin: 0; letter-spacing: -0.02em; }
+.subtitle { font-size: 13px; color: var(--text-secondary); }
 
-.payload-detail { padding: 16px 40px; background: #f8fafc; border-left: 3px solid #3b82f6; }
+.payload-detail { padding: 16px 40px; background: var(--bg-input); border-left: 3px solid var(--primary); }
 .payload-label {
-  font-size: 10px; color: #94a3b8; margin-bottom: 8px;
+  font-size: 10px; color: var(--text-placeholder); margin-bottom: 8px;
   text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700;
 }
 .payload-block pre {
   margin: 0; font-size: 12px; line-height: 1.6;
   max-height: 320px; overflow: auto;
-  background: #0f172a; color: #e2e8f0;
-  padding: 14px 16px; border-radius: 6px;
+  background: var(--bg-sidebar); color: var(--text-inverse);
+  padding: 14px 16px; border-radius: var(--radius);
   font-family: ui-monospace, 'SF Mono', Monaco, monospace;
 }
-.payload-empty { font-size: 12px; color: #94a3b8; font-style: italic; }
+.payload-empty { font-size: 12px; color: var(--text-placeholder); font-style: italic; }
 </style>

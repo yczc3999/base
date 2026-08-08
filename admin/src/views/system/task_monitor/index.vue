@@ -172,9 +172,9 @@ onBeforeUnmount(() => {
 .c-primary { color: var(--primary); }
 .c-info { color: var(--info); }
 .c-warning { color: var(--warning); }
-.c-secondary { color: #64748b; }
-.c-processing { color: #8b5cf6; }
-.c-delayed { color: #f59e0b; }
+.c-secondary { color: var(--text-secondary); }
+.c-processing { color: var(--info); }
+.c-delayed { color: var(--warning); }
 .c-danger { color: var(--danger); }
 
 .task-section {

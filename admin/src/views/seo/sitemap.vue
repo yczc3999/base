@@ -143,60 +143,60 @@ onMounted(load)
   max-width: 900px;
   margin: 0 auto;
   display: flex; flex-direction: column; gap: 20px;
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-sans);
 }
 .header-bar {
   display: flex; justify-content: space-between; align-items: center;
 }
-.header-bar h2 { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em; }
-.subtitle { font-size: 13px; color: #64748b; }
+.header-bar h2 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin: 0; letter-spacing: -0.02em; }
+.subtitle { font-size: 13px; color: var(--text-secondary); }
 
 .card {
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;
 }
 .card-title {
-  font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 16px;
+  font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 16px;
 }
 .mono { font-family: ui-monospace, 'SF Mono', Monaco, monospace; font-size: 12px; }
-.muted { color: #64748b; }
+.muted { color: var(--text-secondary); }
 
 .empty {
   padding: 48px; text-align: center;
 }
 .empty-icon { font-size: 36px; margin-bottom: 12px; }
-.empty-title { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0; }
-.empty-subtitle { font-size: 13px; color: #64748b; margin: 4px 0 0; }
+.empty-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.empty-subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
 
-.file-table :deep(.el-table__row:hover td) { background: #f8fafc !important; }
+.file-table :deep(.el-table__row:hover td) { background: var(--bg-input) !important; }
 .file-name { display: flex; align-items: center; gap: 10px; font-weight: 500; }
 .file-badge {
-  padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 800;
+  padding: 2px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 800;
   letter-spacing: 0.1em;
 }
-.badge-index { background: #dbeafe; color: #1e40af; }
-.badge-chunk { background: #f1f5f9; color: #475569; }
+.badge-index { background: var(--primary-bg); color: var(--primary-hover); }
+.badge-chunk { background: var(--bg-input); color: var(--text-secondary); }
 
 .stats-card .stats-row { display: flex; gap: 40px; margin-bottom: 16px; }
 .stat { display: flex; flex-direction: column; }
 .stat-label {
-  font-size: 10px; font-weight: 700; color: #94a3b8;
+  font-size: 10px; font-weight: 700; color: var(--text-placeholder);
   text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 6px;
 }
-.stat-value { font-size: 26px; font-weight: 900; color: #0f172a; line-height: 1; }
-.unit { font-size: 13px; font-weight: 600; color: #94a3b8; margin-left: 4px; }
+.stat-value { font-size: 26px; font-weight: 900; color: var(--text-primary); line-height: 1; }
+.unit { font-size: 13px; font-weight: 600; color: var(--text-placeholder); margin-left: 4px; }
 .base-url {
-  padding: 10px 14px; background: #f8fafc; border-radius: 4px;
+  padding: 10px 14px; background: var(--bg-input); border-radius: var(--radius);
   font-size: 12px; display: flex; gap: 10px; align-items: center;
 }
 .base-url .label {
-  font-size: 10px; font-weight: 700; color: #94a3b8;
+  font-size: 10px; font-weight: 700; color: var(--text-placeholder);
   text-transform: uppercase; letter-spacing: 0.15em;
 }
 .base-url code {
-  font-family: ui-monospace, monospace; color: #0f172a; font-size: 12px;
+  font-family: ui-monospace, monospace; color: var(--text-primary); font-size: 12px;
 }
 
-.info-card { background: #eff6ff; border-color: #dbeafe; }
-.info-list { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 2; }
-.info-list b { color: #0f172a; }
+.info-card { background: var(--primary-bg); border-color: var(--primary-light); }
+.info-list { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-primary); line-height: 2; }
+.info-list b { color: var(--text-primary); }
 </style>
