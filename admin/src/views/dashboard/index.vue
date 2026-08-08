@@ -31,7 +31,7 @@
                 <td class="mono">{{ log.duration }}ms</td>
                 <td class="mono">{{ fmt(log.created_at) }}</td>
               </tr>
-              <tr v-if="!recentLogs.length"><td colspan="6" style="text-align:center;color:var(--text-placeholder);padding:24px">暂无数据</td></tr>
+              <tr v-if="!recentLogs.length"><td colspan="6" style="text-align:center;padding:32px"><EmptyState :icon="Activity" title="暂无操作记录" description="进行增删改操作后会显示在这里" /></td></tr>
             </tbody>
           </table>
         </div>
@@ -47,7 +47,10 @@
         </div>
         <div class="card-body">
           <div v-for="item in sysRows" :key="item.label" class="sys-row">
-            <span class="sys-label">{{ item.label }}</span>
+            <span class="sys-label">
+              <span v-if="item.status" class="sys-dot" :class="item.status === '正常' ? 'ok' : 'err'"></span>
+              {{ item.label }}
+            </span>
             <span class="sys-value-wrap">
               <span class="sys-value" :class="item.cls">{{ item.value }}</span>
               <span v-if="item.status" class="sys-status" :class="item.status === '正常' ? 'ok' : 'err'">{{ item.status }}</span>
@@ -68,6 +71,7 @@ import { useUserStore } from '@/stores/user'
 import { get } from '@/api/request'
 import PageShell from '@/components/PageShell/index.vue'
 import StatCard from '@/components/StatCard/index.vue'
+import EmptyState from '@/components/EmptyState/index.vue'
 import { Users, LogIn, Activity, Bell } from 'lucide-vue-next'
 
 const userStore = useUserStore()
@@ -141,7 +145,14 @@ function fmt(v: string) { return v ? v.replace('T',' ').substring(11,19) : '—'
   padding: var(--space-sm) 0; border-bottom: 1px solid var(--border-light); font-size: var(--text-sm);
   &:last-child { border-bottom: none; }
 }
-.sys-label { color: var(--text-secondary); }
+.sys-label { color: var(--text-secondary); display: flex; align-items: center; gap: var(--space-xs); }
+
+.sys-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
+  &.ok { background: var(--success); }
+  &.err { background: var(--danger); }
+}
 .sys-value { color: var(--text-primary); font-weight: 500; }
 .green { color: var(--success) !important; font-weight: 600 !important; }
 
