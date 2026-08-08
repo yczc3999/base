@@ -112,6 +112,6 @@ onMounted(loadTree)
 </script>
 <style scoped>
 .status-badge { display:inline-flex;align-items:center;padding:2px 8px;font-size:12px;font-weight:500;border-radius:2px }
-.status-badge.success { background:#DCFCE7;color:#16A34A }
-.status-badge.danger { background:#FEE2E2;color:#EF4444 }
+.status-badge.success { background:var(--success-bg);color:var(--success) }
+.status-badge.danger { background:var(--danger-bg);color:var(--danger) }
 </style>
