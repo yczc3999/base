@@ -7,13 +7,13 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-00c2` |
+| Task | `WP-00d1` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-00c2-artifact-s3.md`](wp-00c2-artifact-s3.md) |
-| 前置实现 | `WP-00c1-r2`（ACCEPTED） |
-| 前置审查 | store 35、local 24、contract 18、trading 159、全量 370；manifest SHA 一致；双前缀残留 0 |
-| 本次范围 | S3-compatible conditional PUT、HEAD/GET/Range、元数据完整性、typed config |
-| 后续候选 | `WP-00d Observability / lifespan`，00c2 接受前不得创建 |
+| 任务文档 | [`wp-00d1-observability-foundation.md`](wp-00d1-observability-foundation.md) |
+| 前置实现 | `WP-00c2-r3`（ACCEPTED） |
+| 前置审查 | 独立复验 117 S3、315 trading、526 full；三条 ClientError traceback 脱敏全关；manifest SHA 一致 |
+| 实现范围 | typed observability config + JSON/redaction logging + low-cardinality Prometheus + W3C/OTel tracing primitives |
+| 后续候选 | `WP-00d2 Lifespan / health / metrics endpoint / Artifact factory`，00d1 接受前不得创建 |
 
 ## 固定交接协议
 
@@ -36,4 +36,8 @@
 | `WP-00c1` | DONE | REMEDIATION_REQUIRED | 59 target、125 trading、336 full 均过；但 bounded decode/range/CAS head/fsync 发现 4 个 P1；见当前 R1 |
 | `WP-00c1-r1` | DONE | REMEDIATION_REQUIRED | 83 target、149 trading、360 full 均过；stored 写前上限、unknown-frame EOF、durability retry 尚未关闭；见当前 R2 |
 | `WP-00c1-r2` | DONE | ACCEPTED | 独立复验：35/24/18 targeted；159 trading；370 full；三 P1 全关；双前缀 0；SHA 一致 |
-| `WP-00c2` | — | READY | 见当前 `wp-00c2-artifact-s3.md`；完成 manifest 固定为 `wp-00c2-artifact-s3.md` |
+| `WP-00c2` | DONE | REMEDIATION_REQUIRED | 54 S3、242 trading、453 full 均过；但配置未控制 409 次数、未显式 SigV4、异常边界/created/Range 仍有 P1；见当前 R1 |
+| `WP-00c2-r1` | DONE | REMEDIATION_REQUIRED | 91 S3、279 trading、490 full 均过；主体整改有效，但 body.read 原生异常泄出、endpoint 校验与 exists 完整性尚未关闭；见当前 R2 |
+| `WP-00c2-r2` | DONE | REMEDIATION_REQUIRED | 114 S3、55 config、312 trading、523 full 与 SHA 均通过；PUT ClientError 三个分支未抑制 traceback context；见当前 R3 |
+| `WP-00c2-r3` | DONE | ACCEPTED | 独立复验：117 S3、315 trading、526 full；三分支 traceback 脱敏全关；compileall/diff/SHA 通过 |
+| `WP-00d1` | — | READY | 技术可观测性 primitives；接受前不得推进 lifespan 集成 |

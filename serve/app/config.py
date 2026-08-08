@@ -13,7 +13,7 @@ API key / Token / Cookie 只以 secret_ref + secret_version 形式出现，凭�
 """
 
 from typing import Mapping
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote, quote_plus, urlsplit
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
@@ -196,6 +196,19 @@ class Settings(BaseSettings):
     ARTIFACT_MAX_OBJECT_BYTES: int = Field(67_108_864, ge=1)
     ARTIFACT_VERIFY_ON_READ: bool = True
 
+    # ---- V2 Artifact S3 Driver（WP-00c2；凭据走标准 provider chain，无 key 字段）----
+    ARTIFACT_S3_BUCKET: str = ""
+    ARTIFACT_S3_PREFIX: str = "v2-artifacts"
+    ARTIFACT_S3_REGION: str = "us-east-1"
+    ARTIFACT_S3_ENDPOINT_URL: str = ""
+    ARTIFACT_S3_ADDRESSING_STYLE: str = "auto"
+    ARTIFACT_S3_CONNECT_TIMEOUT_S: float = Field(2.0, gt=0)
+    ARTIFACT_S3_READ_TIMEOUT_S: float = Field(10.0, gt=0)
+    ARTIFACT_S3_MAX_POOL_CONNECTIONS: int = Field(20, ge=1)
+    ARTIFACT_S3_MAX_ATTEMPTS: int = Field(3, ge=1)
+    ARTIFACT_S3_EXPECTED_BUCKET_OWNER: str = ""
+    ARTIFACT_S3_ALLOW_INSECURE_HTTP: bool = False
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -339,6 +352,136 @@ class Settings(BaseSettings):
             )
         if self.ARTIFACT_DRIVER not in ("local", "s3"):
             raise ValueError(f"ARTIFACT_DRIVER must be 'local' or 's3', got {self.ARTIFACT_DRIVER!r}")
+        return self
+
+    # ---- S3 Driver 静态校验（WP-00c2 §4）----
+
+    @staticmethod
+    def _validate_s3_prefix(prefix: str) -> None:
+        """prefix 可空；非空时禁止首尾 `/`、空段、`.`、`..`、反斜杠、NUL/CR/LF。"""
+        if not prefix:
+            return
+        if prefix.startswith("/") or prefix.endswith("/"):
+            raise ValueError(
+                f"ARTIFACT_S3_PREFIX must not start or end with '/': {prefix!r}"
+            )
+        if any(c in prefix for c in ("\x00", "\r", "\n", "\\")):
+            raise ValueError(
+                f"ARTIFACT_S3_PREFIX contains forbidden chars (NUL/CR/LF/backslash): {prefix!r}"
+            )
+        for seg in prefix.split("/"):
+            if not seg or seg in (".", ".."):
+                raise ValueError(
+                    f"ARTIFACT_S3_PREFIX has invalid segment {seg!r}: {prefix!r}"
+                )
+
+    @staticmethod
+    def _validate_s3_endpoint(url: str) -> str:
+        """endpoint 必须是可解析的严格 http(s) origin。输入不得含首尾/内部 whitespace、
+        ASCII control、`?`、`#`、`@`；不能依赖解析后空字符串的 truthiness 判断分隔符。
+        scheme 精确 http|https、hostname 非空、path 仅空或 `/`；必须访问并验证 parsed
+        port：非数字、空 port、0 或 >65535 立即 ValueError，不延迟到 boto client。
+        不 normalize、不静默删字符；原 endpoint 仍原样交给 boto3。返回 scheme。"""
+        if not isinstance(url, str) or not url:
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL must be a non-empty absolute http(s) URL, "
+                f"got {url!r}"
+            )
+        if any(ch.isspace() for ch in url):
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL must not contain whitespace: {url!r}"
+            )
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in url):
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL contains control characters: {url!r}"
+            )
+        if "?" in url or "#" in url:
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL must not contain query or fragment: {url!r}"
+            )
+        if "@" in url:
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL must not contain userinfo: {url!r}"
+            )
+        try:
+            p = urlsplit(url)
+        except ValueError:
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL is not parseable: {url!r}"
+            ) from None
+        if p.scheme not in ("http", "https"):
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL scheme must be http(s), got {url!r}"
+            )
+        if not p.hostname:
+            raise ValueError(f"ARTIFACT_S3_ENDPOINT_URL missing host: {url!r}")
+        if p.path not in ("", "/"):
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL must be an origin without path: {url!r}"
+            )
+        try:
+            port = p.port
+        except ValueError:
+            raise ValueError(
+                f"ARTIFACT_S3_ENDPOINT_URL has invalid port: {url!r}"
+            ) from None
+        if port is not None:
+            if port <= 0 or port > 65535:
+                raise ValueError(
+                    f"ARTIFACT_S3_ENDPOINT_URL port out of range 1..65535: {url!r}"
+                )
+        else:
+            # 空端口：netloc 以 ':' 结尾（如 host: / [::1]:），拒绝空 port
+            if p.netloc.endswith(":"):
+                raise ValueError(
+                    f"ARTIFACT_S3_ENDPOINT_URL has empty port: {url!r}"
+                )
+        return p.scheme
+
+    @model_validator(mode="after")
+    def _validate_s3_config(self) -> "Settings":
+        """S3 Driver 交叉校验（WP-00c2 §4）。"""
+        if self.ARTIFACT_DRIVER == "s3":
+            if not self.ARTIFACT_S3_BUCKET:
+                raise ValueError(
+                    "ARTIFACT_S3_BUCKET must be non-empty when ARTIFACT_DRIVER=s3"
+                )
+            if not self.ARTIFACT_S3_REGION:
+                raise ValueError(
+                    "ARTIFACT_S3_REGION must be non-empty when ARTIFACT_DRIVER=s3"
+                )
+        if self.ARTIFACT_S3_ADDRESSING_STYLE not in ("auto", "virtual", "path"):
+            raise ValueError(
+                "ARTIFACT_S3_ADDRESSING_STYLE must be one of auto|virtual|path, "
+                f"got {self.ARTIFACT_S3_ADDRESSING_STYLE!r}"
+            )
+        if self.ARTIFACT_S3_CONNECT_TIMEOUT_S <= 0:
+            raise ValueError(
+                f"ARTIFACT_S3_CONNECT_TIMEOUT_S must be > 0, "
+                f"got {self.ARTIFACT_S3_CONNECT_TIMEOUT_S}"
+            )
+        if self.ARTIFACT_S3_READ_TIMEOUT_S <= 0:
+            raise ValueError(
+                f"ARTIFACT_S3_READ_TIMEOUT_S must be > 0, "
+                f"got {self.ARTIFACT_S3_READ_TIMEOUT_S}"
+            )
+        if self.ARTIFACT_S3_MAX_POOL_CONNECTIONS < 1:
+            raise ValueError(
+                f"ARTIFACT_S3_MAX_POOL_CONNECTIONS must be >= 1, "
+                f"got {self.ARTIFACT_S3_MAX_POOL_CONNECTIONS}"
+            )
+        if self.ARTIFACT_S3_MAX_ATTEMPTS < 1:
+            raise ValueError(
+                f"ARTIFACT_S3_MAX_ATTEMPTS must be >= 1, got {self.ARTIFACT_S3_MAX_ATTEMPTS}"
+            )
+        self._validate_s3_prefix(self.ARTIFACT_S3_PREFIX)
+        if self.ARTIFACT_S3_ENDPOINT_URL:
+            scheme = self._validate_s3_endpoint(self.ARTIFACT_S3_ENDPOINT_URL)
+            if scheme == "http" and not self.ARTIFACT_S3_ALLOW_INSECURE_HTTP:
+                raise ValueError(
+                    "ARTIFACT_S3_ENDPOINT_URL uses http:// but "
+                    "ARTIFACT_S3_ALLOW_INSECURE_HTTP=false"
+                )
         return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}

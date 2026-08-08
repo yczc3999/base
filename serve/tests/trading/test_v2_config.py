@@ -22,9 +22,23 @@ _READ_ENV_KEYS = [
     "DB_MAX_CONNECTIONS", "DB_ADMIN_RESERVED_CONNECTIONS", "DB_POOL_PRE_PING",
     "DB_POOL_TIMEOUT_S", "DB_POOL_RECYCLE_S", "DB_LOCK_TIMEOUT_S",
     "DB_IDLE_IN_TX_TIMEOUT_S",
+    "ARTIFACT_S3_BUCKET", "ARTIFACT_S3_PREFIX", "ARTIFACT_S3_REGION",
+    "ARTIFACT_S3_ENDPOINT_URL", "ARTIFACT_S3_ADDRESSING_STYLE",
+    "ARTIFACT_S3_CONNECT_TIMEOUT_S", "ARTIFACT_S3_READ_TIMEOUT_S",
+    "ARTIFACT_S3_MAX_POOL_CONNECTIONS", "ARTIFACT_S3_MAX_ATTEMPTS",
+    "ARTIFACT_S3_EXPECTED_BUCKET_OWNER", "ARTIFACT_S3_ALLOW_INSECURE_HTTP",
 ]
 for _triplet in PROFILE_FIELDS.values():
     _READ_ENV_KEYS.extend(_triplet)
+
+# WP-00c2 S3 Driver 的固定 env 键集合（用于 .env.example 契约测试）
+_S3_ENV_KEYS = [
+    "ARTIFACT_S3_BUCKET", "ARTIFACT_S3_PREFIX", "ARTIFACT_S3_REGION",
+    "ARTIFACT_S3_ENDPOINT_URL", "ARTIFACT_S3_ADDRESSING_STYLE",
+    "ARTIFACT_S3_CONNECT_TIMEOUT_S", "ARTIFACT_S3_READ_TIMEOUT_S",
+    "ARTIFACT_S3_MAX_POOL_CONNECTIONS", "ARTIFACT_S3_MAX_ATTEMPTS",
+    "ARTIFACT_S3_EXPECTED_BUCKET_OWNER", "ARTIFACT_S3_ALLOW_INSECURE_HTTP",
+]
 
 # 禁止进入基础设施配置的字段（platform-design §3.1：策略/资金权限另放）
 _FORBIDDEN_SUBSTRINGS = (
@@ -203,3 +217,133 @@ def test_env_example_uses_secret_ref_only():
     assert "SECRET_REF" in content
     for forbidden in ("sk-", "pk_", "AKIA", "BEGIN .*PRIVATE KEY", "0x[0-9a-fA-F]{16}"):
         assert forbidden not in content, f".env.example contains key-like material: {forbidden}"
+
+
+# ---------------- WP-00c2 S3 Driver 配置 ----------------
+
+def test_s3_defaults(clean_env):
+    s = Settings(_env_file=None)   # ARTIFACT_DRIVER=local，不要求 S3 配置
+    assert s.ARTIFACT_S3_BUCKET == ""
+    assert s.ARTIFACT_S3_PREFIX == "v2-artifacts"
+    assert s.ARTIFACT_S3_REGION == "us-east-1"
+    assert s.ARTIFACT_S3_ENDPOINT_URL == ""
+    assert s.ARTIFACT_S3_ADDRESSING_STYLE == "auto"
+    assert s.ARTIFACT_S3_CONNECT_TIMEOUT_S == 2.0
+    assert s.ARTIFACT_S3_READ_TIMEOUT_S == 10.0
+    assert s.ARTIFACT_S3_MAX_POOL_CONNECTIONS == 20
+    assert s.ARTIFACT_S3_MAX_ATTEMPTS == 3
+    assert s.ARTIFACT_S3_EXPECTED_BUCKET_OWNER == ""
+    assert s.ARTIFACT_S3_ALLOW_INSECURE_HTTP is False
+
+
+def test_s3_env_override(monkeypatch):
+    s = _settings(
+        monkeypatch,
+        ARTIFACT_S3_BUCKET="mybucket",
+        ARTIFACT_S3_PREFIX="pm-arch",
+        ARTIFACT_S3_REGION="ap-east-1",
+        ARTIFACT_S3_ENDPOINT_URL="https://minio.example:9000",
+        ARTIFACT_S3_ADDRESSING_STYLE="path",
+        ARTIFACT_S3_CONNECT_TIMEOUT_S=5,
+        ARTIFACT_S3_READ_TIMEOUT_S=30,
+        ARTIFACT_S3_MAX_POOL_CONNECTIONS=50,
+        ARTIFACT_S3_MAX_ATTEMPTS=5,
+        ARTIFACT_S3_EXPECTED_BUCKET_OWNER="acct-1",
+        ARTIFACT_S3_ALLOW_INSECURE_HTTP=True,
+    )
+    assert s.ARTIFACT_S3_BUCKET == "mybucket"
+    assert s.ARTIFACT_S3_PREFIX == "pm-arch"
+    assert s.ARTIFACT_S3_REGION == "ap-east-1"
+    assert s.ARTIFACT_S3_ADDRESSING_STYLE == "path"
+    assert s.ARTIFACT_S3_MAX_ATTEMPTS == 5
+    assert s.ARTIFACT_S3_ALLOW_INSECURE_HTTP is True
+
+
+def test_s3_driver_requires_bucket_and_region(clean_env):
+    with pytest.raises(ValidationError, match="ARTIFACT_S3_BUCKET"):
+        Settings(_env_file=None, ARTIFACT_DRIVER="s3")
+    with pytest.raises(ValidationError, match="ARTIFACT_S3_REGION"):
+        Settings(_env_file=None, ARTIFACT_DRIVER="s3", ARTIFACT_S3_BUCKET="b",
+                 ARTIFACT_S3_REGION="")
+    s = Settings(_env_file=None, ARTIFACT_DRIVER="s3", ARTIFACT_S3_BUCKET="b")
+    assert s.ARTIFACT_S3_BUCKET == "b"
+
+
+def test_s3_addressing_style_validation(clean_env):
+    with pytest.raises(ValidationError, match="ARTIFACT_S3_ADDRESSING_STYLE"):
+        Settings(_env_file=None, ARTIFACT_S3_ADDRESSING_STYLE="mixed")
+    Settings(_env_file=None, ARTIFACT_S3_ADDRESSING_STYLE="virtual")
+
+
+@pytest.mark.parametrize("kw", [
+    {"ARTIFACT_S3_CONNECT_TIMEOUT_S": 0},
+    {"ARTIFACT_S3_CONNECT_TIMEOUT_S": -1},
+    {"ARTIFACT_S3_READ_TIMEOUT_S": 0},
+    {"ARTIFACT_S3_MAX_POOL_CONNECTIONS": 0},
+    {"ARTIFACT_S3_MAX_ATTEMPTS": 0},
+])
+def test_s3_numeric_bounds(clean_env, kw):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **kw)
+
+
+@pytest.mark.parametrize("prefix", [
+    "/lead", "trail/", "a//b", "a/./b", "a/../b", "a\\b", "a\x00b", "a\rb",
+])
+def test_s3_prefix_invalid_rejected(clean_env, prefix):
+    with pytest.raises(ValidationError, match="ARTIFACT_S3_PREFIX"):
+        Settings(_env_file=None, ARTIFACT_S3_PREFIX=prefix)
+
+
+def test_s3_prefix_valid_accepted(clean_env):
+    for prefix in ("", "v2-artifacts", "pm/arch/2026"):
+        s = Settings(_env_file=None, ARTIFACT_S3_PREFIX=prefix)
+        assert s.ARTIFACT_S3_PREFIX == prefix
+
+
+@pytest.mark.parametrize("url", [
+    "ftp://host", "https://user:pass@host", "https://host?q=1", "https://host#f",
+    "https://host/path", "http://host", "//host",
+    # R2：畸形 URL 必须确定性拒绝（port/分隔符/whitespace/userinfo/control）
+    "https://host:abc", "https://host:99999", "https://host:", "https://host:0",
+    "https://exa mple.com", "https://@host", "https://host?", "https://host#",
+    "https://host\x01.com",
+])
+def test_s3_endpoint_invalid_rejected(clean_env, url):
+    with pytest.raises(ValidationError, match="ARTIFACT_S3_ENDPOINT_URL"):
+        Settings(_env_file=None, ARTIFACT_S3_ENDPOINT_URL=url)
+
+
+def test_s3_endpoint_https_valid(clean_env):
+    s = Settings(_env_file=None, ARTIFACT_S3_ENDPOINT_URL="https://minio.example:9000")
+    assert s.ARTIFACT_S3_ENDPOINT_URL == "https://minio.example:9000"
+
+
+def test_s3_endpoint_http_requires_allow_insecure(clean_env):
+    with pytest.raises(ValidationError, match="ALLOW_INSECURE_HTTP"):
+        Settings(_env_file=None, ARTIFACT_S3_ENDPOINT_URL="http://minio.example:9000")
+    s = Settings(_env_file=None, ARTIFACT_S3_ENDPOINT_URL="http://minio.example:9000",
+                 ARTIFACT_S3_ALLOW_INSECURE_HTTP=True)
+    assert s.ARTIFACT_S3_ALLOW_INSECURE_HTTP is True
+
+
+def test_s3_endpoint_strict_origin_valid(clean_env):
+    """合法覆盖：DNS 无端口、DNS+port、IPv6 bracketed（有/无端口）全部通过。"""
+    for url in ("https://s3.example.com", "https://s3.example.com:9000",
+                "https://[::1]:9000", "https://[::1]"):
+        s = Settings(_env_file=None, ARTIFACT_S3_ENDPOINT_URL=url)
+        assert s.ARTIFACT_S3_ENDPOINT_URL == url     # 原样保留，不 normalize
+
+
+def test_env_example_contains_all_s3_keys():
+    content = ENV_EXAMPLE.read_text(encoding="utf-8")
+    for key in _S3_ENV_KEYS:
+        assert key in content, f".env.example missing {key}"
+
+
+def test_env_example_s3_no_credentials():
+    content = ENV_EXAMPLE.read_text(encoding="utf-8")
+    assert "AWS_ACCESS_KEY_ID" not in content
+    assert "AWS_SECRET_ACCESS_KEY" not in content
+    assert "aws_access_key_id" not in content
+    assert "aws_secret_access_key" not in content

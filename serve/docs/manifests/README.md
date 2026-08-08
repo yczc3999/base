@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1 已接受；当前执行 00c2）
+> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1/00c2 已接受；当前 00d1 READY）
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -16,8 +16,12 @@
 | WP-00 | 00c1 Local Artifact Store | ⚠ DONE，审查要求 R1 | `wp-00c1-artifact-local.md` | `be062516eac9a64a888f3e30852e760508b68e4268872dc77f4bd6bc2123df19` | 2026-08-08 |
 | WP-00 | 00c1-r1 Artifact 正确性整改 | ⚠ DONE，审查要求 R2 | `wp-00c1-r1-artifact-correctness.md` | `119e0710e20468e3c7b5a18a915fad50eac3831ce4b2179007091dd0f339cc85` | 2026-08-08 |
 | WP-00 | 00c1-r2 Artifact 最终边界整改 | ✅ DONE，审查通过 | `wp-00c1-r2-artifact-final-boundaries.md` | `40cfd5f7be09ff368ecad9737f5febaccde96a2b3314309cc6d30b0c379b3220` | 2026-08-08 |
-| WP-00 | 00c2 S3-compatible Artifact Driver | ▶ READY | — | — | — |
-| WP-00 | 00d Observability / lifespan | ⏳ pending | — | — | — |
+| WP-00 | 00c2 S3-compatible Artifact Driver | ⚠ DONE，审查要求 R1 | `wp-00c2-artifact-s3.md` | `be34bf58dd9778a5670561ece6990bc508edb0386b0265cadcb1cc487a801f06` | 2026-08-08 |
+| WP-00 | 00c2-r1 S3 Driver 正确性整改 | ⚠ DONE，审查要求 R2 | `wp-00c2-r1-artifact-s3-correctness.md` | `10f4008387fac5696f0a1cce438189dae5392c4e94c5fff3d25a7732bca705c4` | 2026-08-08 |
+| WP-00 | 00c2-r2 S3 stream/endpoint 最终整改 | ⚠ DONE，审查要求 R3 | `wp-00c2-r2-artifact-stream-endpoint.md` | `081126a9ddc31322c2d45bfd75bd1622461c436bce7eeb7ee5a58fb8b0774d7a` | 2026-08-08 |
+| WP-00 | 00c2-r3 Provider ClientError traceback 脱敏 | ✅ DONE，审查通过 | `wp-00c2-r3-provider-error-redaction.md` | `acb0ed5796b9c1b76289c6dd984f5371dcdb70bb97ba8434e0d8b0990495679d` | 2026-08-08 |
+| WP-00 | 00d1 Observability primitives | 🚧 READY | — | — | — |
+| WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⏳ pending | — | — | — |
 | WP-01A | 0001/0002 迁移、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |
