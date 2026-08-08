@@ -29,6 +29,14 @@ Request → AuthMiddleware → OperationLogMiddleware → Router → Logic → M
 | Deps | 鉴权（require_admin / require_client / require_perms） | `deps.py` |
 | Middleware | JWT 注入 + 操作日志自动记录 | `middleware/` |
 
+## Polymarket V2 设计文档
+
+- [平台实现设计](docs/polymarket-v2-platform-design.md)：配置、后台页面、业务追踪与发布边界。
+- [AI 可观察与回放设计](docs/ai-observability-replay-design.md)：逐次模型调用、工具、成本和实验回放。
+- [Polymarket 接入实现设计](docs/polymarket-integration-design.md)：市场发现、行情、鉴权、下单、对账与结算。
+- [性能、缓存与数据库设计](docs/performance-cache-database-design.md)：实时路径、缓存层、分区索引、队列、容量和压测。
+- [V2 逐文件实施合同](docs/v2-implementation-contract.md)：文件职责、依赖方向、工作包与验收证据。
+
 ## 核心设计
 
 ### BaseLogic — 零代码 CRUD
@@ -202,3 +210,5 @@ python -m app.worker
 | [docs/service-design.md](docs/service-design.md) | Service 层设计 |
 | [docs/file-system-design.md](docs/file-system-design.md) | 文件系统设计 |
 | [docs/queue-task-design.md](docs/queue-task-design.md) | 队列 & 定时任务设计 |
+| [docs/polymarket-v2-platform-design.md](docs/polymarket-v2-platform-design.md) | Polymarket V2 可配置、可观察、可回溯平台实现设计 |
+| [docs/ai-observability-replay-design.md](docs/ai-observability-replay-design.md) | AI 每次调用的输入、工具、输出、成本、校验、追踪与历史回放设计 |
