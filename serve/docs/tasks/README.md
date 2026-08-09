@@ -7,13 +7,14 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01A-00` |
+| Task | `WP-01A-01` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01a-00-alembic-execution-foundation.md`](wp-01a-00-alembic-execution-foundation.md) |
-| 前置实现 | `WP-00d2-r2` 已接受；WP-00 完成 |
-| 前置审查 | 7 factory + 35 runtime + 19 router = 61 定向、669 trading、880 full；9 个既有弃用告警；无 P0/P1 |
-| 本任务范围 | Alembic schema-aware config、transaction advisory lock、connection ownership、真 PostgreSQL roundtrip/concurrency |
-| 后续 | `v2_0001_align_base_metadata`；本任务接受前不得创建 revision |
+| 任务文档 | [`wp-01a-01-base-schema-contract.md`](wp-01a-01-base-schema-contract.md) |
+| 交付 manifest | [`wp-01a-01-base-schema-contract.md`](../manifests/wp-01a-01-base-schema-contract.md) |
+| 前置实现 | `WP-01A-00-r1` 已接受 |
+| 前置审查 | 15 unit + 3 真 PG + 687 trading + 898 full；9 个既有弃用告警；无 P0/P1 |
+| 本任务范围 | Base schema-only canonical fixture、兼容合同、`v2_0001` fail-closed revision、autogenerate ownership 边界 |
+| 后续 | `v2_0002_trading_foundation` 的 control/artifact/outbox Models 与 UoW/Outbox，须在本任务接受后再拆 |
 
 ## 固定交接协议
 
@@ -49,3 +50,6 @@
 | `WP-00d2` | DONE | REMEDIATION_REQUIRED | 正常路径与 852 full 通过；但 lifespan body 异常时所有 cleanup=0，basicConfig/raw exception 绕过 redactor，首次/关闭状态与固定 schema 不正确；见 R1 |
 | `WP-00d2-r1` | DONE | REMEDIATION_REQUIRED | 主体整改有效；tracing 初始/关闭、health-close 竞态、malformed probe 仍有 P1；见 R2 |
 | `WP-00d2-r2` | DONE | ACCEPTED | 61 定向、669 trading、880 full；tracing/race/malformed 全关；无新 RuntimeWarning；SHA 一致 |
+| `WP-01A-00` | DONE | REMEDIATION_REQUIRED | 原交付 14 单测 + 3 真 PG + 897 full 均过，但 allowlist 未接入、外部事务所有权及并发/整 run rollback 证明存在 5 个 P1；见 R1 |
+| `WP-01A-00-r1` | DONE | ACCEPTED | 15 unit + 3 真 PG + 687 trading + 898 full；allowlist/default schema、clean connection、URL origin、真并发锁、整 run rollback 全关；manifest SHA 一致 |
+| `WP-01A-01` | READY | PENDING | 当前任务；Base schema 兼容合同与 `v2_0001` |

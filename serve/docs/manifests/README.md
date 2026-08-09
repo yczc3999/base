@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 总状态：✅ COMPLETE**；当前任务为 `WP-01A-00` Alembic 执行基础。
+> **WP-00 总状态：✅ COMPLETE**；当前任务为 `WP-01A-01` Base schema 兼容合同与 `v2_0001`。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -29,7 +29,9 @@
 | WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⚠ DONE，审查要求 R1 | `wp-00d2-runtime-lifespan-health.md` | `5b9d88e4414ab49f7df9e68999b082b80a143c07faa26d0e44595cd949466135` | 2026-08-09 |
 | WP-00 | 00d2-r1 Runtime failure boundaries | ⚠ DONE，审查要求 R2 | `wp-00d2-r1-runtime-failure-boundaries.md` | `7a18da989ea994a774a494319fd95e0e3c37ccb496fc16226db612ec67acbc3d` | 2026-08-09 |
 | WP-00 | 00d2-r2 Runtime final boundaries | ✅ DONE，审查通过 | `wp-00d2-r2-runtime-final-boundaries.md` | `79998a9cc56cca8434808405d1cc1b9caa04aa4bb75bd50eb1b0df8b0dbdd05e` | 2026-08-09 |
-| WP-01A | 01A-00 Alembic 执行基础 | 🔵 READY | 完成后产生 `wp-01a-00-alembic-execution-foundation.md` | — | — |
+| WP-01A | 01A-00 Alembic 执行基础 | ⚠ DONE，审查要求 R1 | `wp-01a-00-alembic-execution-foundation.md` | `48b32065940cdc9bba0a2ac3ebc4e520e9fbae2674e7ce2537ce7843eb374af5` | 2026-08-09 |
+| WP-01A | 01A-00-r1 Alembic 证明边界整改 | ✅ DONE，审查通过 | `wp-01a-00-r1-alembic-proof-boundaries.md` | `88091118c83be3b3305be84cc26d771e25f07067f80d17592683ac436c01a3bb` | 2026-08-09 |
+| WP-01A | 01A-01 Base schema 兼容合同与 `v2_0001` | ▶ READY | `wp-01a-01-base-schema-contract.md`（待生成） | — | — |
 | WP-01A | 0001/0002、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |

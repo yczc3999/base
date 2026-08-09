@@ -1,5 +1,3 @@
-Generic single-database configuration.
-
 # Base Platform — Alembic 使用说明
 
 ## 双迁移系统共存（ADDITIVE，互不干扰）
@@ -19,6 +17,7 @@ Generic single-database configuration.
 .venv/bin/alembic upgrade head           # 应用未执行的迁移
 .venv/bin/alembic revision --autogenerate -m "add x column"   # 生成迁移
 .venv/bin/alembic downgrade -1           # 回滚一步
+.venv/bin/alembic upgrade head --sql     # offline：生成 SQL，不连库
 ```
 
 ## 连接串
@@ -27,9 +26,37 @@ Generic single-database configuration.
 **同步驱动 URL** `postgresql+psycopg://...`（应用运行时用 asyncpg 异步驱动）。
 不要在 alembic.ini 里写死密码。
 
+## V2 执行语义（WP-01A-00）
+
+V2 的 DDL 唯一入口是 `alembic/env.py`；legacy `python -m app.migrate` 仍只负责 Base
+旧基线与菜单/种子。env.py 在两种模式统一提供以下不变量：
+
+- **schema-aware allowlist**：`include_schemas=True` + `include_name`/`include_object`
+  纯函数。`trading` schema 全域放行；`public` 仅放行 `Base.metadata` 已声明表与
+  `alembic_version`；其他 schema / 未知 public 表一律忽略（autogenerate 不得把它们判为
+  应删除）。Alembic 传入的 default schema `None` 明确按 PostgreSQL `public` 处理。两个
+  allowlist callback 均实际传给 `context.configure`；V2 模型只管理 `trading` schema，Base
+  metadata 只管理已声明的 `public` 表。
+- **显式 search_path**：`SET LOCAL search_path TO public, pg_catalog`。V2 表一律
+  schema-qualified，不依赖隐式搜索顺序。
+- **迁移锁**：`SET LOCAL lock_timeout TO '30s'` 后取固定 key
+  `pg_advisory_xact_lock(5786375870084826445)`；一次 Alembic run 使用一个外层事务，
+  失败整体回滚。offline SQL 同样输出 search path / transaction boundary / advisory-lock
+  SQL（不实际获锁），语义与 online 一致。
+- **连接所有权**：优先复用 `config.attributes["connection"]` 注入的既有 sync Connection
+  （不 close / 不 dispose，便于测试与编排进程传入连接）；未注入时才从 typed settings
+  构造 `NullPool` engine，成功/异常路径各 dispose 一次。注入连接必须没有活动事务；若已有
+  事务则以 `v2_migration_requires_clean_connection` fail-closed，禁止提交/回滚调用方事务。
+- **硬预置**：dialect 必须为 PostgreSQL，否则以固定 reason code
+  `v2_migration_requires_postgresql_dialect` 终止；异常不记录 DSN/password/Provider
+  message。密码只用于 engine URL，禁止写入 log / exception / offline SQL / manifest。
+- **真 PostgreSQL 集成验收**：`tests/trading/integration/` 使用显式测试管理连接
+  `V2_TEST_ADMIN_DATABASE_URL=postgresql+psycopg:///postgres`；fixture 只创建/删除
+  `pm_v2_test_*` 临时库，禁止在管理库或业务库直接运行 downgrade。无该 env 时整模块 skip。
+
 ## 基线说明
 
 首个 revision `cdabba1e3903_baseline_existing_schema` 是 **空基线**：alembic 引入时
-DB 已由 migrate.py 建好 schema，故基线不执行任何 DDL，只标记状态。
+DB 已由 migrate.py 建好 schema，故基线不执行任何 DDL，只标记状态。基线**不改写、不重签**。
 模型↔DB 存在历史漂移（手写 `idx_*`/`uq_*` 命名 vs 模型 `index=True`、JSON vs JSONB 等），
 `--autogenerate` 会报出这些差异 —— 消解漂移请单独出「对齐迁移」，不要混入业务迁移。

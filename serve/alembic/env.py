@@ -1,95 +1,184 @@
+"""V2 Alembic 迁移执行器（WP-01A-00）。
+
+V2 的 DDL 唯一入口。在既有 Base 双迁移系统上（Alembic = schema 演进 /
+``python -m app.migrate`` = 种子+菜单）补齐 V2 需要的执行语义：
+
+- schema-aware：``include_schemas`` + ``include_name``/``include_object`` allowlist。
+  ``trading`` schema 全域放行；``public`` 只放行 ``Base.metadata`` 已声明表与
+  ``alembic_version``；其他 schema / 未知 public 表一律忽略（autogenerate 不得把它们
+  判为应删除）。
+- 显式 ``search_path``：``SET LOCAL search_path TO public, pg_catalog``，V2 表一律
+  schema-qualified，不依赖隐式搜索顺序。
+- 迁移锁：固定 key 的 PostgreSQL transaction advisory lock；一次 Alembic run 使用一个
+  外层事务，失败整体回滚。
+- 连接所有权：优先复用 ``config.attributes["connection"]`` 注入的既有 sync Connection
+  （不 close / 不 dispose）；未注入时才从 typed settings 构造 ``NullPool`` engine，
+  成功/异常路径均 dispose 一次。
+- 硬预置：dialect 必须为 PostgreSQL，否则以固定 reason code 终止；异常不记录
+  DSN / password / Provider message。密码只用于 engine URL，禁止写 log / exception /
+  offline SQL / manifest。
+
+模型只管理 ``trading`` schema；``Base.metadata`` 只管理已声明的 ``public`` 表
+（legacy ``cdabba1e3903`` no-op baseline 不改写、不重签）。
+"""
+
 from logging.config import fileConfig
 from urllib.parse import quote_plus
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import create_engine, pool, text
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
-config = context.config
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# ---- Base Platform 集成 ----
-# Alembic 只负责 schema 演进；种子数据 + 菜单/权限等业务迁移仍走
-# `python -m app.migrate`（databases/migrations/*.sql + schema_migrations 表）。
-# 两者互不干扰：Alembic 用 alembic_version 表，migrate.py 用 schema_migrations 表。
-
-# 同步驱动 URL：应用用 asyncpg（postgresql+asyncpg://），Alembic 需要同步驱动。
-# 这里用 psycopg 3（postgresql+psycopg://），从与 app/config.py 相同的 env 变量构建，
-# 确保 alembic 与运行时连的是同一个库。
 from app.config import settings
 from app.models import Base
 
-_sync_url = (
-    f"postgresql+psycopg://{settings.DATABASE_USER}:{quote_plus(settings.DATABASE_PASSWORD)}"
-    f"@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_NAME}"
-)
-# 注：不用 config.set_main_option() 写回 ini —— 密码可能含 %，configparser 插值会报错。
-# 改为在 run_migrations_* 里直接把 _sync_url 传给引擎。
+# 这是 Alembic 的 Config 对象，提供 .ini 中访问的值。
+config = context.config
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = Base.metadata
+# 解释配置文件进行 Python 日志配置；config_file_name 为 None（程序化注入）时跳过。
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# ---- V2 执行基础（WP-01A-00）----
+
+TRADING_SCHEMA = "trading"
+PUBLIC_SCHEMA = "public"
+VERSION_TABLE = "alembic_version"
+# PostgreSQL transaction advisory lock 固定 key（决策 §2.5）。64 位有符号 bigint 内。
+ADVISORY_LOCK_KEY = 5786375870084826445
+
+ALLOWED_SCHEMAS = frozenset({TRADING_SCHEMA, PUBLIC_SCHEMA})
+# public 仅允许 Base.metadata 已声明表 + alembic_version；未知 public 表不得被 autogenerate
+# 判为应删除，也不得纳入反射。
+PUBLIC_ALLOWED_TABLES = frozenset(Base.metadata.tables) | {VERSION_TABLE}
+
+# 非 PostgreSQL dialect 的固定 reason code：异常 message 不含 DSN/password/Provider 原文。
+MIGRATION_DIALECT_REASON = "v2_migration_requires_postgresql_dialect"
+MIGRATION_ACTIVE_TX_REASON = "v2_migration_requires_clean_connection"
 
 
-def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
+def _build_sync_url() -> str:
+    """同步驱动 URL（psycopg 3），与 app/config.py 同源 env 变量构建。
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
+    密码经 URL 编码，只用于 engine URL；不得写入 log / exception / offline SQL / manifest。
     """
-    url = _sync_url
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
+    password = quote_plus(settings.DATABASE_PASSWORD)
+    return (
+        f"postgresql+psycopg://{settings.DATABASE_USER}:{password}"
+        f"@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_NAME}"
     )
 
-    with context.begin_transaction():
+
+def _require_postgresql(dialect_name: str) -> None:
+    """硬预置：dialect 必须为 PostgreSQL，否则以固定 reason code 终止。
+
+    异常 message 只含固定 code，不含 DSN / password / Provider message。
+    """
+    if dialect_name != "postgresql":
+        raise RuntimeError(MIGRATION_DIALECT_REASON)
+
+
+def include_name(name: str | None, type_: str, parent_names: dict) -> bool:
+    """schema / table allowlist（纯函数，可直接单测）。
+
+    - schema：仅 ``trading`` / ``public`` 放行。
+    - table：``trading`` schema 全域放行；``public`` 仅放行 ``Base.metadata`` 已声明表
+      与 ``alembic_version``；其他 schema / 未知 public 表忽略。
+    - 其余对象类型（column / index / constraint / type）在已放行表内不再过滤。
+    """
+    if type_ == "schema":
+        # Alembic 用 None 表示 dialect.default_schema_name（PostgreSQL 默认 public）。
+        return name is None or name in ALLOWED_SCHEMAS
+    if type_ == "table":
+        schema = (parent_names or {}).get("schema_name") or PUBLIC_SCHEMA
+        if schema == TRADING_SCHEMA:
+            return True
+        if schema == PUBLIC_SCHEMA:
+            return name in PUBLIC_ALLOWED_TABLES
+        return False
+    return True
+
+
+def include_object(object_, name, type_, reflected, compare_to) -> bool:
+    """与 ``include_name`` 保持一致的 table 过滤；非 table 对象放行。"""
+    if type_ == "table":
+        schema = getattr(object_, "schema", None) or PUBLIC_SCHEMA
+        return include_name(name, "table", {"schema_name": schema})
+    return True
+
+
+# online / offline 共用的 configure 参数（任务 §5.1，两模式必须完全一致）。
+# allowlist 回调必须真正传入 Alembic，只定义函数不会生效。
+COMMON_CONFIGURE_KWARGS = {
+    "target_metadata": Base.metadata,
+    "include_schemas": True,
+    "compare_type": True,
+    "compare_server_default": True,
+    "version_table": VERSION_TABLE,
+    "version_table_schema": PUBLIC_SCHEMA,
+    "transaction_per_migration": False,
+    "include_name": include_name,
+    "include_object": include_object,
+}
+
+
+def _create_nullpool_engine():
+    """从 typed settings 构造 NullPool engine（无连接池，迁移进程一次性使用）。"""
+    return create_engine(_build_sync_url(), poolclass=pool.NullPool)
+
+
+def _begin_online_transaction(connection):
+    """外层事务由本次 migration 唯一拥有。
+
+    注入连接若已有事务则 fail-closed；不得用 ``with existing`` 偷偷 commit/
+    rollback 调用方的事务，也不得把 transaction advisory lock 遗留给调用方。"""
+    if connection.get_transaction() is not None:
+        raise RuntimeError(MIGRATION_ACTIVE_TX_REASON)
+    return connection.begin()
+
+
+def _run_online(connection) -> None:
+    """在一个外层事务内：search_path → lock_timeout → advisory lock → migrations。
+
+    任何 migration 异常保持原类型传播并整体 rollback（``with`` 退出时回滚）。
+    """
+    _require_postgresql(connection.dialect.name)
+    with _begin_online_transaction(connection):
+        connection.execute(text("SET LOCAL search_path TO public, pg_catalog"))
+        connection.execute(text("SET LOCAL lock_timeout TO '30s'"))
+        connection.execute(text(f"SELECT pg_advisory_xact_lock({ADVISORY_LOCK_KEY})"))
+        context.configure(connection=connection, **COMMON_CONFIGURE_KWARGS)
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    """online 模式：优先复用注入连接（不 close / 不 dispose），否则自建并 dispose。"""
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        _run_online(connection)
+    else:
+        engine = _create_nullpool_engine()
+        try:
+            with engine.connect() as conn:
+                _run_online(conn)
+        finally:
+            engine.dispose()
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
 
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-        url=_sync_url,
+def run_migrations_offline() -> None:
+    """offline 模式：不连网、不实际获锁，但输出必须包含显式 search path、transaction
+    boundary 与 advisory-lock SQL，保持与 online 语义一致；password 不写入生成 SQL。"""
+    context.configure(
+        url=_build_sync_url(),
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        **COMMON_CONFIGURE_KWARGS,
     )
-
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
-
-        with context.begin_transaction():
-            context.run_migrations()
+    _require_postgresql(context.get_context().dialect.name)
+    with context.begin_transaction():
+        context.execute(text("SET LOCAL search_path TO public, pg_catalog"))
+        context.execute(text("SET LOCAL lock_timeout TO '30s'"))
+        context.execute(text(f"SELECT pg_advisory_xact_lock({ADVISORY_LOCK_KEY})"))
+        context.run_migrations()
 
 
 if context.is_offline_mode():
