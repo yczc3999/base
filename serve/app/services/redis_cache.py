@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from typing import Any, NamedTuple, Sequence
 
 import redis.asyncio as aioredis
@@ -124,6 +125,25 @@ class CacheRedisClient:
     async def aclose(self) -> None:
         """关闭全部连接；幂等。"""
         await self._client.aclose()
+
+    # ---- health（fail-safe：连接错误只上报不抛，不泄 URL/密码）----
+
+    async def ping(self) -> bool:
+        """PING；连接类错误抛给调用方按需降级。"""
+        return bool(await self._client.ping())
+
+    async def health(self) -> dict[str, Any]:
+        """fail-safe 健康：成功 `{ok:true, latency_ms:<ms>}`；连接类错误
+        `{ok:false, latency_ms:null}`。只返回低风险字段，不泄 URL/密码/namespace。"""
+        t0 = time.monotonic()
+        try:
+            await self._client.ping()
+            return {
+                "ok": True,
+                "latency_ms": round((time.monotonic() - t0) * 1000, 3),
+            }
+        except (RedisError, OSError):
+            return {"ok": False, "latency_ms": None}
 
     # ---- 读写 ----
 

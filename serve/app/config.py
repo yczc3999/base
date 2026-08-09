@@ -221,6 +221,9 @@ class Settings(BaseSettings):
     OTEL_TRACE_SAMPLE_RATIO: float = Field(0.05, ge=0.0, le=1.0)
     OTEL_EXPORT_TIMEOUT_S: float = Field(5.0, gt=0)
 
+    # ---- V2 Runtime（WP-00d2；health 探测超时，秒，>0）----
+    RUNTIME_HEALTH_TIMEOUT_S: float = Field(2.0, gt=0)
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -607,6 +610,10 @@ class Settings(BaseSettings):
         if self.OTEL_EXPORT_TIMEOUT_S <= 0:
             raise ValueError(
                 f"OTEL_EXPORT_TIMEOUT_S must be > 0, got {self.OTEL_EXPORT_TIMEOUT_S}"
+            )
+        if self.RUNTIME_HEALTH_TIMEOUT_S <= 0:
+            raise ValueError(
+                f"RUNTIME_HEALTH_TIMEOUT_S must be > 0, got {self.RUNTIME_HEALTH_TIMEOUT_S}"
             )
         return self
 

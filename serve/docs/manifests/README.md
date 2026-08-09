@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 总状态：IN PROGRESS**（00a/00b/00c1/00c2/00d1 已接受；当前 WP-00d2 READY）
+> **WP-00 总状态：✅ COMPLETE**；当前任务为 `WP-01A-00` Alembic 执行基础。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -26,8 +26,11 @@
 | WP-00 | 00d1-r3 Redactor parser boundaries | ⚠ DONE，审查要求 R4 | `wp-00d1-r3-redactor-parser-boundaries.md` | `67b71a901da3942354509e8a7212d6607fe52bbe82c7574b4a68d2d466131015` | 2026-08-08 |
 | WP-00 | 00d1-r4 Deterministic bounded redactor | ⚠ DONE，审查要求 R5 | `wp-00d1-r4-deterministic-redactor.md` | `4d8cf0200bcaaaa2d98a798adac4ab0a48c2e944505ed1f9932097a7155b0e2d` | 2026-08-08 |
 | WP-00 | 00d1-r5 Redactor sensitive-key boundaries | ✅ DONE，审查通过 | `wp-00d1-r5-redactor-key-boundaries.md` | `4b1928363da625035fa714018e99ffec175c30c978fabb7d294e92f878753d3e` | 2026-08-08 |
-| WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⏳ pending | `wp-00d2-runtime-lifespan-health.md` | — | — |
-| WP-01A | 0001/0002 迁移、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
+| WP-00 | 00d2 Lifespan / health / metrics / Artifact factory | ⚠ DONE，审查要求 R1 | `wp-00d2-runtime-lifespan-health.md` | `5b9d88e4414ab49f7df9e68999b082b80a143c07faa26d0e44595cd949466135` | 2026-08-09 |
+| WP-00 | 00d2-r1 Runtime failure boundaries | ⚠ DONE，审查要求 R2 | `wp-00d2-r1-runtime-failure-boundaries.md` | `7a18da989ea994a774a494319fd95e0e3c37ccb496fc16226db612ec67acbc3d` | 2026-08-09 |
+| WP-00 | 00d2-r2 Runtime final boundaries | ✅ DONE，审查通过 | `wp-00d2-r2-runtime-final-boundaries.md` | `79998a9cc56cca8434808405d1cc1b9caa04aa4bb75bd50eb1b0df8b0dbdd05e` | 2026-08-09 |
+| WP-01A | 01A-00 Alembic 执行基础 | 🔵 READY | 完成后产生 `wp-01a-00-alembic-execution-foundation.md` | — | — |
+| WP-01A | 0001/0002、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |
 | WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ⏳ pending | — | — | — |

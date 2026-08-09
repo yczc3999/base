@@ -7,13 +7,13 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-00d2` |
+| Task | `WP-01A-00` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-00d2-runtime-lifespan-health.md`](wp-00d2-runtime-lifespan-health.md) |
-| 前置实现 | `WP-00d1-r5`（ACCEPTED） |
-| 前置审查 | 独立复验 134 log、88 trace、93 config、33 metric、608 trading、819 full；manifest SHA 与 diff 通过，无 P0/P1 |
-| 实现范围 | Artifact factory、RuntimeResources、DB/Redis/Artifact health、lifespan、metrics、Trading Admin runtime endpoint |
-| 后续候选 | `WP-01A`；WP-00d2 接受前不得创建 |
+| 任务文档 | [`wp-01a-00-alembic-execution-foundation.md`](wp-01a-00-alembic-execution-foundation.md) |
+| 前置实现 | `WP-00d2-r2` 已接受；WP-00 完成 |
+| 前置审查 | 7 factory + 35 runtime + 19 router = 61 定向、669 trading、880 full；9 个既有弃用告警；无 P0/P1 |
+| 本任务范围 | Alembic schema-aware config、transaction advisory lock、connection ownership、真 PostgreSQL roundtrip/concurrency |
+| 后续 | `v2_0001_align_base_metadata`；本任务接受前不得创建 revision |
 
 ## 固定交接协议
 
@@ -46,3 +46,6 @@
 | `WP-00d1-r3` | DONE | REMEDIATION_REQUIRED | 91 log、80 trace、557 trading、768 full 与 SHA 通过；未闭合 quote 相反/转义引号仍泄露；见当前 R4 |
 | `WP-00d1-r4` | DONE | REMEDIATION_REQUIRED | 101 log + 80 trace、567 trading、778 full 与 SHA 通过；`prefix token=` / `INFO Cookie:` 等前导文本使敏感 key 被贪婪吞并，见 R5 |
 | `WP-00d1-r5` | DONE | ACCEPTED | 独立复验 134 log、88 trace、93 config、33 metric、608 trading、819 full；prefix/multi-key/negative/fuzz 与 SHA/diff 全过，无 P0/P1 |
+| `WP-00d2` | DONE | REMEDIATION_REQUIRED | 正常路径与 852 full 通过；但 lifespan body 异常时所有 cleanup=0，basicConfig/raw exception 绕过 redactor，首次/关闭状态与固定 schema 不正确；见 R1 |
+| `WP-00d2-r1` | DONE | REMEDIATION_REQUIRED | 主体整改有效；tracing 初始/关闭、health-close 竞态、malformed probe 仍有 P1；见 R2 |
+| `WP-00d2-r2` | DONE | ACCEPTED | 61 定向、669 trading、880 full；tracing/race/malformed 全关；无新 RuntimeWarning；SHA 一致 |
