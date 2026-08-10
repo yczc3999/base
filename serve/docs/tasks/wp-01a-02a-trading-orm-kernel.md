@@ -1,6 +1,7 @@
 # WP-01A-02a — Trading ORM kernel
 
-> 状态：**READY**。执行模型：DeepSeek V4 Flash。
+> 状态：**SUPERSEDED（未实施）**。执行内容已合并至
+> [`wp-01a-02-trading-foundation.md`](wp-01a-02-trading-foundation.md)，不得再按本文件开工。
 > 完成 manifest 固定为 `serve/docs/manifests/wp-01a-02a-trading-orm-kernel.md`。
 > 最后更新：2026-08-10 EDT。
 

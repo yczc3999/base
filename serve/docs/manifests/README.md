@@ -1,11 +1,11 @@
 # Polymarket V2 — 工作包完成索引（审查入口）
 
-> 每个 `WP-*` 子任务完成后必须在此登记，并附独立 completion manifest。
-> manifest 模板见 `serve/docs/v2-implementation-contract.md` §13。
+> 每个 `WP-*` 里程碑完成后必须在此登记，并附一份最终 completion manifest；里程碑内部
+> checkpoint 不另建 manifest。模板见 `serve/docs/v2-implementation-contract.md` §13。
 
 ## 当前状态
 
-> **WP-00 总状态：✅ COMPLETE**；当前任务为 `WP-01A-02a` Trading ORM kernel。
+> **WP-00 总状态：✅ COMPLETE**；当前任务为 `WP-01A-02` Trading foundation 加速里程碑。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -34,8 +34,8 @@
 | WP-01A | 01A-01 Base schema 兼容合同与 `v2_0001` | ⚠ DONE，审查要求 R1 | `wp-01a-01-base-schema-contract.md` | `82c14364a9ae9885e015668b108a9313c923b97b655deea836c26fce44076001` | 2026-08-09 |
 | WP-01A | 01A-01-r1 Offline composite-PK 顺序整改 | ⚠ DONE，审查要求 R2 | `wp-01a-01-r1-offline-pk-order.md` | `a077e3336eb4c5955c3f1ce23fbbfe76a15e972e6eb76c6bf43e46d296ed332a` | 2026-08-10 |
 | WP-01A | 01A-01-r2 Offline baseline 失败证明 | ✅ DONE，审查通过 | `wp-01a-01-r2-offline-baseline-proof.md` | `57991d05853f5c1f752eeabc68aaf0854869e54d0f015b0c3272f781f49fb8bd` | 2026-08-10 |
-| WP-01A | 01A-02a Trading ORM kernel | ▶ READY | `wp-01a-02a-trading-orm-kernel.md`（待生成） | — | — |
-| WP-01A | `v2_0002` trading foundation、control/artifact/outbox Models、UoW/Outbox | ⏳ pending | — | — | — |
+| WP-01A | 01A-02a Trading ORM kernel | ↪ SUPERSEDED（未实施，合并） | — | — | — |
+| WP-01A | 01A-02 Trading foundation：ORM/0002/UoW/Outbox | ▶ READY | `wp-01a-02-trading-foundation.md`（待生成） | — | — |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ⏳ pending | — | — | — |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |
 | WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ⏳ pending | — | — | — |
@@ -50,7 +50,7 @@
 ## 审查方式
 
 1. 打开目标 WP 的 manifest，核对：修改文件（§1）、实现内容（§2）、命令与真实结果（§3）、配置/预算证据（§4）、未解决 blocker（§5）、回滚方式（§6）、manifest 路径 + SHA（§7）。
-2. 复验命令见各 manifest §3；全量验收 = 编译 + 目标测试 + `git diff --check` + 全量回归。
+2. 先复跑最能证明核心不变量的定向测试，再跑里程碑集成/全量回归；范围内问题由审查者直接修复并计入同一 manifest，不生成 R 链。
 3. SHA-256 口径：对 manifest **删除"恰好为 64 位十六进制"的哈希行**后的内容计算，与存储值无关、可复现。
 4. `DONE` 是实现者交付状态，审查接受状态以 [`../tasks/README.md`](../tasks/README.md) 为准。
 

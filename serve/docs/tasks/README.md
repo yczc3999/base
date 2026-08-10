@@ -7,24 +7,26 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01A-02a` |
+| Task | `WP-01A-02` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01a-02a-trading-orm-kernel.md`](wp-01a-02a-trading-orm-kernel.md) |
-| 交付 manifest | [`wp-01a-02a-trading-orm-kernel.md`](../manifests/wp-01a-02a-trading-orm-kernel.md) |
+| 任务文档 | [`wp-01a-02-trading-foundation.md`](wp-01a-02-trading-foundation.md) |
+| 交付 manifest | [`wp-01a-02-trading-foundation.md`](../manifests/wp-01a-02-trading-foundation.md) |
 | 前置实现 | `WP-01A-01-r2` 已接受；`v2_0001` 完成 |
 | 前置审查 | 27 unit + 13 真 PG + 727 trading + 938 full；offline range 保持 baseline；无 P0/P1 |
-| 本任务范围 | Trading ORM constants/types/mixins 与显式 metadata import；不建表、不建 revision |
-| 后续 | artifact/control/outbox models 与 `v2_0002`，按 ≤8 生产文件继续拆分 |
+| 本任务范围 | 一次完成 Trading ORM kernel、foundation models、`v2_0002`、UoW 与可靠 Outbox |
+| 内部 checkpoint | A ORM kernel → B 20 表 Models → C Migration → D UoW/Outbox + 集成验收；中间不等待用户、不拆 manifest |
+| 后续 | 验收后直接进入 `WP-01B` Polymarket public market data 里程碑 |
 
 ## 固定交接协议
 
 1. 实现者只读取并执行“当前任务”指向的文档，不从聊天记录猜范围。
-2. 完成时必须生成任务文档指定名称的 completion manifest，并更新 manifests 索引为 `DONE`。
-3. 用户只需回复 **“完成”**。审查者随后直接读取 Git、任务文档和 manifest，并复跑验收。
-4. 审查通过：本表将当前任务标为 `ACCEPTED`，随后创建并指向下一份任务文档。
-5. 审查失败：本表标为 `REMEDIATION_REQUIRED`，创建整改任务；不得推进业务依赖链。
-6. P0/P1 问题单独整改；不与新功能混做。仅不影响正确性的 P2 可写入下一任务的强制前置项。
-7. 任务文档和 manifest 一一对应；manifest 一旦哈希冻结不再改写，纠错创建 `-rN` 新文档。
+2. 一个里程碑可含多个内部 checkpoint；实现者连续推进，不为 checkpoint 另建 task/manifest。
+3. 全部 checkpoint 完成后生成任务文档指定名称的唯一 completion manifest，并更新索引为 `DONE`。
+4. 用户只需回复 **“完成”**。审查者随后直接读取 Git、任务文档和 manifest，并复跑验收。
+5. 范围内 P0/P1 由审查者直接修复并复验，仍归入原里程碑；不再反复创建 `-rN` 文档。
+6. 只有产品决策、外部 blocker 或超出允许范围的架构重做，才创建整改任务并阻塞依赖链。
+7. 审查通过：本表将当前任务标为 `ACCEPTED`，随后创建并指向下一里程碑文档。
+8. 最终 manifest 与里程碑一一对应；接受后冻结，不再改写。
 
 ## 审查记录
 
@@ -55,4 +57,5 @@
 | `WP-01A-01` | DONE | REMEDIATION_REQUIRED | 40 unit + 6 真 PG + 718 trading + 929 full 均过；但 offline PK 校验丢失 composite ordinal，反序主键仍错误升级；见 R1 |
 | `WP-01A-01-r1` | DONE | REMEDIATION_REQUIRED | ordinal 生产修复正确；但 offline 反例从无 version 表开始，未证明失败后保持 baseline；见 R2 |
 | `WP-01A-01-r2` | DONE | ACCEPTED | 三组反序 PK 从真实 baseline 应用 `cdabba1e3903:head` 均拒绝并保持 baseline；27 unit、13 真 PG、727 trading、938 full |
-| `WP-01A-02a` | READY | PENDING | 当前任务；Trading ORM kernel |
+| `WP-01A-02a` | SUPERSEDED | — | 未实施；已合并进 `WP-01A-02`，避免微任务交接 |
+| `WP-01A-02` | READY | PENDING | 当前加速里程碑；Trading foundation 全闭环 |

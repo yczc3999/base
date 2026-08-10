@@ -42,15 +42,19 @@ require real PostgreSQL/Redis fixtures, not SQLite mocks.
 
 ## Delivery Contract
 
-Implement one work package from `v2-implementation-contract.md` at a time. Modify only its allowed files.
-Record exact commands and reproducible evidence; never mark a package complete on prose alone. Commit
-messages follow repository history: `type(scope): concise summary`, for example
-`feat(v2-market): persist Gamma keyset frames`. UI implementation remains blocked until the user approves
-the product palette/tokens and one high-fidelity business-page preview.
+Implement one coherent milestone from `v2-implementation-contract.md` at a time. A milestone may contain
+several internal checkpoints and 12–20 tightly related production files; do not split work merely to satisfy
+an arbitrary file-count limit. Modify only the milestone's allowed files. Record exact commands and
+reproducible evidence; never mark a milestone complete on prose alone. Commit messages follow repository
+history: `type(scope): concise summary`, for example `feat(v2-market): persist Gamma keyset frames`. UI
+implementation remains blocked until the user approves the product palette/tokens and one high-fidelity
+business-page preview.
 
-`serve/docs/tasks/README.md` is the single current-task pointer. Every task has an exact task document and
-an exact completion-manifest filename. When the user says only “完成”, read the manifest and repository
-state, rerun the task evidence, and record the review verdict. If accepted, create the next task document;
-if defects exist, create a remediation task document and block advancement. Do not ask the user to copy
+`serve/docs/tasks/README.md` is the single current-task pointer. Every milestone has an exact task document
+and one final completion-manifest filename. Internal checkpoints do not create separate manifests. When the
+user says only “完成”, read the manifest and repository state, rerun targeted milestone evidence, and record
+the review verdict. Fix in-scope P0/P1 defects directly in the same milestone and rerun the affected tests;
+create a separate remediation task only for a product decision, external blocker, or architectural change
+outside the allowed scope. If accepted, create the next milestone document. Do not ask the user to copy
 results already recorded in the repository, and do not treat an implementer-written `DONE` as reviewer
 acceptance.
