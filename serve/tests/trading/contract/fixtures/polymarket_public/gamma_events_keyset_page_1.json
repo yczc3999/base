@@ -1,0 +1,23 @@
+{
+  "events": [
+    {
+      "id": "evt-1001",
+      "slug": "will-trump-win-2024",
+      "title": "Will Trump win the 2024 election?",
+      "description": "Binary market on the 2024 US presidential election outcome.",
+      "startDate": "2023-11-01T00:00:00Z",
+      "endDate": "2024-11-05T19:00:00Z",
+      "active": true,
+      "closed": false,
+      "archived": false,
+      "tags": ["politics", "election"],
+      "volume": "1234567.89",
+      "liquidity": "456789.12",
+      "createdAt": "2023-10-15T12:00:00Z",
+      "updatedAt": "2024-11-05T18:00:00Z"
+    }
+  ],
+  "next_cursor": "cursor-2000",
+  "limit": 500,
+  "count": 1
+}

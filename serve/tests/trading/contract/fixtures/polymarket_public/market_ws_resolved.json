@@ -1,0 +1,9 @@
+{
+  "event_type": "market_resolved",
+  "id": "123456",
+  "market": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+  "assets_ids": ["99887766554433221110", "11223344556677889900"],
+  "winning_asset_id": "99887766554433221110",
+  "winning_outcome": "Yes",
+  "timestamp": "1782753357257"
+}

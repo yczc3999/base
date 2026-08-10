@@ -136,7 +136,7 @@ contract_spec 当前有效
 | 接口 | 用途 |
 |---|---|
 | `GET /book?token_id=` / `POST /books` | 完整订单簿；批量最多 500 |
-| `GET /price?token_id=&side=BUY|SELL` | BUY 最低 ask，SELL 最高 bid |
+| `GET /price?token_id=&side=BUY|SELL` | Provider wire：BUY=最高 bid，SELL=最低 ask；不得把参数名直接当作本系统动作方向 |
 | `GET /tick-size?token_id=` | 当前 tick |
 | `GET /fee-rate?token_id=` | 便捷 fee 参数 |
 | `GET /clob-markets/{condition_id}` | min size、tick、fee、delay 等市场配置 |
@@ -145,7 +145,8 @@ contract_spec 当前有效
 `/book` 保存 `market、asset_id、timestamp、hash、bids、asks、min_order_size、tick_size、
 neg_risk、last_trade_price`。所有金额和价格使用 `Decimal`/6 位 base units，禁止 float。
 
-官方资料在 book 排序和 `/price` 侧别描述上曾不一致，因此实现永远计算：
+官方资料在 book 排序和 `/price` 侧别描述上曾不一致。2026-08-10 的生产响应与 API Reference
+均为 `/price BUY=best bid、SELL=best ask`；实现仍以完整 book 自行计算：
 
 ```text
 best_bid = max(bids.price)

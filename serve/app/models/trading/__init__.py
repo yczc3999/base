@@ -9,6 +9,26 @@ from app.models.trading.artifact import (
     ArtifactObject,
     RetentionManifest,
 )
+from app.models.trading.market import (
+    PMEvent,
+    PMMarket,
+    PMMarketCurrent,
+    PMMarketLifecycleEvent,
+    PMMarketVersion,
+    PMToken,
+    PMTokenVersion,
+    PUniverseFrame,
+    PUniverseFramePage,
+)
+from app.models.trading.market_stream import (
+    PMBookCheckpoint,
+    PMBookCurrent,
+    PMBookLevel,
+    PMConnectionEpoch,
+    PMQuoteBinding,
+    PMSourceEventBatch,
+    PMSourceEventIndex,
+)
 from app.models.trading.control import (
     CapitalPermissionManifest,
     ExecutionSpecVersion,
@@ -38,6 +58,24 @@ __all__ = [
     "ArtifactLineageEdge",
     "ArchiveManifest",
     "RetentionManifest",
+    # market master
+    "PUniverseFrame",
+    "PUniverseFramePage",
+    "PMEvent",
+    "PMMarket",
+    "PMMarketVersion",
+    "PMToken",
+    "PMTokenVersion",
+    "PMMarketLifecycleEvent",
+    "PMMarketCurrent",
+    # market stream / book
+    "PMConnectionEpoch",
+    "PMSourceEventBatch",
+    "PMSourceEventIndex",
+    "PMBookCheckpoint",
+    "PMBookLevel",
+    "PMBookCurrent",
+    "PMQuoteBinding",
     # control
     "RuntimeConfigVersion",
     "StrategyObjectiveContract",

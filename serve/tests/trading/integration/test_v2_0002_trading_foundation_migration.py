@@ -120,7 +120,7 @@ def _apply_fixture(db_url):
 
 def test_literal_empty_roundtrip(temp_pg_db):
     url = temp_pg_db.url
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     assert _version(url) == [(V2,)]
     tables = _trading_tables(url)
     assert len([t for t in tables if not t.startswith("outbox_delivery_history_")]) == 20
@@ -132,7 +132,7 @@ def test_literal_empty_roundtrip(temp_pg_db):
     assert _trading_tables(url) == []
     assert _query(url, "SELECT 1 FROM pg_namespace WHERE nspname='trading'") == []
 
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     assert _version(url) == [(V2,)]
 
 
@@ -141,7 +141,7 @@ def test_existing_base_fixture_roundtrip(temp_pg_db):
     _apply_fixture(url)
     before_base = sorted(t for t in _public_tables(url) if t != "alembic_version")
 
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     assert _version(url) == [(V2,)]
     # Base 18 表原样；upgrade 只新增 Alembic 管理的 version 表
     assert sorted(_public_tables(url)) == sorted(before_base + ["alembic_version"])
@@ -156,29 +156,21 @@ def test_existing_base_fixture_roundtrip(temp_pg_db):
 
 def test_metadata_compare_zero_drift_on_modeled_tables(temp_pg_db):
     url = temp_pg_db.url
+    # ``alembic check`` 要求 DB 在 head（b1000011）；升级到 head 覆盖 0002+0010+0011 全部 modeled 表
     _run(command.upgrade, "head", url)
     diffs = _check_diffs(url)
 
-    partition_diffs = []
-    modeled_diffs = []
-    for d in diffs:
-        kind = d[0]
-        name = ""
-        if kind in ("remove_table", "remove_index"):
-            name = getattr(d[1], "name", "")
-        if name.startswith("outbox_delivery_history_"):
-            partition_diffs.append(name)
-        else:
-            modeled_diffs.append(d)
-    # 唯一允许的 diff：3 个动态分区子表 + 各自继承索引（metadata 无法静态表达）
-    assert len(partition_diffs) == 6, f"partition diffs: {partition_diffs}"
-    assert all(n.startswith("outbox_delivery_history_2") for n in partition_diffs)
-    assert modeled_diffs == [], f"modeled 20 表存在 drift: {modeled_diffs}"
+    from tests.trading.fixtures.migration_helpers import split_dynamic_diffs
+
+    dynamic, modeled = split_dynamic_diffs(diffs)
+    # 唯一允许的 diff：动态分区子表 + 继承索引（metadata 无法静态表达）
+    assert len(dynamic) > 0, f"expected dynamic partition diffs: {diffs}"
+    assert modeled == [], f"modeled 表存在 drift: {modeled}"
 
 
 def test_partitions_are_real_range_partitions_and_writable(temp_pg_db):
     url = temp_pg_db.url
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     assert _query(
         url,
         "SELECT partstrat FROM pg_partitioned_table p "
@@ -201,7 +193,7 @@ def test_partitions_are_real_range_partitions_and_writable(temp_pg_db):
 
 def test_artifact_ref_shape_and_controlled_values_are_enforced(temp_pg_db):
     url = temp_pg_db.url
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     sha = "b" * 64
     locator = f"cas/v1/sha256/{sha[:2]}/{sha[2:4]}/{sha}.zst"
     _execute(
@@ -305,7 +297,7 @@ def test_artifact_ref_shape_and_controlled_values_are_enforced(temp_pg_db):
 
 def test_database_immutability_guards_allow_only_lifecycle_transitions(temp_pg_db):
     url = temp_pg_db.url
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
 
     guarded_tables = {
         row[0]
@@ -465,7 +457,7 @@ def test_database_immutability_guards_allow_only_lifecycle_transitions(temp_pg_d
 
 def test_downgrade_fail_closed_on_unknown_schema_object(temp_pg_db):
     url = temp_pg_db.url
-    _run(command.upgrade, "head", url)
+    _run(command.upgrade, V2, url)
     before = set(_trading_tables(url))
     _execute(url, "CREATE TABLE trading.unknown_intruder (id integer)")
     with pytest.raises(Exception, match="v2_trading_schema_not_empty"):

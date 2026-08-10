@@ -1,6 +1,6 @@
 # WP-01B — Polymarket 公共市场数据完整里程碑
 
-> 状态：**READY**。执行模型：DeepSeek V4 Flash。
+> 状态：**ACCEPTED（2026-08-10 审查者复验）**。执行模型：DeepSeek V4 Flash。
 > 完成 manifest 固定为 `serve/docs/manifests/wp-01b-public-market-data.md`。
 > 最后更新：2026-08-10 EDT。
 

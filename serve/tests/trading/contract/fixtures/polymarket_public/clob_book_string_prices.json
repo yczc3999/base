@@ -1,0 +1,18 @@
+{
+  "market": "0xcccccccccccccccccccccccccccccccccccccccc",
+  "asset_id": "99887766554433221111",
+  "timestamp": 1720000001,
+  "hash": "0xbeefdead",
+  "bids": [
+    {"price": "0.5100", "size": "1000"},
+    {"price": "0.5000", "size": "500"}
+  ],
+  "asks": [
+    {"price": "0.5200", "size": "400"},
+    {"price": "0.5300", "size": "200"}
+  ],
+  "min_order_size": "1",
+  "tick_size": "0.0100",
+  "neg_risk": false,
+  "last_trade_price": "0.5200"
+}

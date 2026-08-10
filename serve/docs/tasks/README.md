@@ -7,15 +7,15 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01B` |
+| Task | `WP-01C` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01b-public-market-data.md`](wp-01b-public-market-data.md) |
-| 交付 manifest | `serve/docs/manifests/wp-01b-public-market-data.md`（完成时创建） |
-| 前置实现 | `WP-01A-02` 已接受；head=`b1000002` |
-| 前置审查 | 35 model + 7 真 PG migration + 48 Outbox unit + 29 真 PG/Redis integration；833 trading；1044 full；无 P0/P1 |
-| 本任务范围 | 0010/0011、Gamma/CLOB public typed wire、market master、universe keyset、WS/book ingest 与 stale hard-stop |
-| 内部 checkpoint | A wire/driver → B market master/0010 → C source+book/0011 → D ingest/resync/replay；中间不等待、不拆 manifest |
-| 后续 | 验收后进入 `WP-01C` contract/component/cohort/screening |
+| 任务文档 | [`wp-01c-contract-component-cohort-screening.md`](wp-01c-contract-component-cohort-screening.md) |
+| 交付 manifest | `serve/docs/manifests/wp-01c-contract-component-cohort-screening.md`（完成时创建） |
+| 前置实现 | `WP-01B` 已接受；head=`b1000011` |
+| 前置审查 | 70 wire + 30 Universe/migration/book/replay；paced perf PASS；933 trading；1144 full；无 P0/P1 |
+| 本任务范围 | 0012/0013、contract/payout、local component/world schema、prospective cohort、G0/R0、opportunity/G1/G2、component episode/R1 |
+| 内部 checkpoint | A semantics/0012 → B cohort+policy/G0/R0 → C workflow/G1/G2/episode/R1/0013 → D replay/perf；中间不等待、不拆 manifest |
+| 后续 | 验收后进入 `WP-02` minimal cognition + AI observability |
 
 ## 固定交接协议
 
@@ -59,3 +59,5 @@
 | `WP-01A-01-r2` | DONE | ACCEPTED | 三组反序 PK 从真实 baseline 应用 `cdabba1e3903:head` 均拒绝并保持 baseline；27 unit、13 真 PG、727 trading、938 full |
 | `WP-01A-02a` | SUPERSEDED | — | 未实施；已合并进 `WP-01A-02`，避免微任务交接 |
 | `WP-01A-02` | DONE | ACCEPTED | 审查者直接关闭 10 类 P1；35/7/48/29 定向，833 trading，1044 full；固定 migration DDL、DB immutability、UoW/Outbox crash/idempotency/transport 边界全过；manifest SHA 一致 |
+| `WP-01B` | DONE | ACCEPTED | 70 wire + 30 真 PG/replay；paced 1k/s×60s、5k/s×10s 均过；933 trading、1144 full；四链 frame、lease/fence resume、epoch barrier、raw evidence/replay 全关；manifest SHA `06b01cdd…` |
+| `WP-01C` | READY | — | 当前任务：`wp-01c-contract-component-cohort-screening.md` |

@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 / WP-01A：✅ COMPLETE**；当前施工入口为 `WP-01B` 公共市场数据（READY）。
+> **WP-00 / WP-01A / WP-01B：✅ COMPLETE**；当前施工任务为 `WP-01C`。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -36,7 +36,7 @@
 | WP-01A | 01A-01-r2 Offline baseline 失败证明 | ✅ DONE，审查通过 | `wp-01a-01-r2-offline-baseline-proof.md` | `57991d05853f5c1f752eeabc68aaf0854869e54d0f015b0c3272f781f49fb8bd` | 2026-08-10 |
 | WP-01A | 01A-02a Trading ORM kernel | ↪ SUPERSEDED（未实施，合并） | — | — | — |
 | WP-01A | 01A-02 Trading foundation：ORM/0002/UoW/Outbox | ✅ DONE，审查通过 | `wp-01a-02-trading-foundation.md` | `b5aeeffbd87a16373d91557a24d4501d91453e79572a372578123c3921305aa8` | 2026-08-10 |
-| WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ▶ READY | 完成时生成 `wp-01b-public-market-data.md` | — | — |
+| WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ✅ DONE，审查通过 | `wp-01b-public-market-data.md` | `06b01cdd60ead9657756f01c2b890064211c8e98bfaaae992543792bf9b8c4a2` | 2026-08-10 |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ⏳ pending | — | — | — |
 | WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ⏳ pending | — | — | — |
 | WP-03 | 0030/0031 decision/portfolio/shadow execution/ledger | ⏳ pending | — | — | — |

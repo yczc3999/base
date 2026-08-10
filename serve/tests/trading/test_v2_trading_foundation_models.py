@@ -41,7 +41,8 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_20_foundation_tables():
+def test_exactly_36_trading_tables():
+    """20 foundation + 9 market master（0010）+ 7 market stream（0011）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -49,14 +50,26 @@ def test_exactly_20_foundation_tables():
         "release_manifests", "policy_type_scopes", "policy_freezes",
         "secret_vault_entries", "secret_vault_versions", "secret_access_events",
         "idempotency_claims", "transactional_outbox", "outbox_delivery_history", "job_completions",
+        "pm_universe_frames", "pm_universe_frame_pages", "pm_events", "pm_markets",
+        "pm_market_versions", "pm_tokens", "pm_token_versions", "pm_market_lifecycle_events",
+        "pm_market_current",
+        "pm_connection_epochs", "pm_source_event_batches", "pm_source_event_index",
+        "pm_book_checkpoints", "pm_book_levels", "pm_book_current", "pm_quote_bindings",
     }
 
 
 def test_all_tables_schema_qualified_bigint_identity_pk():
+    # 分区证据表 PK = (id, 分区时间键)
+    composite_pk_tables = {
+        "outbox_delivery_history": "completed_at",
+        "pm_source_event_batches": "received_at",
+        "pm_source_event_index": "received_at",
+        "pm_book_checkpoints": "received_at",
+        "pm_book_levels": "received_at",
+    }
     for name, t in TRADING.items():
-        if name == "outbox_delivery_history":
-            # 分区表 PK 为 (id, completed_at)
-            assert {c.name for c in t.primary_key} == {"id", "completed_at"}
+        if name in composite_pk_tables:
+            assert {c.name for c in t.primary_key} == {"id", composite_pk_tables[name]}
             continue
         pk = list(t.primary_key)
         assert len(pk) == 1, f"{name}: PK 必须单列"

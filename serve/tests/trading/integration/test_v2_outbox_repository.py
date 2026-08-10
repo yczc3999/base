@@ -209,7 +209,9 @@ async def test_two_concurrent_claims_single_claim(stack):
         results[owner] = rows
 
     await asyncio.gather(_claim("p1"), _claim("p2"))
-    assert sorted(len(v) for v in results.values()) == [0, 5]  # 一个 publisher 拿到全部，另一个 0
-    # 赢家的 5 个 id 互不相同（无重复认领）
-    winner = max(results.values(), key=len)
-    assert len({r["id"] for r in winner}) == 5
+    # WP-01B：SKIP LOCKED 只保证"无重复认领"（5 行各被认领一次），不保证单方全拿——
+    # 真并发下 [3,2] 也是合法结果。断言真实不变量：
+    claimed = results["p1"] + results["p2"]
+    assert len(claimed) == 5, f"5 行必须全部被认领，got p1={len(results['p1'])} p2={len(results['p2'])}"
+    ids = [r["id"] for r in claimed]
+    assert len(set(ids)) == 5  # 无重复认领（union 恰好 5 个不同 id）
