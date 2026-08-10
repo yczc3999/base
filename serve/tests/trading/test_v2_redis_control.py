@@ -308,3 +308,59 @@ def test_no_scan_or_pattern_delete_api():
     for attr in ("scan", "scan_iter", "delete_pattern", "cache_del_pattern"):
         assert not hasattr(c, attr), f"Control client must not expose {attr}"
     asyncio.run(c.aclose())
+
+
+# ---------------- consumer group 原语（WP-01A-02 outbox） ----------------
+
+def test_stream_group_ensure_idempotent_and_mkstream():
+    async def _t():
+        c = _client()
+        name, group = f"cg{uuid4().hex[:6]}", "g"
+        key = build_redis_key(c.namespace, "stream", name)
+        try:
+            assert await c.stream_group_ensure(name, group) is True
+            assert await c.stream_group_ensure(name, group) is False  # BUSYGROUP
+        finally:
+            await _cleanup(c, [key])
+            await c.aclose()
+    _run(_t())
+
+
+def test_stream_group_read_ack_pending():
+    async def _t():
+        c = _client()
+        name, group, consumer = f"cg{uuid4().hex[:6]}", "g", "consumer-x"
+        key = build_redis_key(c.namespace, "stream", name)
+        try:
+            await c.stream_group_ensure(name, group)
+            mid = await c.stream_add(name, {"event_id": "e1"})
+            items = await c.stream_group_read(name, group, consumer)
+            assert [i[0] for i in items] == [mid]
+            detail = await c.stream_group_pending_detail(name, group, consumer=consumer)
+            assert any(p["id"] == mid for p in detail)
+            assert await c.stream_group_ack(name, group, mid) == 1
+            assert all(p["id"] != mid for p in await c.stream_group_pending_detail(name, group))
+        finally:
+            await _cleanup(c, [key])
+            await c.aclose()
+    _run(_t())
+
+
+def test_stream_group_claim_idle_pending():
+    async def _t():
+        c = _client()
+        name, group = f"cg{uuid4().hex[:6]}", "g"
+        key = build_redis_key(c.namespace, "stream", name)
+        try:
+            await c.stream_group_ensure(name, group)
+            mid = await c.stream_add(name, {"event_id": "e1"})
+            await c.stream_group_read(name, group, "consumer-a")
+            await asyncio.sleep(1.1)
+            claimed = await c.stream_group_claim(name, group, "consumer-b", 1000, mid)
+            assert len(claimed) == 1
+            detail = await c.stream_group_pending_detail(name, group, consumer="consumer-b")
+            assert any(p["id"] == mid for p in detail)
+        finally:
+            await _cleanup(c, [key])
+            await c.aclose()
+    _run(_t())

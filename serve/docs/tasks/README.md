@@ -7,15 +7,15 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01A-02` |
+| Task | `WP-01B` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01a-02-trading-foundation.md`](wp-01a-02-trading-foundation.md) |
-| 交付 manifest | [`wp-01a-02-trading-foundation.md`](../manifests/wp-01a-02-trading-foundation.md) |
-| 前置实现 | `WP-01A-01-r2` 已接受；`v2_0001` 完成 |
-| 前置审查 | 27 unit + 13 真 PG + 727 trading + 938 full；offline range 保持 baseline；无 P0/P1 |
-| 本任务范围 | 一次完成 Trading ORM kernel、foundation models、`v2_0002`、UoW 与可靠 Outbox |
-| 内部 checkpoint | A ORM kernel → B 20 表 Models → C Migration → D UoW/Outbox + 集成验收；中间不等待用户、不拆 manifest |
-| 后续 | 验收后直接进入 `WP-01B` Polymarket public market data 里程碑 |
+| 任务文档 | [`wp-01b-public-market-data.md`](wp-01b-public-market-data.md) |
+| 交付 manifest | `serve/docs/manifests/wp-01b-public-market-data.md`（完成时创建） |
+| 前置实现 | `WP-01A-02` 已接受；head=`b1000002` |
+| 前置审查 | 35 model + 7 真 PG migration + 48 Outbox unit + 29 真 PG/Redis integration；833 trading；1044 full；无 P0/P1 |
+| 本任务范围 | 0010/0011、Gamma/CLOB public typed wire、market master、universe keyset、WS/book ingest 与 stale hard-stop |
+| 内部 checkpoint | A wire/driver → B market master/0010 → C source+book/0011 → D ingest/resync/replay；中间不等待、不拆 manifest |
+| 后续 | 验收后进入 `WP-01C` contract/component/cohort/screening |
 
 ## 固定交接协议
 
@@ -58,4 +58,4 @@
 | `WP-01A-01-r1` | DONE | REMEDIATION_REQUIRED | ordinal 生产修复正确；但 offline 反例从无 version 表开始，未证明失败后保持 baseline；见 R2 |
 | `WP-01A-01-r2` | DONE | ACCEPTED | 三组反序 PK 从真实 baseline 应用 `cdabba1e3903:head` 均拒绝并保持 baseline；27 unit、13 真 PG、727 trading、938 full |
 | `WP-01A-02a` | SUPERSEDED | — | 未实施；已合并进 `WP-01A-02`，避免微任务交接 |
-| `WP-01A-02` | READY | PENDING | 当前加速里程碑；Trading foundation 全闭环 |
+| `WP-01A-02` | DONE | ACCEPTED | 审查者直接关闭 10 类 P1；35/7/48/29 定向，833 trading，1044 full；固定 migration DDL、DB immutability、UoW/Outbox crash/idempotency/transport 边界全过；manifest SHA 一致 |

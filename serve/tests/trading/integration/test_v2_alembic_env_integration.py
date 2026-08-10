@@ -29,9 +29,9 @@ from sqlalchemy.pool import NullPool
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 BASELINE_REVISION = "cdabba1e3903"
-# v2_0001（WP-01A-01）加入后 head 变为 b1000001；探针 revision 须挂在它之下，
+# v2_0001 / v2_0002（WP-01A-01/02）加入后 head 变为 b1000002；探针 revision 须挂在它之下，
 # 否则形成多 head 使 `upgrade head` 歧义。
-HEAD_REVISION = "b1000001"
+HEAD_REVISION = "b1000002"
 
 # 并发探针 revision：在持锁 migration 内制造稳定重叠窗口。无全局 advisory
 # lock 时两进程会同时看到 baseline，其中一个必然在 CREATE TABLE 冲突；有锁时
@@ -41,7 +41,7 @@ LOCK_PROBE_REVISION_SRC = '''"""advisory lock serialization probe"""
 from alembic import op
 
 revision = "c0000001"
-down_revision = "b1000001"
+down_revision = "b1000002"
 branch_labels = None
 depends_on = None
 
@@ -62,7 +62,7 @@ SUCCESS_REVISION_SRC = '''"""successful first half of whole-run rollback probe""
 from alembic import op
 
 revision = "f0000001"
-down_revision = "b1000001"
+down_revision = "b1000002"
 branch_labels = None
 depends_on = None
 
@@ -158,15 +158,17 @@ def test_upgrade_downgrade_upgrade_roundtrip(temp_pg_db):
 
     _run(command.upgrade, "head", url)
     assert _version_rows(url) == [(HEAD_REVISION,)]
-    # public.alembic_version 且无其他 version table；用户表仅 alembic_version
+    # public.alembic_version 且无其他 version table；public 用户表仅 alembic_version
+    # （v2_0002 引入 trading schema，不属 public）
     vts = _query(
         url,
         "SELECT table_schema||'.'||table_name FROM information_schema.tables "
         "WHERE table_name LIKE '%version%' "
-        "AND table_schema NOT IN ('pg_catalog', 'information_schema')",
+        "AND table_schema = 'public'",
     )
     assert vts == [("public.alembic_version",)]
-    assert _non_system_tables(url) == [("public.alembic_version",)]
+    public_tables = [r[0] for r in _non_system_tables(url) if r[0].startswith("public.")]
+    assert public_tables == ["public.alembic_version"]
 
     _run(command.downgrade, "base", url)
     # alembic 保留 version 表但清空行（online 模式不 DROP version 表）

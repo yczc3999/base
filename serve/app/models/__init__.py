@@ -21,6 +21,30 @@ from app.models.dict import Dict, DictItem
 # 数据库备份
 from app.models.db_backup import DbBackup
 
+# V2 trading 域（显式导入全部 metadata，供 Alembic 发现；不做动态扫描）
+from app.models.trading import (  # noqa: E402,F401
+    ArchiveManifest,
+    ArtifactLineageEdge,
+    ArtifactObject,
+    CapitalPermissionManifest,
+    ExecutionSpecVersion,
+    IdempotencyClaim,
+    JobCompletion,
+    ModelRoleBinding,
+    OutboxDeliveryHistory,
+    PolicyFreeze,
+    PolicyTypeScope,
+    ReleaseManifest,
+    RetentionManifest,
+    RuntimeConfigVersion,
+    SecretAccessEvent,
+    SecretVaultEntry,
+    SecretVaultVersion,
+    StrategyObjectiveContract,
+    StrategyVersion,
+    TransactionalOutbox,
+)
+
 __all__ = [
     "Base", "AdminUser", "User", "Setting",
     "AdminOperationLog", "AdminLoginLog",
@@ -30,4 +54,25 @@ __all__ = [
     "PublishLog",
     "Dict", "DictItem",
     "DbBackup",
+    # V2 trading
+    "ArtifactObject",
+    "ArtifactLineageEdge",
+    "ArchiveManifest",
+    "RetentionManifest",
+    "RuntimeConfigVersion",
+    "StrategyObjectiveContract",
+    "StrategyVersion",
+    "ModelRoleBinding",
+    "ExecutionSpecVersion",
+    "CapitalPermissionManifest",
+    "ReleaseManifest",
+    "PolicyTypeScope",
+    "PolicyFreeze",
+    "SecretVaultEntry",
+    "SecretVaultVersion",
+    "SecretAccessEvent",
+    "IdempotencyClaim",
+    "TransactionalOutbox",
+    "OutboxDeliveryHistory",
+    "JobCompletion",
 ]

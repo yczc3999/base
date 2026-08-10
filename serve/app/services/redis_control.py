@@ -21,7 +21,7 @@ import time
 from typing import Any
 
 import redis.asyncio as aioredis
-from redis.exceptions import RedisError
+from redis.exceptions import RedisError, ResponseError
 
 from app.config import ControlRedisEndpoint, settings
 from app.services.redis_keys import build_redis_key
@@ -265,6 +265,91 @@ class ControlRedisClient:
     async def stream_trim(self, name: str, maxlen: int, approximate: bool = False) -> int:
         """裁剪到 maxlen；返回删除条数。"""
         return await self._client.xtrim(self._key("stream", name), maxlen=maxlen, approximate=approximate)
+
+    # ---- Redis Streams consumer group 原语（publisher/consumer/sweeper 必需）----
+
+    async def stream_group_ensure(self, name: str, group: str) -> bool:
+        """幂等创建 consumer group（MKSTREAM）；已存在返回 False，新创建返回 True。
+
+        outbox 语义：group 从 ``0`` 开始（非 ``$``），保证组内最早未消费消息可被认领。
+        """
+        key = self._key("stream", name)
+        try:
+            await self._client.xgroup_create(key, group, id="0", mkstream=True)
+            return True
+        except ResponseError as exc:
+            # 只有 BUSYGROUP 是幂等成功；NOAUTH/WRONGTYPE/Provider 故障必须 fail-closed。
+            if str(exc).startswith("BUSYGROUP"):
+                return False
+            raise
+
+    async def stream_group_read(self, name: str, group: str, consumer: str, *,
+                                count: int | None = None,
+                                block_ms: int | None = None) -> list[tuple[str, dict[str, Any]]]:
+        """从 consumer group 读取消息（XREADGROUP）；返回 [(id, fields), ...]。"""
+        res = await self._client.xreadgroup(
+            group, consumer, {self._key("stream", name): ">"}, count=count, block=block_ms
+        )
+        if not res:
+            return []
+        entries: list[tuple[str, dict[str, Any]]] = []
+        for _stream_name, items in res:
+            entries.extend(items)
+        return entries
+
+    async def stream_group_ack(self, name: str, group: str, *message_ids: str) -> int:
+        """确认消息（XACK）；返回确认条数。"""
+        return await self._client.xack(self._key("stream", name), group, *message_ids)
+
+    async def stream_group_pending(self, name: str, group: str) -> list[tuple]:
+        """组 pending 概览（XPENDING）。"""
+        return await self._client.xpending(self._key("stream", name), group)
+
+    async def stream_group_claim(self, name: str, group: str, consumer: str,
+                                 min_idle_ms: int, *message_ids: str) -> list[tuple[str, dict[str, Any]]]:
+        """认领超过 min_idle_ms 的 pending 消息（XCLAIM）。"""
+        res = await self._client.xclaim(
+            self._key("stream", name), group, consumer, min_idle_ms, message_ids
+        )
+        return list(res)
+
+    async def stream_group_reclaim(self, name: str, group: str, consumer: str,
+                                   min_idle_ms: int, count: int = 10) -> list[tuple[str, dict[str, Any]]]:
+        """XAUTOCLAIM 认领 idle 超过 min_idle_ms 的 pending 消息（consumer 自恢复）。
+
+        用于消费端崩溃/未 ACK 遗留消息的自愈；返回 [(id, fields), ...]。
+        """
+        key = self._key("stream", name)
+        _next_start, entries, _deleted = await self._client.xautoclaim(
+            key, group, consumer, min_idle_ms, start_id="0-0", count=count
+        )
+        return list(entries)
+
+    async def stream_group_pending_detail(self, name: str, group: str, consumer: str | None = None,
+                                          count: int = 10) -> list[dict[str, Any]]:
+        """组 pending 明细（XPENDING 扩展形式）。"""
+        key = self._key("stream", name)
+        res = await self._client.xpending_range(
+            key, group, min="-", max="+", count=count, consumername=consumer
+        )
+        # 本版本返回 dict 列表：{message_id, consumer, time_since_delivered, times_delivered}
+        out = []
+        for r in res:
+            if isinstance(r, dict):
+                out.append({
+                    "id": r["message_id"],
+                    "consumer": r["consumer"],
+                    "idle": r["time_since_delivered"],
+                    "delivery_count": r["times_delivered"],
+                })
+            else:  # 兼容 tuple 形式
+                out.append({
+                    "id": r[0],
+                    "consumer": r[1],
+                    "idle": r[2],
+                    "delivery_count": r[3],
+                })
+        return out
 
 
 # 模块级默认实例（WP-00d 前不接入 main.py，仅供显式使用）

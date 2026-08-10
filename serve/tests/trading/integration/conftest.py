@@ -8,6 +8,7 @@ suite 可离线通过）。fixture 只创建/删除 ``pm_v2_test_*`` 临时库�
 import os
 import types
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -18,6 +19,7 @@ ADMIN_URL_ENV = "V2_TEST_ADMIN_DATABASE_URL"
 TEMP_PREFIX = "pm_v2_test_"
 # §8 风险：删除前必须确认不是 template/current/admin 库。
 _RESERVED_DB_NAMES = frozenset({"postgres", "template0", "template1"})
+ALEMBIC_DIR = Path(__file__).resolve().parents[3] / "alembic"
 
 
 @pytest.fixture
@@ -71,3 +73,22 @@ def temp_pg_db():
                 c.execute(text(f'DROP DATABASE IF EXISTS "{dbname}"'))
         finally:
             admin.dispose()
+
+
+@pytest.fixture
+def migrated_pg_db(temp_pg_db):
+    """在临时库上执行 alembic upgrade head（v2_0002），供 UoW/outbox 集成使用。"""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(ALEMBIC_DIR))
+    engine = create_engine(temp_pg_db.url, poolclass=NullPool)
+    conn = engine.connect()
+    cfg.attributes["connection"] = conn
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        conn.close()
+        engine.dispose()
+    return temp_pg_db

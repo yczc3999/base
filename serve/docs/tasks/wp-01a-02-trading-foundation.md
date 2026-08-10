@@ -1,6 +1,6 @@
 # WP-01A-02 — Trading foundation 完整里程碑
 
-> 状态：**READY**。执行模型：DeepSeek V4 Flash。
+> 状态：**ACCEPTED**（审查者已直接整改并复验）。执行模型：DeepSeek V4 Flash。
 > 完成 manifest 固定为 `serve/docs/manifests/wp-01a-02-trading-foundation.md`。
 > 最后更新：2026-08-10 EDT。
 
