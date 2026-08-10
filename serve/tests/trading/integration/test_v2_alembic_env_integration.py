@@ -29,6 +29,9 @@ from sqlalchemy.pool import NullPool
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 BASELINE_REVISION = "cdabba1e3903"
+# v2_0001（WP-01A-01）加入后 head 变为 b1000001；探针 revision 须挂在它之下，
+# 否则形成多 head 使 `upgrade head` 歧义。
+HEAD_REVISION = "b1000001"
 
 # 并发探针 revision：在持锁 migration 内制造稳定重叠窗口。无全局 advisory
 # lock 时两进程会同时看到 baseline，其中一个必然在 CREATE TABLE 冲突；有锁时
@@ -38,7 +41,7 @@ LOCK_PROBE_REVISION_SRC = '''"""advisory lock serialization probe"""
 from alembic import op
 
 revision = "c0000001"
-down_revision = "cdabba1e3903"
+down_revision = "b1000001"
 branch_labels = None
 depends_on = None
 
@@ -59,7 +62,7 @@ SUCCESS_REVISION_SRC = '''"""successful first half of whole-run rollback probe""
 from alembic import op
 
 revision = "f0000001"
-down_revision = "cdabba1e3903"
+down_revision = "b1000001"
 branch_labels = None
 depends_on = None
 
@@ -154,7 +157,7 @@ def test_upgrade_downgrade_upgrade_roundtrip(temp_pg_db):
     assert target.database == temp_pg_db.name
 
     _run(command.upgrade, "head", url)
-    assert _version_rows(url) == [(BASELINE_REVISION,)]
+    assert _version_rows(url) == [(HEAD_REVISION,)]
     # public.alembic_version 且无其他 version table；用户表仅 alembic_version
     vts = _query(
         url,
@@ -170,7 +173,7 @@ def test_upgrade_downgrade_upgrade_roundtrip(temp_pg_db):
     assert _query(url, "SELECT count(*) FROM public.alembic_version") == [(0,)]
 
     _run(command.upgrade, "head", url)
-    assert _version_rows(url) == [(BASELINE_REVISION,)]
+    assert _version_rows(url) == [(HEAD_REVISION,)]
 
 
 # ---------------- 2. 并发 migration 被 advisory lock 串行化 ----------------
@@ -216,7 +219,7 @@ def test_concurrent_upgrades_serialized_by_advisory_lock(temp_pg_db, tmp_path):
     """两个独立进程同时执行非 no-op revision；无锁时本 fixture 必然冲突。"""
     url = temp_pg_db.url
     _run(command.upgrade, "head", url)
-    assert _version_rows(url) == [(BASELINE_REVISION,)]
+    assert _version_rows(url) == [(HEAD_REVISION,)]
 
     script_dir = _temporary_script(
         tmp_path / "lock_alembic",
@@ -251,9 +254,9 @@ def test_concurrent_upgrades_serialized_by_advisory_lock(temp_pg_db, tmp_path):
 
 def test_failing_revision_rolls_back_and_version_not_advanced(temp_pg_db, tmp_path):
     url = temp_pg_db.url
-    # 先升到基线（成功）
+    # 先升到 v2_0001（成功）
     _run(command.upgrade, "head", url)
-    assert _version_rows(url) == [(BASELINE_REVISION,)]
+    assert _version_rows(url) == [(HEAD_REVISION,)]
 
     # 同一 run 中先成功一个 revision，后续 revision 再失败。
     script_dir = _temporary_script(
@@ -267,9 +270,9 @@ def test_failing_revision_rolls_back_and_version_not_advanced(temp_pg_db, tmp_pa
     with pytest.raises(RuntimeError, match="intentional-failure"):
         _run(command.upgrade, "head", url, script_location=str(script_dir))
 
-    # version 不前进，仍为基线；前一个已成功 revision 与失败 revision 的
-    # DDL 均不存在，证明回滚的是整次 run，不是只回滚最后一个 revision。
-    assert _version_rows(url) == [(BASELINE_REVISION,)]
+    # version 不前进，仍为 v2_0001（已提交）；前一个已成功 revision 与失败
+    # revision 的 DDL 均不存在，证明回滚的是整次 run，不是只回滚最后一个 revision。
+    assert _version_rows(url) == [(HEAD_REVISION,)]
     leftover = _query(
         url,
         "SELECT count(*) FROM information_schema.tables "

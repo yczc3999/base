@@ -7,14 +7,14 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01A-01` |
+| Task | `WP-01A-02a` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01a-01-base-schema-contract.md`](wp-01a-01-base-schema-contract.md) |
-| 交付 manifest | [`wp-01a-01-base-schema-contract.md`](../manifests/wp-01a-01-base-schema-contract.md) |
-| 前置实现 | `WP-01A-00-r1` 已接受 |
-| 前置审查 | 15 unit + 3 真 PG + 687 trading + 898 full；9 个既有弃用告警；无 P0/P1 |
-| 本任务范围 | Base schema-only canonical fixture、兼容合同、`v2_0001` fail-closed revision、autogenerate ownership 边界 |
-| 后续 | `v2_0002_trading_foundation` 的 control/artifact/outbox Models 与 UoW/Outbox，须在本任务接受后再拆 |
+| 任务文档 | [`wp-01a-02a-trading-orm-kernel.md`](wp-01a-02a-trading-orm-kernel.md) |
+| 交付 manifest | [`wp-01a-02a-trading-orm-kernel.md`](../manifests/wp-01a-02a-trading-orm-kernel.md) |
+| 前置实现 | `WP-01A-01-r2` 已接受；`v2_0001` 完成 |
+| 前置审查 | 27 unit + 13 真 PG + 727 trading + 938 full；offline range 保持 baseline；无 P0/P1 |
+| 本任务范围 | Trading ORM constants/types/mixins 与显式 metadata import；不建表、不建 revision |
+| 后续 | artifact/control/outbox models 与 `v2_0002`，按 ≤8 生产文件继续拆分 |
 
 ## 固定交接协议
 
@@ -52,4 +52,7 @@
 | `WP-00d2-r2` | DONE | ACCEPTED | 61 定向、669 trading、880 full；tracing/race/malformed 全关；无新 RuntimeWarning；SHA 一致 |
 | `WP-01A-00` | DONE | REMEDIATION_REQUIRED | 原交付 14 单测 + 3 真 PG + 897 full 均过，但 allowlist 未接入、外部事务所有权及并发/整 run rollback 证明存在 5 个 P1；见 R1 |
 | `WP-01A-00-r1` | DONE | ACCEPTED | 15 unit + 3 真 PG + 687 trading + 898 full；allowlist/default schema、clean connection、URL origin、真并发锁、整 run rollback 全关；manifest SHA 一致 |
-| `WP-01A-01` | READY | PENDING | 当前任务；Base schema 兼容合同与 `v2_0001` |
+| `WP-01A-01` | DONE | REMEDIATION_REQUIRED | 40 unit + 6 真 PG + 718 trading + 929 full 均过；但 offline PK 校验丢失 composite ordinal，反序主键仍错误升级；见 R1 |
+| `WP-01A-01-r1` | DONE | REMEDIATION_REQUIRED | ordinal 生产修复正确；但 offline 反例从无 version 表开始，未证明失败后保持 baseline；见 R2 |
+| `WP-01A-01-r2` | DONE | ACCEPTED | 三组反序 PK 从真实 baseline 应用 `cdabba1e3903:head` 均拒绝并保持 baseline；27 unit、13 真 PG、727 trading、938 full |
+| `WP-01A-02a` | READY | PENDING | 当前任务；Trading ORM kernel |

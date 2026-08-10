@@ -3,8 +3,8 @@ WP-01A-00 Alembic 执行基础 —— 纯单测（不连真实数据库）。
 
 覆盖任务 §6.1：
 1. online/offline 的共同 ``context.configure`` 参数完全一致；
-2. schema/table allowlist：未知 public 表、非 public|trading schema 均被排除；
-   metadata public 表、trading 表和 version table 保留；
+2. schema/table allowlist：public 仅放行 ``alembic_version``（18 张 Base 表由 v2_0001
+   revision validator 主动检查），trading 全域放行，未知 public / 其他 schema 均被排除；
 3. 注入 connection 不被 close/dispose；自建 engine 在成功/异常路径各 dispose 一次；
 4. SQL 顺序为 begin → search path/timeout → advisory lock → migration；migration 失败后
    rollback，原异常传播；
@@ -162,7 +162,9 @@ def test_common_configure_kwargs_identical_across_modes():
         "compare_type": True,
         "compare_server_default": True,
         "version_table": "alembic_version",
-        "version_table_schema": "public",
+        # None = default schema（include_schemas=True 时 alembic 用 None 表示 public，
+        # 否则 autogenerate 会把版本表误判为待删除）
+        "version_table_schema": None,
         "transaction_per_migration": False,
     }
     online_ctx = _FakeContext(is_offline=False)
@@ -211,17 +213,21 @@ def test_include_name_table_allowlist():
     mod = _load_env(_FakeContext(is_offline=False))
     # trading 全域
     assert mod.include_name("any_trading_table", "table", {"schema_name": "trading"}) is True
-    # public：metadata 声明表 + alembic_version 保留
-    known = next(iter(mod.PUBLIC_ALLOWED_TABLES - {"alembic_version"}))
-    assert known in Base.metadata.tables
-    assert mod.include_name(known, "table", {"schema_name": "public"}) is True
+    # public 仅放行 alembic_version（autogenerate 由 Alembic 自身管理）
+    assert mod.PUBLIC_ALLOWED_TABLES == {"alembic_version"}
     assert mod.include_name("alembic_version", "table", {"schema_name": "public"}) is True
+    # 18 张 Base 表由 v2_0001 revision validator 主动检查，不进入 autogenerate
+    # create/drop/alter 候选（避免把 model/DB 漂移误生成破坏性 DDL）
+    known = next(iter(Base.metadata.tables))
+    assert known not in mod.PUBLIC_ALLOWED_TABLES
+    assert mod.include_name(known, "table", {"schema_name": "public"}) is False
     # 未知 public 表、非 public|trading schema 排除
     assert mod.include_name("unknown_public_table", "table", {"schema_name": "public"}) is False
     assert mod.include_name("some_table", "table", {"schema_name": "other_schema"}) is False
     # 缺省 schema 视为 public
-    assert mod.include_name(known, "table", {}) is True
-    assert mod.include_name(known, "table", {"schema_name": None}) is True
+    assert mod.include_name("alembic_version", "table", {}) is True
+    assert mod.include_name("alembic_version", "table", {"schema_name": None}) is True
+    assert mod.include_name(known, "table", {}) is False
     assert mod.include_name("unknown_public_table", "table", {}) is False
     assert mod.include_name(
         "unknown_public_table", "table", {"schema_name": None}
@@ -236,11 +242,13 @@ def test_include_object_table_allowlist():
 
     mod = _load_env(_FakeContext(is_offline=False))
     trading_tbl = sa.Table("t", sa.MetaData(), schema="trading")
-    known = next(iter(mod.PUBLIC_ALLOWED_TABLES - {"alembic_version"}))
-    public_known = sa.Table(known, sa.MetaData(), schema="public")
+    public_version = sa.Table("alembic_version", sa.MetaData(), schema="public")
+    known = next(iter(Base.metadata.tables))
+    public_base = sa.Table(known, sa.MetaData(), schema="public")
     public_unknown = sa.Table("unknown_public_table", sa.MetaData(), schema="public")
     assert mod.include_object(trading_tbl, "t", "table", True, None) is True
-    assert mod.include_object(public_known, known, "table", True, None) is True
+    assert mod.include_object(public_version, "alembic_version", "table", True, None) is True
+    assert mod.include_object(public_base, known, "table", True, None) is False
     assert mod.include_object(public_unknown, "unknown_public_table", "table", True, None) is False
     assert mod.include_object("anything", "c", "column", True, None) is True
 

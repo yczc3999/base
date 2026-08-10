@@ -4,9 +4,9 @@ V2 的 DDL 唯一入口。在既有 Base 双迁移系统上（Alembic = schema �
 ``python -m app.migrate`` = 种子+菜单）补齐 V2 需要的执行语义：
 
 - schema-aware：``include_schemas`` + ``include_name``/``include_object`` allowlist。
-  ``trading`` schema 全域放行；``public`` 只放行 ``Base.metadata`` 已声明表与
-  ``alembic_version``；其他 schema / 未知 public 表一律忽略（autogenerate 不得把它们
-  判为应删除）。
+  ``trading`` schema 全域放行；``public`` 只放行 ``alembic_version``；18 张 Base 表由
+  ``v2_0001`` revision validator 主动检查兼容合同，其他 schema / 未知 public 表一律
+  忽略（autogenerate 不得把它们判为应删除，也不得反射 Base 表）。
 - 显式 ``search_path``：``SET LOCAL search_path TO public, pg_catalog``，V2 表一律
   schema-qualified，不依赖隐式搜索顺序。
 - 迁移锁：固定 key 的 PostgreSQL transaction advisory lock；一次 Alembic run 使用一个
@@ -47,9 +47,10 @@ VERSION_TABLE = "alembic_version"
 ADVISORY_LOCK_KEY = 5786375870084826445
 
 ALLOWED_SCHEMAS = frozenset({TRADING_SCHEMA, PUBLIC_SCHEMA})
-# public 仅允许 Base.metadata 已声明表 + alembic_version；未知 public 表不得被 autogenerate
-# 判为应删除，也不得纳入反射。
-PUBLIC_ALLOWED_TABLES = frozenset(Base.metadata.tables) | {VERSION_TABLE}
+# public 仅允许 alembic_version（由 Alembic 自身管理）。18 张 Base 表由
+# ``v2_0001`` revision 的 validator（``app.base_schema_contract``）主动检查兼容合同，
+# 不进入 autogenerate 的 create/drop/alter 候选、也不得被反射；未知 public 表同样排除。
+PUBLIC_ALLOWED_TABLES = frozenset({VERSION_TABLE})
 
 # 非 PostgreSQL dialect 的固定 reason code：异常 message 不含 DSN/password/Provider 原文。
 MIGRATION_DIALECT_REASON = "v2_migration_requires_postgresql_dialect"
@@ -108,13 +109,20 @@ def include_object(object_, name, type_, reflected, compare_to) -> bool:
 
 # online / offline 共用的 configure 参数（任务 §5.1，两模式必须完全一致）。
 # allowlist 回调必须真正传入 Alembic，只定义函数不会生效。
+#
+# ``version_table_schema`` 必须为 ``None``（default schema）而非 ``"public"``：
+# ``include_schemas=True`` 时 Alembic autogenerate 用 ``None`` 表示数据库 default schema
+# （schema.py 把 ``public`` discard 后 ``add(None)``），tables.py 仅当
+# ``schema_name == version_table_schema`` 时才把版本表从反射集中排除。若写成 ``"public"``，
+# ``alembic check`` / ``revision --autogenerate`` 会把 ``alembic_version`` 误报为待删除表。
+# 物理位置不变：search_path=public, pg_catalog 下版本表仍落在 public。
 COMMON_CONFIGURE_KWARGS = {
     "target_metadata": Base.metadata,
     "include_schemas": True,
     "compare_type": True,
     "compare_server_default": True,
     "version_table": VERSION_TABLE,
-    "version_table_schema": PUBLIC_SCHEMA,
+    "version_table_schema": None,
     "transaction_per_migration": False,
     "include_name": include_name,
     "include_object": include_object,

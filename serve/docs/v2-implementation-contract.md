@@ -89,7 +89,7 @@ outbox_pending` 等平行物理表。
 | `app/observability/metrics.py` | 低基数 Prometheus metrics | business ID label | `test_v2_metric_cardinality.py` |
 | `app/observability/tracing.py` | OTel span、trace/chain 关联、采样规则 | 代替业务 event | `test_v2_trace_context.py` |
 | `app/models/__init__.py` | 显式导入 `models.trading` metadata | 连接数据库或动态扫描 | `test_v2_model_imports.py` |
-| `alembic/env.py` | include schemas/type/default compare、advisory lock、trading metadata | 业务种子、调用旧 SQL runner | `test_v2_alembic_env.py` |
+| `alembic/env.py` | include schemas/type/default compare、advisory lock、trading metadata；public 仅放行 `alembic_version`，Base 兼容合同由 `v2_0001` validator 检查 | 业务种子、调用旧 SQL runner、反射/接管 Base 表 | `test_v2_alembic_env.py` |
 | `app/main.py` | include 一个 Trading Admin router、API lifespan 初始化/释放 | 启动 ingest/AI/execution loop | `test_v2_router_registration.py` |
 
 这些文件只扩展 Base，不改变 legacy SEO、用户、RBAC 和通用 CRUD 行为。
@@ -132,7 +132,7 @@ Alembic revision 按以下逻辑拆分，实际文件名前缀由 Alembic 生成
 
 | Revision 名称 | 内容 |
 |---|---|
-| `v2_0001_align_base_metadata` | 对齐现有 model/DB 漂移；不建 V2 表 |
+| `v2_0001_freeze_base_schema_contract` | 冻结 Base legacy schema 兼容合同（只读边界）：EMPTY/COMPATIBLE 不做 Base DDL，partial/incompatible 在 version 前进前抛错回滚；**不**对齐 model/DB 漂移、不建 V2 表 |
 | `v2_0002_trading_foundation` | `trading` schema、control、artifact、vault skeleton、idempotency/outbox 基础 |
 | `v2_0010_p1a_market_master` | Gamma/CLOB master、frame、version、lifecycle |
 | `v2_0011_p1a_evidence_partitions` | source/book 分区根、未来分区、本地索引 |
