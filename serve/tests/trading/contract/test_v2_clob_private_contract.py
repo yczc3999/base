@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,10 +21,15 @@ from polymarket._internal.actions.orders.typed_data import (
     build_order_signature,
     build_order_typed_data,
 )
+from polymarket._internal.l1_auth import sign_api_key_auth
 
+from app.schemas.polymarket.clob_private import PrivateApiCredentials
 from app.services.polymarket.clob_trading_driver import (
+    HEARTBEAT_PATH,
     ClobTradingDriver,
+    PreparedSignedOrder,
     canonical_order_body_hash,
+    exact_order_wire_bytes,
     expected_order_hash_for,
     sdk_manifest_hash_for,
 )
@@ -63,11 +69,23 @@ def _signed_order(unsigned: UnsignedOrder, eoa: Account):
     return create_signed_order(unsigned, full, post_only=False)
 
 
+class _WireClient:
+    def __init__(self, signer: str):
+        self.credentials = SimpleNamespace(key="fixture-owner")
+        self.signer = signer
+
+
+def _prepared(signed_order, expected_eoa) -> tuple[ClobTradingDriver, PreparedSignedOrder]:
+    driver = ClobTradingDriver(client=_WireClient(expected_eoa))
+    return driver, driver.prepare_signed_order(signed_order)
+
+
 def _golden(unsigned, signed_order, expected_eoa) -> dict:
-    driver = ClobTradingDriver(client=None)
+    driver, prepared = _prepared(signed_order, expected_eoa)
     return driver.validate_signed_order_golden(
-        signed_order, chain_id=unsigned.chain_id,
+        prepared, chain_id=unsigned.chain_id,
         exchange_address=unsigned.exchange_address, expected_eoa=expected_eoa,
+        expected_funder=unsigned.maker,
     )
 
 
@@ -112,19 +130,54 @@ def test_sdk_golden_consistent_with_fixture():
     assert golden["identity"]["erc7739_wrapper"] is True
     assert golden["submit"]["endpoint"] == "POST /order"
     assert golden["submit"]["transport_policy"] == "single_send_no_automatic_retry"
+    assert golden["sdk_golden_sha256"] != "0" * 64
+
+    for label, key, exchange in (
+        ("standard", b"\x01" * 32, EXCHANGE_STANDARD),
+        ("neg_risk", b"\x02" * 32, EXCHANGE_NEGRISK),
+    ):
+        eoa = Account.from_key(key)
+        unsigned = _unsigned(exchange_address=exchange)
+        signed = _signed_order(unsigned, eoa)
+        _, prepared = _prepared(signed, eoa.address)
+        vector = golden["submit"]["vectors"][label]
+        assert canonical_order_body_hash(prepared) == vector["exact_body_hash"]
+        assert expected_order_hash_for(
+            prepared, chain_id=137, exchange_address=exchange,
+        ) == vector["order_hash"]
+        assert sdk_manifest_hash_for(prepared) == vector["sdk_identity_hash"]
+        assert hashlib.sha256(signed.signature.encode()).hexdigest() == vector["signature_vector_hash"]
 
 
 def test_expected_order_hash_and_sdk_manifest_hash_deterministic():
     eoa = Account.from_key(b"\x03" * 32)
     unsigned = _unsigned()
     signed_order = _signed_order(unsigned, eoa)
-    h1 = expected_order_hash_for(signed_order, chain_id=137, exchange_address=EXCHANGE_STANDARD)
-    h2 = expected_order_hash_for(signed_order, chain_id=137, exchange_address=EXCHANGE_STANDARD)
+    _, prepared = _prepared(signed_order, eoa.address)
+    h1 = expected_order_hash_for(prepared, chain_id=137, exchange_address=EXCHANGE_STANDARD)
+    h2 = expected_order_hash_for(prepared, chain_id=137, exchange_address=EXCHANGE_STANDARD)
     assert h1 == h2 and len(h1) == 64
-    s1 = sdk_manifest_hash_for(signed_order)
-    s2 = sdk_manifest_hash_for(signed_order)
+    s1 = sdk_manifest_hash_for(prepared)
+    s2 = sdk_manifest_hash_for(prepared)
     assert s1 == s2 and len(s1) == 64
-    assert canonical_order_body_hash(signed_order) == canonical_order_body_hash(signed_order)
+    path, body = exact_order_wire_bytes(prepared)
+    assert path == "/order"
+    assert canonical_order_body_hash(prepared) == hashlib.sha256(body).hexdigest()
+    payload = json.loads(body)
+    assert payload["owner"] == "fixture-owner"
+    assert payload["order"]["signature"] == signed_order.signature
+
+
+def test_l1_clob_auth_vector_is_real_and_recoverable():
+    eoa = Account.from_key(b"\x04" * 32)
+    vector = sign_api_key_auth(eoa, chain_id=137, timestamp=1_700_000_123, nonce=0)
+    assert vector.address == eoa.address
+    assert vector.signature.startswith("0x") and len(vector.signature) == 132
+    assert hashlib.sha256(vector.signature.encode()).hexdigest() != "0" * 64
+    from tests.trading.fixtures.p5_execution.p5_helpers import frozen_scenario
+    frozen = frozen_scenario("clob_golden")["l1_clob_auth_vector"]
+    assert vector.address == frozen["address"]
+    assert hashlib.sha256(vector.signature.encode()).hexdigest() == frozen["signature_hash"]
 
 
 def test_l2_hmac_canonical_input_matches_frozen_contract():
@@ -140,13 +193,13 @@ def test_l2_hmac_canonical_input_matches_frozen_contract():
     assert empty == "1700000000GET/time"
 
 
-class _HeartbeatClient:
+class _HeartbeatTransport:
     def __init__(self, chain):
         self._chain = list(chain)
         self.calls = []
 
-    def post_heartbeat(self, heartbeat_id):
-        self.calls.append(heartbeat_id)
+    async def __call__(self, method, path, body, headers):
+        self.calls.append((method, path, body, dict(headers)))
         if not self._chain:
             return {"heartbeat_id": None}
         return {"heartbeat_id": self._chain.pop(0)}
@@ -155,15 +208,43 @@ class _HeartbeatClient:
 @pytest.mark.asyncio
 async def test_heartbeat_id_chain_single_path_no_fallback():
     """/v1/heartbeats 首空 ID → 轮换 ID 链；一次请求一个 ID；不双发/不 fallback。"""
-    client = _HeartbeatClient(["hb-1", "hb-2", "hb-3"])
-    driver = ClobTradingDriver(client=client)
+    transport = _HeartbeatTransport(["hb-1", "hb-2", "hb-3"])
+    credentials = PrivateApiCredentials(
+        api_key="fixture-api-key",
+        secret="Zml4dHVyZS1sMi1zZWNyZXQ",
+        passphrase="fixture-passphrase",
+    )
+    client = _WireClient("0x" + "44" * 20)
+    driver = ClobTradingDriver(
+        client=client,
+        heartbeat_transport=transport,
+        heartbeat_credentials=lambda: credentials,
+        unix_clock=lambda: 1_700_000_000,
+    )
     first = await driver.send_heartbeat("")
     assert first["ok"] is True and first["heartbeat_id"] == "hb-1"
     second = await driver.send_heartbeat("hb-1")
     assert second["heartbeat_id"] == "hb-2"
     third = await driver.send_heartbeat("hb-2")
     assert third["heartbeat_id"] == "hb-3"
-    assert client.calls == ["", "hb-1", "hb-2"]
+    assert [json.loads(call[2]) for call in transport.calls] == [
+        {"heartbeat_id": ""},
+        {"heartbeat_id": "hb-1"},
+        {"heartbeat_id": "hb-2"},
+    ]
+    assert {(call[0], call[1]) for call in transport.calls} == {("POST", HEARTBEAT_PATH)}
+    assert all(call[2] == json.dumps(json.loads(call[2]), separators=(",", ":")).encode()
+               for call in transport.calls)
+    assert all(set(call[3]) == {
+        "POLY_ADDRESS", "POLY_API_KEY", "POLY_PASSPHRASE",
+        "POLY_SIGNATURE", "POLY_TIMESTAMP",
+    } for call in transport.calls)
+    frozen = __import__(
+        "tests.trading.fixtures.p5_execution.p5_helpers", fromlist=["frozen_scenario"]
+    ).frozen_scenario("clob_golden")["l2_heartbeat_vector"]
+    first = transport.calls[0]
+    assert hashlib.sha256(first[2]).hexdigest() == frozen["body_hash"]
+    assert hashlib.sha256(first[3]["POLY_SIGNATURE"].encode()).hexdigest() == frozen["signature_hash"]
     assert driver.transport_calls == 3
 
 

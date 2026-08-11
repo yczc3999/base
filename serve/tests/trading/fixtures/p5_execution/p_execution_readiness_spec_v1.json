@@ -25,12 +25,12 @@
     "tag_commit": "974d2e22ca92445d8ab7ecd7715a247f1ea7d65a",
     "source_repo": "https://github.com/Polymarket/py-sdk",
     "pin": "exact_==",
-    "golden_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "golden_sha256_note": "PLACEHOLDER golden hash — replace with computed hash of installed polymarket-client==0.5.0 before any canary activation; no secret material involved",
+    "golden_sha256": "5d3ef1ccb77d2a484164d76deb2aad2478ef67ec3883c7c4337f31ed53ef9a92",
     "import_evidence": {
       "secure_client": "polymarket.clients.SecureClient",
       "signed_order": "polymarket.models.clob.orders.SignedOrder"
-    }
+    },
+    "golden_scope": "standard+neg_risk+L1+L2 deterministic vectors"
   },
   "type3_identity": {
     "signature_type": 3,
@@ -81,7 +81,23 @@
     ],
     "sign_same_body_bytes_as_sent": true,
     "clock_skew_frozen_threshold_ms": 500,
-    "clock_skew_exceeds_threshold": "stop_submit"
+    "clock_skew_exceeds_threshold": "stop_submit",
+    "l1_vector": {
+      "chain_id": 137,
+      "timestamp": 1700000123,
+      "nonce": 0,
+      "address": "0xc48B812bB43401392c037381AcA934F4069C0517",
+      "typed_data_hash": "c8901dec621f7bc762a02d338b1758a17bdbb3c45884b8477b245ae7752d52cc",
+      "signature_hash": "dc549b29ff072574d32d18f560798e4a90c690abecb900470fe1b35854ed83a2"
+    },
+    "l2_heartbeat_vector": {
+      "timestamp": 1700000000,
+      "method": "POST",
+      "path": "/v1/heartbeats",
+      "body_hash": "6752485625dae8e1df51ecd63e102a1207df90f0655cfa6ba932d2eb5c3df974",
+      "message_hash": "7fc5fce9587a0639383d7b81951f389bb63833dbc9213a612d9450c58c052d2e",
+      "signature_hash": "2c71e8518a54d8c2b233664fac91a52de3a589dace0dfc4ff537227cf9592337"
+    }
   },
   "heartbeats": {
     "endpoint": "POST /v1/heartbeats",
@@ -93,7 +109,9 @@
     "schedule_interval_seconds": 5,
     "clock": "monotonic",
     "drift_max_ms": 500,
-    "failure_action": "stop_new_orders_trigger_cancel_and_reconcile"
+    "failure_action": "stop_new_orders_trigger_cancel_and_reconcile",
+    "first_body_sha256": "6752485625dae8e1df51ecd63e102a1207df90f0655cfa6ba932d2eb5c3df974",
+    "l2_message_sha256": "7fc5fce9587a0639383d7b81951f389bb63833dbc9213a612d9450c58c052d2e"
   },
   "user_ws_rest_reconcile": {
     "disconnect_action": "execution=RECONCILING_stop_increase",
@@ -283,5 +301,5 @@
     "real_money_side_effects": 0,
     "chain_write_side_effects": 0
   },
-  "content_hash": "eb428fbb2352c7416c40533be8b78d0d302484e201e916a67acf2e157a3d6c9d"
+  "content_hash": "35e49963dfe8f3ea215386658200a4e4ed6d095b1d863188c87ed62266ea6d0a"
 }

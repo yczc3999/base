@@ -96,6 +96,7 @@ class DataApiTrade(PolymarketModel):
     price: DecimalPrice
     size: DecimalSize
     fee: DecimalSize | None = None
+    status: str | None = None
     matched_at: str | None = None
 
     @field_validator("trade_id", "token_id", mode="before")
@@ -113,6 +114,18 @@ class DataApiTrade(PolymarketModel):
         upper = value.upper()
         if upper not in ("BUY", "SELL"):
             raise ValueError("side_invalid")
+        return upper
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _status(cls, value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise ValueError("trade_status_invalid")
+        upper = value.upper()
+        if upper not in ("MATCHED", "MINED", "CONFIRMED", "RETRYING", "FAILED"):
+            raise ValueError("trade_status_invalid")
         return upper
 
 

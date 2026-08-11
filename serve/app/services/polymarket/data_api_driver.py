@@ -1,6 +1,9 @@
 """Data API REST driver（WP-05 Checkpoint C）。
 
-封装 ``data-api.polymarket.com`` 的账户 open orders / trades / positions keyset 分页。
+封装 ``data-api.polymarket.com`` 的账户 trades / positions keyset 分页。
+账户 open orders 的权威路径是 CLOB ``/data/orders``，由
+``ClobTradingDriver.list_open_orders`` 封装；本 Driver 故意不伪造
+Data API ``/orders`` 路径。
 只做 wire；认证 header 由调用方（Logic）按账户注入（L2 HMAC），Driver 不持有 secret。
 
 - keyset 分页：拒绝 ``offset``；cursor 单调链由 Logic 校验。
@@ -20,11 +23,7 @@ from app.schemas.polymarket.common import (
     REASON_OFFSET_FORBIDDEN,
     REASON_RESPONSE_SCHEMA,
 )
-from app.schemas.polymarket.data_api import (
-    DataApiOpenOrders,
-    DataApiPositions,
-    DataApiTrades,
-)
+from app.schemas.polymarket.data_api import DataApiPositions, DataApiTrades
 from app.services.polymarket.base import HttpPolymarketDriver, WirePolicy
 
 DATA_API_BASE_URL = "https://data-api.polymarket.com"
@@ -64,16 +63,8 @@ class DataApiDriver(HttpPolymarketDriver):
             policy=policy or WirePolicy(max_retries=1),
             transport=transport,
             clock=clock,
+            require_injected_transport=True,
         )
-
-    async def open_orders(
-        self, cursor: Cursor = None, limit: int = 100, *, headers: dict[str, str] | None = None,
-    ) -> DriverCallResult:
-        result = await self.get_json(
-            "/orders", params=_cursor_params(cursor, limit), headers=headers,
-        )
-        typed = self._parse(result, DataApiOpenOrders)
-        return DriverCallResult(typed=typed, raw=result.raw, receipts=result.receipts)
 
     async def trades(
         self,

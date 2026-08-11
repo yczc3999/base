@@ -225,7 +225,10 @@ class PrivateSubmitPolicy:
     """
 
     send_once: bool = True
-    max_clock_skew_s: float = 30.0
+    # WP-05 frozen wire contract: 500 ms.  Keeping this in seconds matches the
+    # rest of the transport policy while avoiding an imprecise integer cast at
+    # the call site.
+    max_clock_skew_s: float = 0.5
     heartbeat_drift_ms: float = 500.0
 
     def __post_init__(self) -> None:
@@ -251,9 +254,22 @@ def build_l2_hmac_message(
 ) -> str:
     """L2 HMAC 规范输入：``unix_seconds + UPPERCASE_METHOD + PATH_WITHOUT_QUERY +
     EXACT_BODY_OR_EMPTY``。必须对最终发送的同一 body bytes 签名。"""
+    if isinstance(unix_seconds, bool) or not isinstance(unix_seconds, int):
+        raise ValueError("unix_seconds must be an integer")
     method_upper = str(method).upper()
-    body_text = body.decode("utf-8", errors="replace") if body else ""
-    return f"{int(unix_seconds)}{method_upper}{path_without_query}{body_text}"
+    if not method_upper or method_upper != str(method).strip().upper():
+        raise ValueError("method must be non-empty without surrounding whitespace")
+    if (
+        not isinstance(path_without_query, str)
+        or not path_without_query.startswith("/")
+        or "?" in path_without_query
+        or "#" in path_without_query
+    ):
+        raise ValueError("path_without_query must be an absolute path without query/fragment")
+    # Provider JSON bodies are UTF-8.  Replacement decoding would sign bytes
+    # different from those sent, so malformed input must fail closed.
+    body_text = body.decode("utf-8", errors="strict") if body else ""
+    return f"{unix_seconds}{method_upper}{path_without_query}{body_text}"
 
 
 class HttpPolymarketDriver:
@@ -266,12 +282,14 @@ class HttpPolymarketDriver:
         policy: WirePolicy,
         transport: httpx.AsyncBaseTransport | None = None,
         clock: Clock | None = None,
+        require_injected_transport: bool = False,
     ) -> None:
         if not base_url or not base_url.startswith(("http://", "https://")):
             raise ValueError(f"base_url must be absolute http(s), got {base_url!r}")
         self.base_url = base_url.rstrip("/")
         self._policy = policy
         self._transport = transport
+        self._require_injected_transport = require_injected_transport
         self._clock = clock or time.monotonic
         self._limiter = RateLimiter(policy.rate_per_second, policy.rate_burst, self._clock)
 
@@ -310,6 +328,20 @@ class HttpPolymarketDriver:
         if json_body is not None:
             request_headers.setdefault("content-type", "application/json")
         request_fingerprint = _request_fingerprint(method, url, params, body_bytes)
+        if self._require_injected_transport and self._transport is None:
+            receipt = RequestReceipt.new(
+                endpoint=url,
+                method=method,
+                http_status=None,
+                latency_ms=0,
+                error_code=REASON_EGRESS_TRIPWIRE,
+                request_body=body_bytes,
+                response_body=None,
+                retry_count=0,
+                request_fingerprint=request_fingerprint,
+                redacted_header_names=redact_headers(request_headers),
+            )
+            raise PolymarketError(REASON_EGRESS_TRIPWIRE, receipts=(receipt,))
         loop = asyncio.get_running_loop()
         deadline = (
             loop.time() + self._policy.total_timeout_s

@@ -24,9 +24,9 @@ from tests.trading.fixtures.p5_execution.p5_helpers import (
 
 # 冻结快照：spec_policy_hashes() 十个 policy 的 canonical hash（2026-08-11 冻结）。
 FROZEN_SPEC_POLICY_HASHES = {
-    "sdk_hash": "c702f6b4af8d9be1b5162a219514f99e2b39c7924d51d2c180b8fd5b162332e2",
+    "sdk_hash": "4edfa0f31e17cf1f3f68510f216380bd63f070732fe44cf613cb77783a9ccdea",
     "type3_hash": "a773be0fe973ab33331d6a179c4573937d544b303b5dad591530f4eb57336c70",
-    "heartbeat_hash": "6f50505acb746a4d19ca4fe5b2e91a46d39a6fdd2012805db5818b54ccde2b42",
+    "heartbeat_hash": "f6eba1adb732184b48f1b6ce5158754d7549f97761745d58a8bce0aea668100a",
     "reconcile_hash": "b47547e158448759914b1f97df37cd30ffbd20a8b5153429f4102913ebed4a9d",
     "order_transition_hash": "41521c3a572d93b3aed328be4b8125ee672d2f97e599d53938781086c931255c",
     "unknown_retry_hash": "5a3076401b921bec20bc0b78c27048b3d7e384d8dffc8a9965e22c78b088cb8d",
@@ -99,9 +99,10 @@ def test_sdk_source_manifest_matches_spec():
     for field, expected in EXPECTED_SDK.items():
         assert spec_sdk[field] == expected, field
         assert m_sdk[field] == expected, field
-    # golden hash 一致（占位值，被 sdk_golden_hash() 返回）。
+    # golden hash 一致且必须是真实非零向量，禁止占位自洽。
     assert spec_sdk["golden_sha256"] == sdk_golden_hash()
     assert m_sdk["golden_sha256"] == sdk_golden_hash()
+    assert sdk_golden_hash() != "0" * 64
     # type-3 identity 在 manifest 与 spec 中一致。
     m_type3 = manifest["type3_wire_golden"]
     spec_type3 = load_p5_spec()["type3_identity"]

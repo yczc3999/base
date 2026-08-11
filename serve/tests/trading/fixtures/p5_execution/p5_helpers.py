@@ -8,7 +8,7 @@
   unknown_retry/reservation/vault_aad/kill_switch/fake_only）的 canonical hash。
 - ``load_scenario`` / ``scenario_sha256`` / ``frozen_scenario``：六个 scenario fixture 的
   加载 / 原始字节 SHA-256 / content_hash 自洽校验。
-- ``sdk_golden_hash``：返回 sdk_source_manifest 中记录的 SDK golden hash（占位值）。
+- ``sdk_golden_hash``：返回 sdk_source_manifest 中记录的真实确定性 SDK golden hash。
 - ``canonical_hash``：re-export（供下游复用）。
 """
 
@@ -125,8 +125,9 @@ def frozen_scenario(name: str) -> dict:
 
 
 def sdk_golden_hash() -> str:
-    """sdk_source_manifest 记录的 SDK golden hash（占位值，与 spec 一致）。"""
+    """sdk_source_manifest 记录的确定性 SDK golden hash（与 spec 一致）。"""
     manifest = load_scenario("sdk_source")
     golden = manifest["sdk"]["golden_sha256"]
     assert isinstance(golden, str) and len(golden) == 64, "sdk golden_sha256 malformed"
+    assert golden != "0" * 64, "sdk golden_sha256 must not be a placeholder"
     return golden

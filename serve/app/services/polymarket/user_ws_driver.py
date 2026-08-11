@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
+from app.schemas.polymarket.clob_private import PrivateApiCredentials
 from app.schemas.polymarket.common import (
     PolymarketError,
     RequestReceipt,
@@ -39,7 +40,6 @@ from app.services.polymarket.base import REASON_EGRESS_TRIPWIRE
 SUBSCRIBE_TEMPLATE = {"type": "user"}
 PING_TEXT = "PING"
 PONG_TEXT = "PONG"
-REDACTED_AUTH = "[REDACTED]"
 
 Clock = Callable[[], float]
 
@@ -66,7 +66,6 @@ class UserWsPolicy:
 class UserWsMessage:
     receive_seq: int
     received_at: datetime
-    raw_text: str
     frame: UserWsFrameBase
     artifact_hash: str
     receipts: tuple[RequestReceipt, ...] = ()
@@ -116,12 +115,18 @@ class UserWsDriver:
     def transport_calls(self) -> int:
         return self._transport_calls
 
-    def _subscribe_bytes(self, auth_token: str | None) -> bytes:
-        payload = dict(SUBSCRIBE_TEMPLATE)
-        # 绝不把真实 auth token 写入 subscribe 帧之外的任何落库/日志；fake 模式只发送
-        # 脱敏占位，真实激活由部署注入（本 WP 无真实 token）。
-        payload["auth"] = auth_token if auth_token else REDACTED_AUTH
-        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    def _subscribe_bytes(self, credentials: PrivateApiCredentials) -> bytes:
+        if not isinstance(credentials, PrivateApiCredentials):
+            raise TypeError("credentials_must_be_private_api_credentials")
+        payload = {
+            "auth": {
+                "apiKey": credentials.api_key,
+                "secret": credentials.secret,
+                "passphrase": credentials.passphrase,
+            },
+            **SUBSCRIBE_TEMPLATE,
+        }
+        return json.dumps(payload, separators=(",", ":")).encode()
 
     def _new_receipt(
         self, *, method: str, started_at: float, error_code: str | None,
@@ -153,9 +158,9 @@ class UserWsDriver:
             self._terminal_reason = reason
             self._fault_event.set()
 
-    async def connect(self, auth_token: str | None = None) -> None:
+    async def connect(self, credentials: PrivateApiCredentials) -> None:
         started = self._clock()
-        subscription = self._subscribe_bytes(auth_token)
+        subscription = self._subscribe_bytes(credentials)
         if self._ws_connect is None:
             # fake-only：未注入 transport 时任何真实 connect/socket 立即失败（egress tripwire）。
             receipt = self._new_receipt(
@@ -308,7 +313,6 @@ class UserWsDriver:
         return UserWsMessage(
             receive_seq=self._receive_seq,
             received_at=datetime.now(timezone.utc),
-            raw_text=raw_text,
             frame=frame,
             artifact_hash=user_ws_frame_artifact_hash(frame),
             receipts=(receipt,),

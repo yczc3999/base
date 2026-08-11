@@ -151,6 +151,8 @@ _NEW_TABLES = (
             "\tCONSTRAINT uq_exchange_orders_key UNIQUE (order_key), \n"
             "\tCONSTRAINT uq_exchange_orders_account_ext "
             "UNIQUE (account_id, external_order_id), \n"
+            "\tCONSTRAINT uq_exchange_orders_account_id_side "
+            "UNIQUE (account_id, id, side), \n"
             "\tCONSTRAINT ck_exchange_orders_status_known "
             "CHECK (status IN (" + _ORDER_STATUS + ")), \n"
             "\tCONSTRAINT ck_exchange_orders_side_known CHECK (side IN ('BUY','SELL')), \n"
@@ -186,6 +188,19 @@ _NEW_TABLES = (
             "\tCONSTRAINT uq_order_state_events_key UNIQUE (event_key), \n"
             "\tCONSTRAINT ck_order_state_events_type_known "
             "CHECK (event_type IN (" + _EVENT_TYPES + ")), \n"
+            "\tCONSTRAINT ck_order_state_events_type_matches_transition "
+            "CHECK (event_type = transition_to), \n"
+            "\tCONSTRAINT ck_order_state_events_transition_exact CHECK ("
+            "(transition_from = 'INTENT' AND transition_to = 'SUBMITTED') OR "
+            "(transition_from = 'SUBMITTED' AND transition_to IN "
+            "('ACK','PARTIAL','FILLED','CANCELLED','REJECTED','UNKNOWN')) OR "
+            "(transition_from = 'ACK' AND transition_to IN "
+            "('PARTIAL','FILLED','CANCELLED','UNKNOWN')) OR "
+            "(transition_from = 'PARTIAL' AND transition_to IN "
+            "('FILLED','CANCELLED','UNKNOWN')) OR "
+            "(transition_from = 'UNKNOWN' AND transition_to = 'RECONCILED')), \n"
+            "\tCONSTRAINT ck_order_state_events_payload_object "
+            "CHECK (jsonb_typeof(event_payload) = 'object'), \n"
             "\tCONSTRAINT ck_order_state_events_hash_hex "
             "CHECK (event_hash ~ '^[0-9a-f]{64}$'), \n"
             "\tCONSTRAINT ck_order_state_events_fence_positive CHECK (fence_token > 0), \n"
@@ -272,7 +287,10 @@ _NEW_TABLES = (
             "\tCONSTRAINT fk_exchange_trades_order "
             "FOREIGN KEY(order_id) REFERENCES trading.exchange_orders (id), \n"
             "\tCONSTRAINT fk_exchange_trades_account "
-            "FOREIGN KEY(account_id) REFERENCES trading.pm_accounts (id)\n"
+            "FOREIGN KEY(account_id) REFERENCES trading.pm_accounts (id), \n"
+            "\tCONSTRAINT fk_exchange_trades_order_account_side "
+            "FOREIGN KEY(account_id, order_id, side) "
+            "REFERENCES trading.exchange_orders (account_id, id, side)\n"
             ")\n\n"
         ),
         index_sql=(
@@ -314,6 +332,12 @@ _NEW_TABLES = (
             "CHECK (input_manifest_hash ~ '^[0-9a-f]{64}$'), \n"
             "\tCONSTRAINT ck_account_reconciliations_output_hash_hex "
             "CHECK (output_manifest_hash IS NULL OR output_manifest_hash ~ '^[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_account_reconciliations_cursor_object "
+            "CHECK (jsonb_typeof(rest_page_cursor) = 'object'), \n"
+            "\tCONSTRAINT ck_account_reconciliations_unknown_object "
+            "CHECK (jsonb_typeof(unknown_queries) = 'object'), \n"
+            "\tCONSTRAINT ck_account_reconciliations_differences_array "
+            "CHECK (jsonb_typeof(differences) = 'array'), \n"
             "\tCONSTRAINT ck_account_reconciliations_completed_pair "
             "CHECK ((status = 'COMPLETED') = (completed_at IS NOT NULL)), \n"
             "\tCONSTRAINT fk_account_reconciliations_account "
@@ -472,6 +496,7 @@ def _assert_downgrade_safe() -> None:
             "trg_account_reconciliations_lifecycle",
             "trg_execution_envelope_permission_check",
             "trg_execution_envelope_intent_bind",
+            "trg_exchange_orders_attempt_lineage",
         )
     )
     op.execute(
@@ -480,7 +505,23 @@ DO $v2_wp05_execution_orders_preflight$
 DECLARE unknown_objects text;
         unknown_indexes text;
         unknown_triggers text;
+        unresolved_count bigint;
 BEGIN
+    SELECT (SELECT count(*) FROM trading.exchange_order_attempts
+             WHERE result = 'SUBMITTED')
+         + (SELECT count(*) FROM trading.exchange_orders
+             WHERE status IN ('OPEN','ACK','PARTIAL','UNKNOWN'))
+         + (SELECT count(*) FROM trading.account_reconciliations
+             WHERE status IN ('RECONCILING','FAILED'))
+         + (SELECT count(*) FROM trading.executions
+             WHERE quote_checkpoint_id IS NULL)
+         + (SELECT count(*) FROM trading.position_lots
+             WHERE execution_id IS NULL)
+      INTO unresolved_count;
+    IF unresolved_count <> 0 THEN
+        RAISE EXCEPTION 'v2_wp05_execution_orders_downgrade_unresolved_facts:%', unresolved_count
+        USING ERRCODE='55000';
+    END IF;
     SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
       INTO unknown_objects
       FROM pg_class c
@@ -661,9 +702,18 @@ def _add_lineage() -> None:
         "ADD CONSTRAINT fk_ledger_transactions_exchange_trade FOREIGN KEY(trade_id) "
         "REFERENCES trading.exchange_trades (id)"
     )
+    op.execute(
+        "ALTER TABLE trading.exchange_orders "
+        "ADD CONSTRAINT fk_exchange_orders_attempt FOREIGN KEY(attempt_id) "
+        "REFERENCES trading.exchange_order_attempts (id) DEFERRABLE INITIALLY DEFERRED"
+    )
 
 
 def _remove_lineage() -> None:
+    op.execute(
+        "ALTER TABLE trading.exchange_orders "
+        "DROP CONSTRAINT IF EXISTS fk_exchange_orders_attempt"
+    )
     op.execute(
         "ALTER TABLE trading.ledger_transactions "
         "DROP CONSTRAINT IF EXISTS fk_ledger_transactions_exchange_trade"
@@ -744,6 +794,10 @@ def _remove_lineage() -> None:
         op.execute(
             f"ALTER TABLE trading.executions DROP COLUMN IF EXISTS {col}"
         )
+    # Restore the exact b1000050 schema; this remains fail-closed if an unsafe NULL exists.
+    op.execute(
+        "ALTER TABLE trading.executions ALTER COLUMN quote_checkpoint_id SET NOT NULL"
+    )
 
 
 def _create_guards() -> None:
@@ -764,7 +818,7 @@ BEGIN
         RAISE EXCEPTION 'v2_order_attempt_immutable' USING ERRCODE='55000';
     END IF;
     IF TG_OP = 'INSERT' THEN
-        IF NEW.result <> 'SUBMITTED' THEN
+        IF NEW.result <> 'SUBMITTED' OR NEW.state_event_id IS NULL THEN
             RAISE EXCEPTION 'v2_order_attempt_initial_state_invalid' USING ERRCODE='23514';
         END IF;
         RETURN NEW;
@@ -798,7 +852,8 @@ BEGIN
         RAISE EXCEPTION 'v2_exchange_order_immutable' USING ERRCODE='55000';
     END IF;
     IF TG_OP = 'INSERT' THEN
-        IF NEW.status NOT IN ('OPEN','ACK','PARTIAL','FILLED','CANCELLED','REJECTED','UNKNOWN') THEN
+        IF NEW.status <> 'OPEN' OR NEW.filled_size <> 0
+           OR NEW.attempt_id IS NOT NULL OR NEW.external_order_id IS NOT NULL THEN
             RAISE EXCEPTION 'v2_exchange_order_initial_state_invalid' USING ERRCODE='23514';
         END IF;
         IF NEW.filled_size < 0 OR NEW.filled_size > NEW.size THEN
@@ -811,20 +866,21 @@ BEGIN
         RAISE EXCEPTION 'v2_exchange_order_payload_immutable' USING ERRCODE='55000';
     END IF;
     IF NEW.status = OLD.status THEN
-        -- 允许无状态变化的元数据回填（attempt_id / external_order_id）；payload 已受上面校验。
-        IF NEW.filled_size < OLD.filled_size OR NEW.filled_size > NEW.size THEN
-            RAISE EXCEPTION 'v2_exchange_order_filled_regression' USING ERRCODE='23514';
+        -- 仅允许一次性回填 attempt/external identity；禁止 terminal 或经济量无事件变化。
+        IF OLD.status IN ('FILLED','CANCELLED','REJECTED','RECONCILED')
+           OR NEW.filled_size <> OLD.filled_size
+           OR (OLD.attempt_id IS NOT NULL AND NEW.attempt_id IS DISTINCT FROM OLD.attempt_id)
+           OR (OLD.external_order_id IS NOT NULL
+               AND NEW.external_order_id IS DISTINCT FROM OLD.external_order_id) THEN
+            RAISE EXCEPTION 'v2_exchange_order_same_state_mutation_invalid' USING ERRCODE='23514';
         END IF;
         RETURN NEW;
     END IF;
     IF NOT (
         (OLD.status = 'OPEN' AND NEW.status IN ('ACK','PARTIAL','FILLED','CANCELLED','REJECTED','UNKNOWN'))
-        OR (OLD.status = 'ACK' AND NEW.status IN ('PARTIAL','FILLED','CANCELLED','REJECTED','UNKNOWN'))
-        OR (OLD.status = 'PARTIAL' AND NEW.status IN ('PARTIAL','FILLED','CANCELLED'))
-        OR (OLD.status = 'UNKNOWN' AND NEW.status IN ('RECONCILED','FILLED','CANCELLED','REJECTED'))
-        OR (OLD.status = 'FILLED' AND NEW.status = 'RECONCILED')
-        OR (OLD.status = 'CANCELLED' AND NEW.status = 'RECONCILED')
-        OR (OLD.status = 'REJECTED' AND NEW.status = 'RECONCILED')
+        OR (OLD.status = 'ACK' AND NEW.status IN ('PARTIAL','FILLED','CANCELLED','UNKNOWN'))
+        OR (OLD.status = 'PARTIAL' AND NEW.status IN ('FILLED','CANCELLED','UNKNOWN'))
+        OR (OLD.status = 'UNKNOWN' AND NEW.status = 'RECONCILED')
     ) THEN
         RAISE EXCEPTION 'v2_exchange_order_transition_invalid' USING ERRCODE='23514';
     END IF;
@@ -860,7 +916,7 @@ BEGIN
     END IF;
     IF NEW.status = OLD.status
        OR NEW.status NOT IN ('USED','EXPIRED','REVOKED','SUPERSEDED')
-       OR OLD.status NOT IN ('ACTIVE','USED') THEN
+       OR OLD.status <> 'ACTIVE' THEN
         RAISE EXCEPTION 'v2_envelope_transition_invalid' USING ERRCODE='23514';
     END IF;
     RETURN NEW;
@@ -882,12 +938,55 @@ BEGIN
         RAISE EXCEPTION 'v2_reconciliation_immutable' USING ERRCODE='55000';
     END IF;
     IF TG_OP = 'INSERT' THEN
-        IF NEW.status <> 'RECONCILING' THEN
+        IF NEW.status <> 'RECONCILING'
+           OR NEW.output_manifest_hash IS NOT NULL
+           OR NEW.completed_at IS NOT NULL
+           OR jsonb_typeof(NEW.rest_page_cursor) <> 'object'
+           OR jsonb_typeof(NEW.unknown_queries) <> 'object'
+           OR jsonb_typeof(NEW.differences) <> 'array'
+           OR jsonb_array_length(NEW.differences) <> 0 THEN
             RAISE EXCEPTION 'v2_reconciliation_initial_state_invalid' USING ERRCODE='23514';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM trading.execution_leases l
+             WHERE l.account_id=NEW.account_id AND l.lease_role='EXECUTION'
+               AND l.fencing_token=NEW.fencing_token
+               AND l.lease_until > statement_timestamp()
+        ) THEN
+            RAISE EXCEPTION 'v2_reconciliation_fence_not_current' USING ERRCODE='55000';
         END IF;
         RETURN NEW;
     END IF;
+    IF OLD.status IN ('COMPLETED','FAILED') THEN
+        RAISE EXCEPTION 'v2_reconciliation_terminal_immutable' USING ERRCODE='55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM trading.execution_leases l
+         WHERE l.account_id=NEW.account_id AND l.lease_role='EXECUTION'
+           AND l.fencing_token=NEW.fencing_token
+           AND l.lease_until > statement_timestamp()
+    ) THEN
+        RAISE EXCEPTION 'v2_reconciliation_fence_not_current' USING ERRCODE='55000';
+    END IF;
+    IF (to_jsonb(NEW) - 'rest_page_cursor' - 'rest_page_hash' - 'unknown_queries'
+                     - 'output_manifest_hash' - 'differences' - 'status' - 'completed_at')
+       IS DISTINCT FROM
+       (to_jsonb(OLD) - 'rest_page_cursor' - 'rest_page_hash' - 'unknown_queries'
+                     - 'output_manifest_hash' - 'differences' - 'status' - 'completed_at') THEN
+        RAISE EXCEPTION 'v2_reconciliation_input_immutable' USING ERRCODE='55000';
+    END IF;
+    IF jsonb_typeof(NEW.rest_page_cursor) <> 'object'
+       OR jsonb_typeof(NEW.unknown_queries) <> 'object'
+       OR jsonb_typeof(NEW.differences) <> 'array' THEN
+        RAISE EXCEPTION 'v2_reconciliation_evidence_shape_invalid' USING ERRCODE='23514';
+    END IF;
     IF NEW.status = OLD.status THEN
+        IF NEW.status <> 'RECONCILING'
+           OR NEW.output_manifest_hash IS NOT NULL
+           OR NEW.completed_at IS NOT NULL
+           OR jsonb_array_length(NEW.differences) <> 0 THEN
+            RAISE EXCEPTION 'v2_reconciliation_in_progress_shape_invalid' USING ERRCODE='23514';
+        END IF;
         RETURN NEW;
     END IF;
     IF NOT (OLD.status = 'RECONCILING' AND NEW.status IN ('COMPLETED','FAILED')) THEN
@@ -904,6 +1003,12 @@ BEGIN
     IF NEW.status = 'FAILED' AND NEW.completed_at IS NOT NULL THEN
         RAISE EXCEPTION 'v2_reconciliation_failed_must_not_complete' USING ERRCODE='23514';
     END IF;
+    IF NEW.status = 'FAILED' AND (
+        jsonb_array_length(NEW.differences) = 0
+        OR NEW.output_manifest_hash IS NULL
+    ) THEN
+        RAISE EXCEPTION 'v2_reconciliation_failed_requires_diff' USING ERRCODE='23514';
+    END IF;
     RETURN NEW;
 END $v2_guard$
 """
@@ -919,17 +1024,27 @@ END $v2_guard$
 CREATE FUNCTION trading.v2_check_envelope_permission() RETURNS trigger
 LANGUAGE plpgsql AS $v2_guard$
 DECLARE acct_permission_id bigint;
+        acct_release_id bigint;
+        acct_status varchar;
         rel_permission_id bigint;
+        rel_execution_spec_id bigint;
+        rel_status varchar;
         perm_mode varchar;
         perm_status varchar;
         perm_auth_cap numeric;
 BEGIN
-    SELECT capital_permission_manifest_id INTO acct_permission_id
+    SELECT capital_permission_manifest_id, release_manifest_id, status
+      INTO acct_permission_id, acct_release_id, acct_status
       FROM trading.pm_accounts WHERE id = NEW.account_id;
-    SELECT capital_permission_manifest_id INTO rel_permission_id
+    SELECT capital_permission_manifest_id, execution_spec_version_id, status
+      INTO rel_permission_id, rel_execution_spec_id, rel_status
       FROM trading.release_manifests WHERE id = NEW.release_manifest_id;
     IF acct_permission_id IS DISTINCT FROM NEW.capital_permission_manifest_id
-       OR rel_permission_id IS DISTINCT FROM NEW.capital_permission_manifest_id THEN
+       OR rel_permission_id IS DISTINCT FROM NEW.capital_permission_manifest_id
+       OR acct_release_id IS DISTINCT FROM NEW.release_manifest_id
+       OR rel_execution_spec_id IS DISTINCT FROM NEW.execution_spec_version_id
+       OR acct_status IS DISTINCT FROM 'active'
+       OR rel_status IS DISTINCT FROM 'active' THEN
         RAISE EXCEPTION 'v2_envelope_permission_twin_mismatch' USING ERRCODE='55000';
     END IF;
     SELECT mode, status, authorized_capital INTO perm_mode, perm_status, perm_auth_cap
@@ -941,6 +1056,16 @@ BEGIN
     END IF;
     IF NEW.authority <> 'FAKE_CONFORMANCE' THEN
         RAISE EXCEPTION 'v2_envelope_authority_invalid' USING ERRCODE='55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM trading.execution_leases l
+         WHERE l.account_id = NEW.account_id
+           AND l.lease_role = 'EXECUTION'
+           AND l.fencing_token = NEW.fencing_token
+           AND l.lease_until > statement_timestamp()
+    ) THEN
+        RAISE EXCEPTION 'v2_envelope_fence_not_current' USING ERRCODE='55000';
     END IF;
     RETURN NEW;
 END $v2_guard$
@@ -960,8 +1085,15 @@ CREATE FUNCTION trading.v2_check_envelope_intent_bind() RETURNS trigger
 LANGUAGE plpgsql AS $v2_guard$
 DECLARE existing_hash varchar;
 BEGIN
-    SELECT intent_hash INTO existing_hash
-      FROM trading.economic_action_intents WHERE id = NEW.intent_id;
+    SELECT i.intent_hash INTO existing_hash
+      FROM trading.economic_action_intents i
+      JOIN trading.trade_decisions d ON d.id = i.trade_decision_id
+     WHERE i.id = NEW.intent_id
+       AND i.status IN ('PLANNED','COMMITTED')
+       AND d.status = 'ACTION'
+       AND d.release_manifest_id = NEW.release_manifest_id
+       AND d.execution_spec_version_id = NEW.execution_spec_version_id
+       AND d.capital_permission_manifest_id = NEW.capital_permission_manifest_id;
     IF existing_hash IS DISTINCT FROM NEW.intent_hash THEN
         RAISE EXCEPTION 'v2_envelope_intent_hash_bind_mismatch' USING ERRCODE='55000';
     END IF;
@@ -975,6 +1107,41 @@ END $v2_guard$
         "ON trading.execution_authorization_envelopes "
         "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
         "EXECUTE FUNCTION trading.v2_check_envelope_intent_bind()"
+    )
+    # The order projection, persisted send attempt, submitted event, envelope and fence are one
+    # account-bound lineage.  Read the final projection row so insert-then-bind in one transaction
+    # remains valid under a deferred constraint trigger.
+    op.execute(
+        r"""
+CREATE FUNCTION trading.v2_check_order_attempt_lineage() RETURNS trigger
+LANGUAGE plpgsql AS $v2_guard$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM trading.exchange_orders o
+          JOIN trading.exchange_order_attempts a ON a.id = o.attempt_id
+          JOIN trading.execution_authorization_envelopes e ON e.id = a.envelope_id
+          JOIN trading.order_state_events ev ON ev.id = a.state_event_id
+         WHERE o.id = NEW.id
+           AND e.account_id = o.account_id
+           AND ev.order_id = o.id
+           AND ev.event_type = 'SUBMITTED'
+           AND ev.transition_from = 'INTENT'
+           AND ev.transition_to = 'SUBMITTED'
+           AND a.fencing_token = e.fencing_token
+           AND ev.fence_token = e.fencing_token
+    ) THEN
+        RAISE EXCEPTION 'v2_order_attempt_lineage_invalid' USING ERRCODE='55000';
+    END IF;
+    RETURN NEW;
+END $v2_guard$
+"""
+    )
+    op.execute(
+        "CREATE CONSTRAINT TRIGGER trg_exchange_orders_attempt_lineage "
+        "AFTER INSERT OR UPDATE OF attempt_id, account_id ON trading.exchange_orders "
+        "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+        "EXECUTE FUNCTION trading.v2_check_order_attempt_lineage()"
     )
 
 
@@ -993,8 +1160,30 @@ CREATE OR REPLACE FUNCTION trading.v2_validate_execution_identity() RETURNS trig
 LANGUAGE plpgsql AS $v2_guard$
 BEGIN
     -- WP-05 Checkpoint C：真实 CLOB fill（order/trade lineage + NULL checkpoint + exec- namespace）。
-    IF NEW.account_id IS NOT NULL AND NEW.order_id IS NOT NULL AND NEW.trade_id IS NOT NULL
-       AND NEW.quote_checkpoint_id IS NULL AND NEW.portfolio_namespace LIKE 'exec-%' THEN
+    IF NEW.account_id IS NOT NULL OR NEW.envelope_id IS NOT NULL
+       OR NEW.order_id IS NOT NULL OR NEW.trade_id IS NOT NULL THEN
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.quote_checkpoint_id IS NOT NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1
+                  FROM trading.execution_authorization_envelopes env
+                  JOIN trading.exchange_order_attempts att ON att.envelope_id = env.id
+                  JOIN trading.exchange_orders ord ON ord.attempt_id = att.id
+                  JOIN trading.exchange_trades tr
+                    ON tr.order_id = ord.id AND tr.account_id = ord.account_id
+                  JOIN trading.pm_tokens tok
+                    ON tok.id = NEW.token_id AND tok.token_id = ord.token_id
+                 WHERE env.id = NEW.envelope_id
+                   AND env.account_id = NEW.account_id
+                   AND env.intent_id = NEW.economic_action_intent_id
+                   AND ord.id = NEW.order_id AND ord.account_id = NEW.account_id
+                   AND tr.id = NEW.trade_id AND tr.side = ord.side
+                   AND tr.size = NEW.quantity
+           ) THEN
+            RAISE EXCEPTION 'v2_execution_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
         RETURN NEW;
     END IF;
     IF NOT EXISTS (
@@ -1039,6 +1228,167 @@ END $v2_guard$
         "BEFORE INSERT ON trading.executions "
         "FOR EACH ROW EXECUTE FUNCTION trading.v2_validate_execution_identity()"
     )
+
+
+def _create_outer_lineage_guards() -> None:
+    op.execute(
+        r"""
+CREATE FUNCTION trading.v2_guard_outer_lineage_immutable() RETURNS trigger
+LANGUAGE plpgsql AS $v2_guard$
+BEGIN
+    IF TG_TABLE_NAME = 'executions' AND (
+        NEW.account_id IS DISTINCT FROM OLD.account_id
+        OR NEW.envelope_id IS DISTINCT FROM OLD.envelope_id
+        OR NEW.order_id IS DISTINCT FROM OLD.order_id
+        OR NEW.trade_id IS DISTINCT FROM OLD.trade_id
+    ) THEN
+        RAISE EXCEPTION 'v2_execution_outer_lineage_immutable' USING ERRCODE='55000';
+    ELSIF TG_TABLE_NAME = 'positions' AND (
+        NEW.account_id IS DISTINCT FROM OLD.account_id
+        OR NEW.envelope_id IS DISTINCT FROM OLD.envelope_id
+        OR NEW.order_id IS DISTINCT FROM OLD.order_id
+    ) THEN
+        RAISE EXCEPTION 'v2_position_outer_lineage_immutable' USING ERRCODE='55000';
+    ELSIF TG_TABLE_NAME = 'ledger_transactions' AND (
+        NEW.account_id IS DISTINCT FROM OLD.account_id
+        OR NEW.envelope_id IS DISTINCT FROM OLD.envelope_id
+        OR NEW.order_id IS DISTINCT FROM OLD.order_id
+        OR NEW.trade_id IS DISTINCT FROM OLD.trade_id
+    ) THEN
+        RAISE EXCEPTION 'v2_ledger_outer_lineage_immutable' USING ERRCODE='55000';
+    END IF;
+    RETURN NEW;
+END $v2_guard$
+"""
+    )
+    op.execute(
+        r"""
+CREATE FUNCTION trading.v2_check_real_fill_lineage() RETURNS trigger
+LANGUAGE plpgsql AS $v2_guard$
+BEGIN
+    IF TG_TABLE_NAME = 'ledger_transactions' THEN
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                JOIN trading.economic_action_intents i ON i.id=e.intent_id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND t.id=NEW.trade_id
+                  AND i.trade_decision_id IS NOT DISTINCT FROM NEW.trade_decision_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.envelope_id=NEW.envelope_id AND x.order_id=NEW.order_id
+                         AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_ledger_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'position_lots' THEN
+        IF NEW.execution_id IS NOT NULL AND NEW.account_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.exchange_orders o
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                WHERE o.id=NEW.order_id AND o.account_id=NEW.account_id
+                  AND t.id=NEW.trade_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.order_id=NEW.order_id AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_position_lot_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'positions' THEN
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL AND NEW.order_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL OR NEW.order_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND o.account_id=NEW.account_id
+           ) THEN
+            RAISE EXCEPTION 'v2_position_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    RETURN NEW;
+END $v2_guard$
+"""
+    )
+    op.execute(
+        "CREATE TRIGGER trg_ledger_transactions_outer_lineage "
+        "BEFORE INSERT OR UPDATE OF account_id, envelope_id, order_id, trade_id "
+        "ON trading.ledger_transactions FOR EACH ROW "
+        "EXECUTE FUNCTION trading.v2_check_real_fill_lineage()"
+    )
+    op.execute(
+        "CREATE TRIGGER trg_position_lots_outer_lineage "
+        "BEFORE INSERT OR UPDATE OF account_id, order_id, trade_id "
+        "ON trading.position_lots FOR EACH ROW "
+        "EXECUTE FUNCTION trading.v2_check_real_fill_lineage()"
+    )
+    op.execute(
+        "CREATE TRIGGER trg_positions_outer_lineage "
+        "BEFORE INSERT OR UPDATE OF account_id, envelope_id, order_id "
+        "ON trading.positions FOR EACH ROW "
+        "EXECUTE FUNCTION trading.v2_check_real_fill_lineage()"
+    )
+    for table, columns in (
+        ("executions", "account_id, envelope_id, order_id, trade_id"),
+        ("positions", "account_id, envelope_id, order_id"),
+        ("ledger_transactions", "account_id, envelope_id, order_id, trade_id"),
+    ):
+        op.execute(
+            f"CREATE TRIGGER trg_{table}_outer_lineage_immutable "
+            f"BEFORE UPDATE OF {columns} ON trading.{table} FOR EACH ROW "
+            "EXECUTE FUNCTION trading.v2_guard_outer_lineage_immutable()"
+        )
+
+
+def _drop_outer_lineage_guards() -> None:
+    for table in ("executions", "positions", "ledger_transactions"):
+        op.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table}_outer_lineage_immutable "
+            f"ON trading.{table}"
+        )
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_positions_outer_lineage ON trading.positions"
+    )
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_ledger_transactions_outer_lineage "
+        "ON trading.ledger_transactions"
+    )
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_position_lots_outer_lineage "
+        "ON trading.position_lots"
+    )
+    op.execute("DROP FUNCTION IF EXISTS trading.v2_check_real_fill_lineage()")
+    op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_outer_lineage_immutable()")
 
 
 def _restore_execution_identity_guard() -> None:
@@ -1096,6 +1446,11 @@ END $v2_guard$
 
 
 def _drop_guards() -> None:
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_exchange_orders_attempt_lineage "
+        "ON trading.exchange_orders"
+    )
+    op.execute("DROP FUNCTION IF EXISTS trading.v2_check_order_attempt_lineage()")
     op.execute(
         "DROP TRIGGER IF EXISTS trg_execution_envelope_intent_bind "
         "ON trading.execution_authorization_envelopes"
@@ -1162,10 +1517,12 @@ def upgrade() -> None:
     _create_guards()
     _relax_execution_identity_guard()
     _add_lineage()
+    _create_outer_lineage_guards()
 
 
 def downgrade() -> None:
     _assert_downgrade_safe()
+    _drop_outer_lineage_guards()
     _drop_guards()
     _restore_execution_identity_guard()
     _remove_lineage()

@@ -188,7 +188,7 @@ class _FakeRepo:
                 return dict(v)
         return None
 
-    async def get_active_version(self, session, *, entry_id):
+    async def get_active_version(self, session, *, entry_id, for_update=False):
         actives = [v for v in self.versions if v["entry_id"] == entry_id and v["status"] == "active"]
         if not actives:
             return None
@@ -226,7 +226,7 @@ class _Session:
 def svc():
     repo = _FakeRepo()
     keyring = {("k1", "v1"): K1, ("k1", "v2"): K2}
-    return VaultService(repo, keyring, env="test"), repo
+    return VaultService(repo, keyring, env="test", runtime_identity="worker-a"), repo
 
 
 async def _make_entry(svc):

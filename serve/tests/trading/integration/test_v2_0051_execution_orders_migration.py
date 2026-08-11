@@ -98,6 +98,40 @@ def _execute(db_url, sql, params=None):
         engine.dispose()
 
 
+def _seed_fixture_account(db_url, *, account_key="fixture-migration-0051"):
+    engine = create_engine(db_url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            account_id = c.execute(
+                text(
+                    "INSERT INTO trading.pm_accounts "
+                    "(account_key, provider, chain_id, identity_type, funder_address, "
+                    " maker_address, signing_identity, wallet_type, signature_type, "
+                    " release_manifest_id, capital_permission_manifest_id, network_mode) "
+                    "VALUES (:key, 'polymarket', 137, 'FIXTURE_ONLY', :wallet, :wallet, "
+                    " :signer, 'deposit_wallet', '3', 900001, 900002, 'fixture') RETURNING id"
+                ),
+                {
+                    "key": account_key,
+                    "wallet": "0x" + "a" * 40,
+                    "signer": "0x" + "b" * 40,
+                },
+            ).scalar_one()
+            c.execute(
+                text(
+                    "INSERT INTO trading.execution_leases "
+                    "(account_id, lease_role, owner, lease_until, fencing_token) "
+                    "VALUES (:account, 'EXECUTION', 'migration-test', "
+                    "now() + interval '1 hour', 1)"
+                ),
+                {"account": account_id},
+            )
+            return account_id
+    finally:
+        engine.dispose()
+
+
 def _version(db_url):
     return _query(db_url, "SELECT version_num FROM public.alembic_version")
 
@@ -150,6 +184,13 @@ def test_literal_empty_roundtrip(temp_pg_db):
 
     _run(command.downgrade, V50, url)
     assert _version(url) == [(V50,)]
+    quote_nullable = _query(
+        url,
+        "SELECT is_nullable FROM information_schema.columns "
+        "WHERE table_schema='trading' AND table_name='executions' "
+        "AND column_name='quote_checkpoint_id'",
+    )
+    assert quote_nullable == [("NO",)]
     assert set(NEW_TABLES).isdisjoint(set(_trading_tables(url)))
     # lineage 列必须被移除
     for table in _LINEAGE_TABLES:
@@ -233,3 +274,188 @@ def test_existing_base_fixture_compatible(temp_pg_db):
     assert "alembic_version" in public_tables
     for core in ("admin_users", "users", "settings"):
         assert core in public_tables, f"legacy Base table {core} missing"
+
+
+def test_reconciliation_terminal_is_exact_and_immutable(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V51, url)
+    account_id = _seed_fixture_account(url)
+    _execute(
+        url,
+        "INSERT INTO trading.account_reconciliations "
+        "(reconciliation_key, account_id, trigger_reason, ws_watermark, rest_page_cursor, "
+        " rest_page_hash, unknown_queries, input_manifest_hash, differences, fencing_token) "
+        "VALUES ('recon-complete', :account, 'TEST', 0, '{}'::jsonb, :h, '{}'::jsonb, "
+        " :h, '[]'::jsonb, 1)",
+        {"account": account_id, "h": "a" * 64},
+    )
+    _execute(
+        url,
+        "UPDATE trading.account_reconciliations SET status='COMPLETED', "
+        "output_manifest_hash=:h, differences='[]'::jsonb, completed_at=now() "
+        "WHERE reconciliation_key='recon-complete'",
+        {"h": "b" * 64},
+    )
+    with pytest.raises(Exception, match="v2_reconciliation_terminal_immutable"):
+        _execute(
+            url,
+            "UPDATE trading.account_reconciliations SET differences='[]'::jsonb "
+            "WHERE reconciliation_key='recon-complete'",
+        )
+
+    _execute(
+        url,
+        "INSERT INTO trading.account_reconciliations "
+        "(reconciliation_key, account_id, trigger_reason, ws_watermark, rest_page_cursor, "
+        " rest_page_hash, unknown_queries, input_manifest_hash, differences, fencing_token) "
+        "VALUES ('recon-invalid', :account, 'TEST', 0, '{}'::jsonb, :h, '{}'::jsonb, "
+        " :h, '[]'::jsonb, 1)",
+        {"account": account_id, "h": "c" * 64},
+    )
+    with pytest.raises(Exception, match="v2_reconciliation_complete_requires_zero_diff"):
+        _execute(
+            url,
+            "UPDATE trading.account_reconciliations SET status='COMPLETED', "
+            "output_manifest_hash=:h, differences='[{\"kind\":\"drift\"}]'::jsonb, "
+            "completed_at=now() WHERE reconciliation_key='recon-invalid'",
+            {"h": "d" * 64},
+        )
+
+
+def test_order_event_transition_matches_frozen_table(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V51, url)
+    account_id = _seed_fixture_account(url)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            order_id = c.execute(
+                text(
+                    "INSERT INTO trading.exchange_orders "
+                    "(order_key, account_id, token_id, side, price, size) "
+                    "VALUES ('event-order', :account, 'token', 'BUY', 0.5, 10) RETURNING id"
+                ),
+                {"account": account_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    with pytest.raises(Exception, match="ck_order_state_events_type_matches_transition"):
+        _execute(
+            url,
+            "INSERT INTO trading.order_state_events "
+            "(event_key, order_id, event_type, transition_from, transition_to, event_payload, "
+            " event_hash, fence_token) VALUES "
+            "('bad-event', :order, 'ACK', 'PARTIAL', 'UNKNOWN', '{}'::jsonb, :h, 1)",
+            {"order": order_id, "h": "e" * 64},
+        )
+    _execute(
+        url,
+        "INSERT INTO trading.order_state_events "
+        "(event_key, order_id, event_type, transition_from, transition_to, event_payload, "
+        " event_hash, fence_token) VALUES "
+        "('good-event', :order, 'UNKNOWN', 'PARTIAL', 'UNKNOWN', '{}'::jsonb, :h, 1)",
+        {"order": order_id, "h": "f" * 64},
+    )
+    with pytest.raises(Exception, match="v2_immutable_row"):
+        _execute(
+            url,
+            "UPDATE trading.order_state_events SET event_payload='{}'::jsonb "
+            "WHERE event_key='good-event'",
+        )
+
+
+def test_exchange_order_guard_matches_frozen_unknown_edges(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V51, url)
+    account_id = _seed_fixture_account(url)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(
+                text(
+                    "INSERT INTO trading.exchange_orders "
+                    "(order_key, account_id, token_id, side, price, size) "
+                    "VALUES ('guard-order', :account, 'token', 'BUY', 0.5, 10)"
+                ),
+                {"account": account_id},
+            )
+    finally:
+        engine.dispose()
+    _execute(url, "UPDATE trading.exchange_orders SET status='ACK' WHERE order_key='guard-order'")
+    _execute(
+        url,
+        "UPDATE trading.exchange_orders SET status='PARTIAL', filled_size=2 "
+        "WHERE order_key='guard-order'",
+    )
+    _execute(url, "UPDATE trading.exchange_orders SET status='UNKNOWN' WHERE order_key='guard-order'")
+    for invalid_terminal in ("FILLED", "CANCELLED", "REJECTED"):
+        with pytest.raises(Exception, match="v2_exchange_order_transition_invalid"):
+            _execute(
+                url,
+                "UPDATE trading.exchange_orders SET status=:status "
+                "WHERE order_key='guard-order'",
+                {"status": invalid_terminal},
+            )
+    _execute(
+        url,
+        "UPDATE trading.exchange_orders SET status='RECONCILED' "
+        "WHERE order_key='guard-order'",
+    )
+    with pytest.raises(Exception, match="v2_exchange_order_same_state_mutation_invalid"):
+        _execute(
+            url,
+            "UPDATE trading.exchange_orders SET filled_size=3 WHERE order_key='guard-order'",
+        )
+
+
+def test_downgrade_rejects_unresolved_but_allows_terminal_fixture_facts(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V51, url)
+    account_id = _seed_fixture_account(url)
+    engine = create_engine(url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(
+                text(
+                    "INSERT INTO trading.exchange_orders "
+                    "(order_key, account_id, token_id, side, price, size) "
+                    "VALUES ('downgrade-order', :account, 'token', 'BUY', 0.5, 10)"
+                ),
+                {"account": account_id},
+            )
+    finally:
+        engine.dispose()
+    with pytest.raises(Exception, match="v2_wp05_execution_orders_downgrade_unresolved_facts"):
+        _run(command.downgrade, V50, url)
+    assert _version(url) == [(V51,)]
+    _execute(
+        url,
+        "UPDATE trading.exchange_orders SET status='CANCELLED' "
+        "WHERE order_key='downgrade-order'",
+    )
+    _run(command.downgrade, V50, url)
+    assert _version(url) == [(V50,)]
+    assert "exchange_orders" not in _trading_tables(url)
+    _run(command.upgrade, V51, url)
+    assert _version(url) == [(V51,)]
+
+
+def test_downgrade_unknown_external_dependency_is_transactional(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V51, url)
+    _execute(
+        url,
+        "CREATE VIEW public.unknown_0051_dependency AS "
+        "SELECT id FROM trading.exchange_orders",
+    )
+    with pytest.raises(Exception, match="depend"):
+        _run(command.downgrade, V50, url)
+    assert _version(url) == [(V51,)]
+    assert "exchange_orders" in _trading_tables(url)
+    _execute(url, "DROP VIEW public.unknown_0051_dependency")
+    _run(command.downgrade, V50, url)
+    assert _version(url) == [(V50,)]

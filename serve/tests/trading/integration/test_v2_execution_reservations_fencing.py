@@ -26,6 +26,7 @@ from app.logics.trading.portfolio import PortfolioLogic
 from app.repositories.trading.execution import ExecutionRepository
 from app.repositories.trading.vault import VaultRepository
 from app.services.vault import VaultService
+from runtimes.trading.execution import PrivateExecutionRuntime
 
 from tests.trading.integration.test_v2_vault_accounts_funds import (
     seed_control_chain,
@@ -72,17 +73,29 @@ async def env(temp_pg_db):
     vault_repo = VaultRepository()
 
     async with sessions() as session:
-        svc = VaultService(vault_repo, KEYRING, env="test")
+        svc = VaultService(
+            vault_repo, KEYRING, env="test", runtime_identity="worker-a",
+        )
         entry = await svc.create_entry(
             session, name="pm/signer/fixture-2", secret_kind="signer_private_key",
             runtime_identity="worker-a",
         )
+        version = await svc.store_secret(
+            session,
+            entry_id=entry["id"],
+            secret=b"fixture-signer-secret",
+            purpose="sign",
+            identity="worker-a",
+            account="fixture-acct-2",
+            key_id="k1",
+            key_version="v1",
+        )
         account = await repo.insert_account(
             session, account_key="fixture-acct-2", provider="polymarket", chain_id=137,
             identity_type="FIXTURE_ONLY", funder_address="0x" + "a" * 40,
-            maker_address="0x" + "b" * 40, signing_identity="0x" + "c" * 40,
+            maker_address="0x" + "a" * 40, signing_identity="0x" + "c" * 40,
             wallet_type="deposit_wallet", signature_type="3",
-            signer_secret_entry_id=entry["id"], signer_secret_version_id=1,
+            signer_secret_entry_id=entry["id"], signer_secret_version_id=version["id"],
             l2_secret_entry_id=None, l2_secret_version_id=None,
             release_manifest_id=chain["release_manifest_id"],
             capital_permission_manifest_id=chain["capital_permission_manifest_id"],
@@ -189,14 +202,35 @@ async def test_lease_fencing_lifecycle(env):
         await session.commit()
         assert lease_b["fencing_token"] == 2
 
+    # Economic-effect apply validates the exact current owner/token/unexpired row atomically.
+    async with sessions() as session:
+        assert await repo.get_active_lease_fence(
+            session,
+            account_id=account_id,
+            lease_role="EXECUTION",
+            owner="leader-A",
+            fencing_token=2,
+        ) is None
+        current = await repo.get_active_lease_fence(
+            session,
+            account_id=account_id,
+            lease_role="EXECUTION",
+            owner="leader-B",
+            fencing_token=2,
+        )
+        assert current is not None
+        await session.rollback()
+
     # 旧 owner A 的 fence 校验 → STALE_FENCE_REJECTED；新 owner B 通过
     async with sessions() as session:
         with pytest.raises(StaleFenceError, match="stale_fence_rejected"):
             await logic.assert_fence(
-                _UoW(session), account_id=account_id, lease_role="EXECUTION", token=1,
+                _UoW(session), account_id=account_id, lease_role="EXECUTION",
+                owner="leader-A", token=1,
             )
         await logic.assert_fence(
-            _UoW(session), account_id=account_id, lease_role="EXECUTION", token=2,
+            _UoW(session), account_id=account_id, lease_role="EXECUTION",
+            owner="leader-B", token=2,
         )
         await session.rollback()
 
@@ -245,3 +279,80 @@ async def test_late_ack_only_stale_fence_rejected(env):
         )
         assert lease["owner"] == "leader-B"
         assert lease["fencing_token"] == 2
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_failure_durable_hard_stop_and_handler_once(env):
+    sessions = env["sessions"]
+    account_id = env["account_id"]
+    async with sessions() as session:
+        lease = await ExecutionLeaseLogic(env["repo"]).acquire_lease(
+            _UoW(session), account_id=account_id, lease_role="HEARTBEAT",
+            owner="heartbeat-owner", ttl_s=60,
+        )
+        await session.commit()
+
+    callbacks: list[dict] = []
+
+    async def _failure_handler(**kwargs):
+        callbacks.append(kwargs)
+
+    class _FailedHeartbeat:
+        calls = 0
+
+        async def send_heartbeat(self, _heartbeat_id):
+            self.calls += 1
+            return {"ok": False, "heartbeat_id": None, "reason": "fixture_failure"}
+
+    driver = _FailedHeartbeat()
+    runtime = PrivateExecutionRuntime(
+        sessions, heartbeat_failure_handler=_failure_handler,
+    )
+    result = await runtime.heartbeat_once(
+        account_id=account_id,
+        owner="heartbeat-owner",
+        fencing_token=lease["fencing_token"],
+        driver=driver,
+    )
+    assert result["status"] == "HEARTBEAT_FAILED"
+    assert driver.calls == 1
+    assert len(callbacks) == 1
+    assert callbacks[0]["reason"] == "heartbeat_failed"
+
+    async with sessions() as session:
+        alert = (await session.execute(text(
+            "SELECT code,severity FROM trading.alert_events "
+            "WHERE alert_key=:key"
+        ), {
+            "key": f"alert:heartbeat:{account_id}:{lease['fencing_token']}:heartbeat_failed",
+        })).one()
+        workflow = (await session.execute(text(
+            "SELECT event_type,payload FROM trading.workflow_events "
+            "WHERE event_key=:key"
+        ), {
+            "key": f"wf:heartbeat:{account_id}:{lease['fencing_token']}:heartbeat_failed",
+        })).mappings().one()
+    assert tuple(alert) == ("heartbeat_hard_stop", "CRITICAL")
+    assert workflow["event_type"] == "heartbeat.hard_stop"
+    assert workflow["payload"]["plan"] == [
+        "stop_new_orders", "cancel_open_orders", "reconcile",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_missing_failure_handler_stops_before_network(env):
+    class _Probe:
+        calls = 0
+
+        async def send_heartbeat(self, _heartbeat_id):  # pragma: no cover
+            self.calls += 1
+            return {"ok": True, "heartbeat_id": "unexpected"}
+
+    probe = _Probe()
+    runtime = PrivateExecutionRuntime(env["sessions"])
+    with pytest.raises(RuntimeError, match="heartbeat_failure_handler_required"):
+        await runtime.heartbeat_once(
+            account_id=env["account_id"], owner="unused", fencing_token=1,
+            driver=probe,
+        )
+    assert probe.calls == 0

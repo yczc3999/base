@@ -8,7 +8,8 @@ stop/alert、reconcile 后 diff=0（COMPLETED）。
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -108,17 +109,29 @@ async def env(temp_pg_db):
     repo = ExecutionRepository()
 
     async with sessions() as session:
-        svc = VaultService(VaultRepository(), KEYRING, env="test")
+        svc = VaultService(
+            VaultRepository(), KEYRING, env="test", runtime_identity="worker-ledger",
+        )
         entry = await svc.create_entry(
             session, name="pm/signer/fixture-ledger", secret_kind="signer_private_key",
             runtime_identity="worker-ledger",
         )
+        version = await svc.store_secret(
+            session,
+            entry_id=entry["id"],
+            secret=b"fixture-ledger-signer",
+            purpose="sign",
+            identity="worker-ledger",
+            account="fixture-acct-ledger",
+            key_id="k1",
+            key_version="v1",
+        )
         account = await repo.insert_account(
             session, account_key="fixture-acct-ledger", provider="polymarket", chain_id=137,
             identity_type="FIXTURE_ONLY", funder_address="0x" + "a" * 40,
-            maker_address="0x" + "b" * 40, signing_identity="0x" + "c" * 40,
+            maker_address="0x" + "a" * 40, signing_identity="0x" + "c" * 40,
             wallet_type="deposit_wallet", signature_type="3",
-            signer_secret_entry_id=entry["id"], signer_secret_version_id=1,
+            signer_secret_entry_id=entry["id"], signer_secret_version_id=version["id"],
             l2_secret_entry_id=None, l2_secret_version_id=None,
             release_manifest_id=chain["release_manifest_id"],
             capital_permission_manifest_id=chain["capital_permission_manifest_id"],
@@ -135,6 +148,13 @@ async def env(temp_pg_db):
             confirmed=1000, provider_reserved=0, local_reserved=0, available=1000,
             source_snapshot_id=snapshot["id"], reconcile_watermark=1,
         )
+        await repo.insert_lease(
+            session,
+            account_id=account["id"],
+            lease_role="EXECUTION",
+            owner="worker-ledger",
+            lease_until=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
         await session.commit()
         account_id = account["id"]
 
@@ -150,26 +170,49 @@ async def _setup_submitted_filled(env):
         chain = await _seed_execution_chain(session, env["chain"], leg_role="reduce", quantity=10, account_id=env["account_id"])
         await session.commit()
     intent_id = chain["intent_id"]
+    token_asset = f"tok:{chain['contract_spec_id']}:{chain['token_id']}"
+    env["token_asset_key"] = token_asset
     logic_p = PortfolioLogic(execution=env["repo"])
     async with env["sessions"]() as session:
+        snapshot = await env["repo"].insert_balance_snapshot(
+            session, account_id=env["account_id"], asset_key=token_asset, spender=None,
+            balance=1000, allowance=1000, provider_reserved=0,
+            observed_at=datetime.now(timezone.utc),
+            request_hash=hashlib.sha256(token_asset.encode()).hexdigest(),
+            fencing_token=1, completeness="COMPLETE",
+        )
+        await env["repo"].create_funds(
+            session, account_id=env["account_id"], asset_key=token_asset,
+            confirmed=1000, provider_reserved=0, local_reserved=0, available=1000,
+            source_snapshot_id=snapshot["id"], reconcile_watermark=1,
+        )
         await logic_p.reserve_funds(
             _UoW(session), reservation_key="res-ledger", intent_id=intent_id,
-            account_id=env["account_id"], asset_key="USD", amount=Decimal("500"),
+            account_id=env["account_id"], asset_key=token_asset, amount=Decimal("10"),
             idempotency_key="ik-ledger",
         )
         await session.commit()
     logic = PrivateExecutionLogic(execution=env["repo"], ledger=LedgerRepository(),
                                   audit=AuditRepository())
-    envelope_input = EnvelopeInput(
-        envelope_key="env-ledger", intent_id=intent_id, account_id=env["account_id"],
-        release_manifest_id=env["chain"]["release_manifest_id"],
-        execution_spec_version_id=env["chain"]["execution_spec_version_id"],
-        capital_permission_manifest_id=env["chain"]["capital_permission_manifest_id"],
-        authority="FAKE_CONFORMANCE", idempotency_key="env-ik-ledger", fencing_token=1,
-        intent_hash=H64, preflight_hash1="b" * 64, preflight_hash2="c" * 64,
-    )
     async with env["sessions"]() as session:
-        envelope = await logic.create_envelope(_UoW(session), input_=envelope_input)
+        pf1, pf2 = await logic.authoritative_preflight_hashes(
+            _UoW(session), intent_id=intent_id, account_id=env["account_id"],
+            release_manifest_id=env["chain"]["release_manifest_id"],
+            execution_spec_version_id=env["chain"]["execution_spec_version_id"],
+            capital_permission_manifest_id=env["chain"]["capital_permission_manifest_id"],
+            fencing_token=1,
+        )
+        envelope_input = EnvelopeInput(
+            envelope_key="env-ledger", intent_id=intent_id, account_id=env["account_id"],
+            release_manifest_id=env["chain"]["release_manifest_id"],
+            execution_spec_version_id=env["chain"]["execution_spec_version_id"],
+            capital_permission_manifest_id=env["chain"]["capital_permission_manifest_id"],
+            authority="FAKE_CONFORMANCE", idempotency_key="env-ik-ledger", fencing_token=1,
+            intent_hash=H64, preflight_hash1=pf1, preflight_hash2=pf2,
+        )
+        envelope = await logic.create_envelope(
+            _UoW(session), input_=envelope_input, owner="worker-ledger"
+        )
         await session.commit()
         envelope_id = envelope["id"]
     submit = SubmitOrderInput(
@@ -180,7 +223,7 @@ async def _setup_submitted_filled(env):
 
     async with env["sessions"]() as session:
         prepared = await logic.prepare_submit(
-            _UoW(session), input_=submit, signed_order=_FakeSignedOrder(),
+            _UoW(session), input_=submit, owner="worker-ledger", signed_order=_FakeSignedOrder(),
             body_hash="b" * 64, expected_order_hash="c" * 64, sdk_manifest_hash="d" * 64,
         )
         await session.commit()
@@ -195,9 +238,9 @@ async def _setup_submitted_filled(env):
     async with env["sessions"]() as session:
         fill = await logic.apply_fill(
             _UoW(session), order_id=prepared.order_id, account_id=env["account_id"],
-            envelope_id=envelope_id, intent_id=intent_id, fencing_token=1,
+            envelope_id=envelope_id, intent_id=intent_id, owner="worker-ledger", fencing_token=1,
             external_trade_id="trd-ledger-1", side="SELL", price="0.50", size="10", fee="1",
-            trade_time=datetime.now(timezone.utc),
+            trade_time=datetime.now(timezone.utc), trade_status="CONFIRMED",
         )
         await session.commit()
         assert fill.order_status == "FILLED"
@@ -225,7 +268,7 @@ async def test_position_diff_triggers_hard_stop_alert(env):
             _UoW(session), input_=ReconcileInput(
                 reconciliation_key="rec-ledger-fail", account_id=env["account_id"],
                 fencing_token=1, trigger_reason="position_diff", ws_watermark=1, rest_cursor=None,
-            ),
+            ), owner="worker-ledger",
         )
         await session.commit()
         rec_id = rec["id"]
@@ -233,10 +276,13 @@ async def test_position_diff_triggers_hard_stop_alert(env):
     async with env["sessions"]() as session:
         result = await logic_r.complete_reconcile(
             _UoW(session), reconciliation_id=rec_id, account_id=env["account_id"],
+            owner="worker-ledger", fencing_token=1,
             remote_orders=[], remote_trades=[{"external_trade_id": "trd-ledger-1"}],
             remote_positions=[{"token_id": TOKEN_ID, "size": "10"}],
             remote_funds=[{"asset_key": "USD", "confirmed": "1000", "provider_reserved": "0",
-                           "local_reserved": "0"}],
+                           "local_reserved": "0"},
+                          {"asset_key": env["token_asset_key"], "confirmed": "990",
+                           "provider_reserved": "0", "local_reserved": "0"}],
             unknown_queries={},
         )
         await session.commit()
@@ -259,17 +305,20 @@ async def test_reconcile_completed_after_diff_zero(env):
             _UoW(session), input_=ReconcileInput(
                 reconciliation_key="rec-ledger-ok", account_id=env["account_id"],
                 fencing_token=1, trigger_reason="ws_disconnect", ws_watermark=1, rest_cursor=None,
-            ),
+            ), owner="worker-ledger",
         )
         await session.commit()
         rec_id = rec["id"]
     async with env["sessions"]() as session:
         result = await logic_r.complete_reconcile(
             _UoW(session), reconciliation_id=rec_id, account_id=env["account_id"],
+            owner="worker-ledger", fencing_token=1,
             remote_orders=[], remote_trades=[{"external_trade_id": "trd-ledger-1"}],
             remote_positions=[{"token_id": TOKEN_ID, "size": "0"}],
             remote_funds=[{"asset_key": "USD", "confirmed": "1000", "provider_reserved": "0",
-                           "local_reserved": "0"}],
+                           "local_reserved": "0"},
+                          {"asset_key": env["token_asset_key"], "confirmed": "990",
+                           "provider_reserved": "0", "local_reserved": "0"}],
             unknown_queries={},
         )
         await session.commit()

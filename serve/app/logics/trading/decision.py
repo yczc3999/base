@@ -44,6 +44,23 @@ REASON_QUOTE_CROSSED = "decision_quote_crossed"
 EXPOSURE_ACTIONS = {"BUY_TOKEN", "ADD_TOKEN", "FLIP"}
 RISK_REDUCING_ACTIONS = {"SELL_TOKEN_TO_REDUCE", "SELL_TOKEN_TO_CLOSE"}
 
+# Declarative code manifest for the stable business-identity derivation below.
+# Persisting this hash in the material makes an intentional algorithm change
+# distinguishable from sequence/order drift in replay evidence.
+ACTION_IDENTITY_HASH_ALGORITHM = {
+    "version": "decision-action-identity/v2",
+    "episode": "episode_key",
+    "submission": "submission_key",
+    "contract_version": ["contract_key", "contract_spec_hash"],
+    "token": "external_token_id",
+    "leg_fields": ["role", "quantity"],
+    "action_set_fields": ["action_type", "vwap"],
+    "ordering": "lexicographic/stable-leg-fields/v1",
+}
+ACTION_IDENTITY_HASH_ALGORITHM_CODE_HASH = canonical_hash(
+    ACTION_IDENTITY_HASH_ALGORITHM
+)
+
 
 @dataclass(frozen=True)
 class DecisionResult:
@@ -120,14 +137,25 @@ class DecisionLogic:
 
         input_manifest = {
             "episode_key": material["episode_key"],
-            "submission_id": material["submission_id"],
-            "lease_id": material["lease_id"],
-            "valid_until": material["valid_until"],
-            "evidence_hash": material["evidence_hash"],
-            "schema_hash": material["schema_hash"],
-            "spec_hash": material["spec_hash"],
+            "forecast_submission": {
+                "submission_key": material["submission_key"],
+                "forecast_input_manifest_hash": material[
+                    "forecast_input_manifest_hash"
+                ],
+                "contract_schema_prior_evidence_hash": material[
+                    "contract_schema_prior_evidence_hash"
+                ],
+                "algorithm_hash": material["algorithm_hash"],
+            },
+            "forecast_lease": {
+                "valid_until": material["valid_until"],
+                "evidence_hash": material["evidence_hash"],
+                "schema_hash": material["schema_hash"],
+                "spec_hash": material["spec_hash"],
+            },
             "cohort_key": material["cohort_key"],
-            "release_manifest_id": material["release_manifest_id"],
+            "release_name": release.get("release_name"),
+            "release_hash": release.get("release_hash"),
             "exec_spec_hash": release.get("exec_spec_hash"),
             "capital_hash": release.get("capital_hash"),
             "trigger_at": trigger_at,
@@ -854,19 +882,34 @@ class DecisionLogic:
             if not check.ok:
                 return DecisionResult(False, reason=check.reason)
 
+        # Business identity must survive a rolled-back insert consuming a
+        # PostgreSQL sequence value.  Bind the action to immutable natural keys
+        # and version hashes instead of episode/submission/token surrogate IDs.
+        # Explicit sorting also makes the identity independent of input/row order.
         intent_material = {
-            "episode_id": context["episode_id"],
-            "forecast_submission_id": context["forecast_submission_id"],
+            "identity_algorithm_hash": ACTION_IDENTITY_HASH_ALGORITHM_CODE_HASH,
+            "episode_key": context["episode_key"],
+            "forecast_submission_key": context["submission_key"],
             "action_type": selected_type,
-            "legs": [
-                {
-                    "contract_spec_id": row["contract_spec_id"],
-                    "token_id": row["token_id"],
-                    "role": role,
-                    "quantity": str(quantity),
-                }
-                for row, role, quantity in selected
-            ],
+            "legs": sorted(
+                [
+                    {
+                        "contract_key": row["contract_key"],
+                        "contract_spec_hash": row["contract_spec_hash"],
+                        "token_id": row["external_token_id"],
+                        "role": role,
+                        "quantity": str(quantity),
+                    }
+                    for row, role, quantity in selected
+                ],
+                key=lambda leg: (
+                    leg["contract_key"],
+                    leg["contract_spec_hash"],
+                    leg["token_id"],
+                    leg["role"],
+                    leg["quantity"],
+                ),
+            ),
         }
         intent_hash = canonical_hash(intent_material)
         if await self._decision.get_action_intent_by_hash(uow.session, intent_hash):
@@ -900,17 +943,32 @@ class DecisionLogic:
     ) -> DecisionResult:
         action_set_hash = canonical_hash(
             {
+                "identity_algorithm_hash": ACTION_IDENTITY_HASH_ALGORITHM_CODE_HASH,
                 "disposition": "ACTION",
                 "selected_action_type": selected_type,
-                "legs": [
-                    {
-                        "candidate_id": row["id"],
-                        "role": role,
-                        "quantity": str(quantity),
-                        "vwap": str(row["vwap"]),
-                    }
-                    for row, role, quantity in selected
-                ],
+                "legs": sorted(
+                    [
+                        {
+                            "contract_key": row["contract_key"],
+                            "contract_spec_hash": row["contract_spec_hash"],
+                            "token_id": row["external_token_id"],
+                            "action_type": row["action_type"],
+                            "role": role,
+                            "quantity": str(quantity),
+                            "vwap": str(row["vwap"]),
+                        }
+                        for row, role, quantity in selected
+                    ],
+                    key=lambda leg: (
+                        leg["contract_key"],
+                        leg["contract_spec_hash"],
+                        leg["token_id"],
+                        leg["action_type"],
+                        leg["role"],
+                        leg["quantity"],
+                        leg["vwap"],
+                    ),
+                ),
             }
         )
         set_id = await self._decision.insert_action_set(

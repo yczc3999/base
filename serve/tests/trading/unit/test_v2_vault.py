@@ -62,7 +62,7 @@ class _FakeRepo:
                 return dict(v)
         return None
 
-    async def get_active_version(self, session, *, entry_id):
+    async def get_active_version(self, session, *, entry_id, for_update=False):
         actives = [v for v in self.versions if v["entry_id"] == entry_id and v["status"] == "active"]
         if not actives:
             return None
@@ -100,7 +100,7 @@ class _Session:
 def service():
     repo = _FakeRepo()
     keyring = {("k1", "v1"): K1, ("k1", "v2"): K2}
-    return VaultService(repo, keyring, env="test"), repo
+    return VaultService(repo, keyring, env="test", runtime_identity="worker-a"), repo
 
 
 async def _setup(service, repo):
@@ -250,3 +250,34 @@ def test_unknown_key_version_raises_fixed_error(service):
             account="acct-1", key_id="k1", key_version="v9",
         ))
     assert CANARY.decode() not in str(excinfo.value)
+
+
+def test_wrong_runtime_identity_cannot_read_and_uses_durable_failure_sink():
+    repo = _FakeRepo()
+    durable_events = []
+
+    async def failure_sink(event):
+        durable_events.append(dict(event))
+
+    svc = VaultService(
+        repo, {("k1", "v1"): K1}, env="test", runtime_identity="worker-a",
+        failure_audit=failure_sink,
+    )
+    entry_id = asyncio.run(_setup(svc, repo))
+    session = _Session()
+    version = asyncio.run(svc.store_secret(
+        session, entry_id=entry_id, secret=CANARY, purpose="sign",
+        identity="worker-a", account="acct-1", key_id="k1", key_version="v1",
+    ))
+    with pytest.raises(VaultAuthError, match="vault_runtime_identity_mismatch"):
+        asyncio.run(svc.read_secret(
+            session, entry_id=entry_id, version_id=version["id"], purpose="sign",
+            identity="worker-UNAUTHORIZED", account="acct-1",
+        ))
+    assert durable_events[-1]["result"] == "AUTH_FAILED"
+    assert durable_events[-1]["reason"] == "identity_mismatch"
+    assert not any(
+        event["result"] == "READ" and event["identity"] == "worker-UNAUTHORIZED"
+        for event in repo.events
+    )
+    assert CANARY.decode() not in repr(durable_events)

@@ -174,7 +174,7 @@ class ForecastLogic:
             "code_hash": material.code_hash,
         }
         manifest_hash = canonical_hash({key: manifest_dict[key] for key in _MANIFEST_KEYS})
-        manifest_key = f"manifest-{episode_id}-{manifest_hash[:12]}"
+        manifest_key = f"manifest:{chain['episode_key']}:{manifest_hash[:12]}"
 
         # ---- 每个 member spec×token 的确定性 projection ----
         checks: list[CoherenceCheckInput] = []
@@ -309,16 +309,17 @@ class ForecastLogic:
             reason_code=None,
             committed_at=committed_at,
         )
+        submission_business_key = f"{chain['episode_key']}:{submission.submission_key}"
         event = create_envelope(
             topic=_BLIND_COMMIT_TOPIC,
             schema_version=1,
             aggregate_type="forecast_submission",
-            aggregate_id=str(submission_id),
-            idempotency_key=f"blind-commit:{episode_id}:{submission_id}",
+            aggregate_id=submission_business_key,
+            idempotency_key=f"blind-commit:{submission_business_key}",
             priority=100,
             payload={
-                "episode_id": episode_id,
-                "submission_id": submission_id,
+                "episode_key": chain["episode_key"],
+                "submission_key": submission.submission_key,
                 "manifest_hash": manifest_hash,
             },
             release_manifest_id=version_manifest_id,

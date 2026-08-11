@@ -12,6 +12,8 @@ from runtimes.trading.cognition import (
 from runtimes.trading.execution import (
     PrivateExecutionRuntime,
     ShadowExecutionRuntime,
+    UserWsExecutionRuntime,
+    build_execution_vault_service,
 )
 from runtimes.trading.evaluation import EvaluationRuntime
 from runtimes.trading.replay import ReplayRuntime
@@ -29,5 +31,7 @@ __all__ = [
     "ReplayRuntime",
     # WP-05 Checkpoint C
     "PrivateExecutionRuntime",
+    "UserWsExecutionRuntime",
+    "build_execution_vault_service",
     "ReconciliationRuntime",
 ]

@@ -24,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.schema import ForeignKey, Index
+from sqlalchemy.schema import ForeignKey, ForeignKeyConstraint, Index
 
 from app.models.trading.constants import TRADING_SCHEMA
 from app.models.trading.mixins import (
@@ -77,6 +77,10 @@ class SecretVaultVersion(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         UniqueConstraint(
             "entry_id", "version_no",
             name="uq_secret_vault_versions_entry_version",
+        ),
+        UniqueConstraint(
+            "entry_id", "id",
+            name="uq_secret_vault_versions_entry_id",
         ),
         UniqueConstraint(
             "key_id", "key_version", "nonce",
@@ -166,11 +170,11 @@ class PMAccount(TradingBase, BigIntIdentityMixin, TimestampMixin):
             name="ck_pm_accounts_identity_type_known",
         ),
         CheckConstraint(
-            "wallet_type IN ('deposit_wallet','privately_owned')",
+            "wallet_type = 'deposit_wallet'",
             name="ck_pm_accounts_wallet_type_known",
         ),
         CheckConstraint(
-            "signature_type IN ('0','1','2','3')",
+            "signature_type = '3'",
             name="ck_pm_accounts_signature_type_known",
         ),
         CheckConstraint(
@@ -186,8 +190,33 @@ class PMAccount(TradingBase, BigIntIdentityMixin, TimestampMixin):
             name="ck_pm_accounts_wp05_fixture_only",
         ),
         CheckConstraint(
-            "identity_type = 'FIXTURE_ONLY' OR network_mode <> 'fixture'",
+            "identity_type = 'FIXTURE_ONLY' AND network_mode = 'fixture'",
             name="ck_pm_accounts_fixture_network_pair",
+        ),
+        CheckConstraint(
+            "provider = 'polymarket' AND chain_id = 137 "
+            "AND funder_address IS NOT NULL AND maker_address IS NOT NULL "
+            "AND signing_identity IS NOT NULL AND funder_address = maker_address "
+            "AND signing_identity <> maker_address",
+            name="ck_pm_accounts_type3_identity_shape",
+        ),
+        CheckConstraint(
+            "(signer_secret_entry_id IS NULL) = (signer_secret_version_id IS NULL)",
+            name="ck_pm_accounts_signer_secret_pair",
+        ),
+        CheckConstraint(
+            "(l2_secret_entry_id IS NULL) = (l2_secret_version_id IS NULL)",
+            name="ck_pm_accounts_l2_secret_pair",
+        ),
+        ForeignKeyConstraint(
+            ("signer_secret_entry_id", "signer_secret_version_id"),
+            ("trading.secret_vault_versions.entry_id", "trading.secret_vault_versions.id"),
+            name="fk_pm_accounts_signer_version",
+        ),
+        ForeignKeyConstraint(
+            ("l2_secret_entry_id", "l2_secret_version_id"),
+            ("trading.secret_vault_versions.entry_id", "trading.secret_vault_versions.id"),
+            name="fk_pm_accounts_l2_version",
         ),
         {"schema": TRADING_SCHEMA},
     )
@@ -258,6 +287,10 @@ class PMBalanceAllowanceSnapshot(TradingBase, BigIntIdentityMixin, CreatedAtMixi
             "ix_pm_balance_allowance_snapshots_account",
             "account_id", "asset_key", "observed_at",
         ),
+        UniqueConstraint(
+            "account_id", "asset_key", "id",
+            name="uq_pm_balance_snapshots_account_asset_id",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -307,6 +340,15 @@ class AccountFundsCurrent(TradingBase, BigIntIdentityMixin, OptimisticVersionMix
             "reconcile_watermark >= 0",
             name="ck_account_funds_current_reconcile_watermark_nonneg",
         ),
+        ForeignKeyConstraint(
+            ("account_id", "asset_key", "source_snapshot_id"),
+            (
+                "trading.pm_balance_allowance_snapshots.account_id",
+                "trading.pm_balance_allowance_snapshots.asset_key",
+                "trading.pm_balance_allowance_snapshots.id",
+            ),
+            name="fk_account_funds_current_source_snapshot",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -336,6 +378,23 @@ class CapitalReservation(TradingBase, BigIntIdentityMixin, TimestampMixin):
         ),
         CheckConstraint("amount > 0", name="ck_capital_reservations_amount_positive"),
         CheckConstraint(
+            "consumed_amount >= 0",
+            name="ck_capital_reservations_consumed_nonneg",
+        ),
+        CheckConstraint(
+            "released_amount >= 0",
+            name="ck_capital_reservations_released_nonneg",
+        ),
+        CheckConstraint(
+            "consumed_amount + released_amount <= amount",
+            name="ck_capital_reservations_amount_accounted",
+        ),
+        CheckConstraint(
+            "status NOT IN ('CONSUMED','RELEASED') OR "
+            "consumed_amount + released_amount = amount",
+            name="ck_capital_reservations_terminal_accounted",
+        ),
+        CheckConstraint(
             "status IN ('HELD','UNKNOWN','PROVIDER_BOUND','CONSUMED','RELEASED')",
             name="ck_capital_reservations_status_known",
         ),
@@ -360,6 +419,12 @@ class CapitalReservation(TradingBase, BigIntIdentityMixin, TimestampMixin):
     )
     asset_key: Mapped[str] = mapped_column(external_id_type(), nullable=False)
     amount: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
+    consumed_amount: Mapped[Decimal] = mapped_column(
+        base_unit_type(), nullable=False, server_default="0"
+    )
+    released_amount: Mapped[Decimal] = mapped_column(
+        base_unit_type(), nullable=False, server_default="0"
+    )
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="HELD")
 

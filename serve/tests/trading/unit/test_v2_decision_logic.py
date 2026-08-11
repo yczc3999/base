@@ -54,6 +54,7 @@ class FakePortfolio:
 def _context(status="QUOTE_BOUND", **over):
     row = {
         "id": 1, "decision_key": HASH, "status": status, "episode_id": 1,
+        "episode_key": "episode-natural-key", "submission_key": "submission-natural-key",
         "decision_class": "CHAMPION",
         "forecast_submission_id": 5, "release_manifest_id": 3,
         "experiment_variant": "champion", "submission_status": "BLIND_COMMITTED",
@@ -112,6 +113,9 @@ class FakeRepo:
         self.responses = {
             "decision_material": {
                 "episode_status": "BLIND_COMMITTED", "episode_key": "ep", "submission_id": 5,
+                "submission_key": "sub", "forecast_input_manifest_hash": "c" * 64,
+                "contract_schema_prior_evidence_hash": "d" * 64,
+                "algorithm_hash": "e" * 64,
                 "lease_id": 7, "valid_until": NOW + timedelta(days=30), "evidence_hash": HASH,
                 "schema_hash": HASH, "spec_hash": HASH, "cohort_key": "c",
                 "release_manifest_id": 3, "objective_contract_id": 2, "strategy_version_id": 4,
@@ -121,7 +125,8 @@ class FakeRepo:
                 "capital_status": "active", "mode": "shadow", "authorized_capital": 0,
                 "kill_switch": False, "execution_spec_version_id": 11,
                 "capital_permission_manifest_id": 12, "exec_spec_hash": HASH,
-                "capital_hash": "b" * 64,
+                "capital_hash": "b" * 64, "release_name": "release-natural-key",
+                "release_hash": "f" * 64,
             },
             "episode_markets": [{"active": True, "closed": False, "accepting_orders": True,
                                   "enable_order_book": True, "end_date": None}],
@@ -208,6 +213,8 @@ def _candidate(**over):
 
 def _candidate_row(**over):
     row = {"id": 300, "contract_spec_id": 1, "token_id": 1, "action_type": "BUY_TOKEN",
+           "contract_key": "contract-natural-key", "contract_spec_hash": "c" * 64,
+           "external_token_id": "external-token-natural-key",
            "fill_quantity": Decimal("100"), "vwap": Decimal("0.52"),
            "robust_ev": Decimal("3"), "expected_log_growth": Decimal("0.01"),
            "cost_components": {"entry": "52"}}
@@ -230,6 +237,33 @@ async def test_create_rejects_terminal_market_and_accepts_tradeable_market():
     )
     assert review.ok
     assert repo.calls_for("insert_trade_decision")[-1]["decision_class"] == "RISK_REVIEW"
+
+
+async def test_create_input_hash_ignores_submission_lease_and_release_ids():
+    repo = FakeRepo()
+    logic = DecisionLogic(repo, FakeWorkflow(), FakePortfolio())
+    first = await logic.create_decision(
+        FakeUoW(), episode_id=1, trigger_at=NOW, experiment_variant="champion"
+    )
+    assert first.ok
+    clean_hash = repo.calls_for("insert_trade_decision")[-1]["input_hash"]
+
+    repo.responses["decision_material"].update(
+        submission_id=5005,
+        lease_id=7007,
+        release_manifest_id=3003,
+    )
+    repo.responses["release_by_episode"].update(
+        execution_spec_version_id=11011,
+        capital_permission_manifest_id=12012,
+    )
+    retried = await logic.create_decision(
+        FakeUoW(), episode_id=9009, trigger_at=NOW, experiment_variant="champion"
+    )
+    assert retried.ok
+    retry_hash = repo.calls_for("insert_trade_decision")[-1]["input_hash"]
+
+    assert retry_hash == clean_hash
 
 
 async def test_reveal_requires_exact_token_set_and_db_quote_values():
@@ -341,6 +375,63 @@ async def test_terminal_rejects_unvalued_leg_and_creates_committed_intent_for_va
     assert good.ok
     assert repo.calls_for("insert_leg")[0]["entry_vwap"] == Decimal("0.52")
     assert repo.calls_for("insert_intent")[0]["status"] == "COMMITTED"
+
+
+async def test_terminal_business_hashes_ignore_surrogate_ids_and_leg_order():
+    """A rollback sequence gap cannot change intent/action-set business identity."""
+
+    async def run(*, ids: tuple[int, int, int], reverse: bool):
+        episode_id, submission_id, first_candidate_id = ids
+        repo = FakeRepo()
+        repo.responses["decision_context"] = _context(
+            "G7B",
+            episode_id=episode_id,
+            forecast_submission_id=submission_id,
+        )
+        candidates = [
+            _candidate_row(id=first_candidate_id),
+            _candidate_row(
+                id=first_candidate_id + 1,
+                token_id=2,
+                external_token_id="external-token-natural-key-2",
+            ),
+        ]
+        repo.responses["candidates_for_decision"] = list(
+            reversed(candidates) if reverse else candidates
+        )
+        token_map = (
+            {2: Decimal("50"), 1: Decimal("50")}
+            if reverse
+            else {1: Decimal("50"), 2: Decimal("50")}
+        )
+        result = await DecisionLogic(
+            repo, FakeWorkflow(), FakePortfolio()
+        ).terminalize(
+            FakeUoW(),
+            trade_decision_id=1,
+            action_set=ActionSetInput(
+                disposition="ACTION",
+                selected_action_type="BUY_TOKEN",
+                legs={"open": {1: token_map}},
+            ),
+            underwriting=UnderwritingInput(plan_version=1, thesis_hash=HASH),
+            decided_at=NOW,
+        )
+        assert result.ok
+        return (
+            repo.calls_for("insert_intent")[0]["intent_hash"],
+            repo.calls_for("insert_action_set")[0]["action_set_hash"],
+            repo.calls_for("insert_intent")[0]["preflight"]["intent_material"],
+        )
+
+    clean = await run(ids=(1, 5, 300), reverse=False)
+    sequence_gap = await run(ids=(91, 105, 9300), reverse=True)
+
+    assert clean == sequence_gap
+    serialized = str(clean[2])
+    assert "episode_id" not in serialized
+    assert "forecast_submission_id" not in serialized
+    assert "candidate_id" not in serialized
 
 
 async def test_v1_gold_unreviewed_does_not_open_new_exposure():

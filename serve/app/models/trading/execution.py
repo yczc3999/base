@@ -25,7 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.schema import ForeignKey, Index
+from sqlalchemy.schema import ForeignKey, ForeignKeyConstraint, Index
 
 from app.models.trading.constants import TRADING_SCHEMA
 from app.models.trading.mixins import (
@@ -364,6 +364,7 @@ class ExchangeOrder(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("order_key", name="uq_exchange_orders_key"),
         UniqueConstraint("account_id", "external_order_id", name="uq_exchange_orders_account_ext"),
+        UniqueConstraint("account_id", "id", "side", name="uq_exchange_orders_account_id_side"),
         CheckConstraint(
             f"status IN {tuple(repr(s) for s in _ORDER_STATUS)}",
             name="ck_exchange_orders_status_known",
@@ -380,8 +381,16 @@ class ExchangeOrder(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     )
 
     order_key: Mapped[str] = mapped_column(external_id_type(), nullable=False)
-    # attempt_id 为普通列（避免 order→attempt→event→order 环形 FK；由 Logic 维护投影）。
-    attempt_id: Mapped[int | None] = mapped_column(BigInteger)
+    attempt_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "trading.exchange_order_attempts.id",
+            name="fk_exchange_orders_attempt",
+            deferrable=True,
+            initially="DEFERRED",
+            use_alter=True,
+        ),
+    )
     account_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.pm_accounts.id", name="fk_exchange_orders_account"),
@@ -472,6 +481,25 @@ class OrderStateEvent(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             f"event_type IN {tuple(repr(s) for s in _ORDER_EVENT_TYPE)}",
             name="ck_order_state_events_type_known",
         ),
+        CheckConstraint(
+            "event_type = transition_to",
+            name="ck_order_state_events_type_matches_transition",
+        ),
+        CheckConstraint(
+            "(transition_from = 'INTENT' AND transition_to = 'SUBMITTED') OR "
+            "(transition_from = 'SUBMITTED' AND transition_to IN "
+            "('ACK','PARTIAL','FILLED','CANCELLED','REJECTED','UNKNOWN')) OR "
+            "(transition_from = 'ACK' AND transition_to IN "
+            "('PARTIAL','FILLED','CANCELLED','UNKNOWN')) OR "
+            "(transition_from = 'PARTIAL' AND transition_to IN "
+            "('FILLED','CANCELLED','UNKNOWN')) OR "
+            "(transition_from = 'UNKNOWN' AND transition_to = 'RECONCILED')",
+            name="ck_order_state_events_transition_exact",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(event_payload) = 'object'",
+            name="ck_order_state_events_payload_object",
+        ),
         CheckConstraint("event_hash ~ '^[0-9a-f]{64}$'", name="ck_order_state_events_hash_hex"),
         CheckConstraint("fence_token > 0", name="ck_order_state_events_fence_positive"),
         Index("ix_order_state_events_order", "order_id", "event_type"),
@@ -499,6 +527,11 @@ class ExchangeTrade(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("trade_key", name="uq_exchange_trades_key"),
         UniqueConstraint("account_id", "external_trade_id", name="uq_exchange_trades_account_ext"),
+        ForeignKeyConstraint(
+            ("account_id", "order_id", "side"),
+            ("trading.exchange_orders.account_id", "trading.exchange_orders.id", "trading.exchange_orders.side"),
+            name="fk_exchange_trades_order_account_side",
+        ),
         CheckConstraint("side IN ('BUY','SELL')", name="ck_exchange_trades_side_known"),
         CheckConstraint("price > 0 AND price <= 1", name="ck_exchange_trades_price_range"),
         CheckConstraint("size > 0", name="ck_exchange_trades_size_positive"),
@@ -551,6 +584,18 @@ class AccountReconciliation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="ck_account_reconciliations_output_hash_hex",
         ),
         CheckConstraint(
+            "jsonb_typeof(rest_page_cursor) = 'object'",
+            name="ck_account_reconciliations_cursor_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(unknown_queries) = 'object'",
+            name="ck_account_reconciliations_unknown_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(differences) = 'array'",
+            name="ck_account_reconciliations_differences_array",
+        ),
+        CheckConstraint(
             "(status = 'COMPLETED') = (completed_at IS NOT NULL)",
             name="ck_account_reconciliations_completed_pair",
         ),
@@ -571,7 +616,7 @@ class AccountReconciliation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     unknown_queries: Mapped[dict] = mapped_column(JSONB, nullable=False)
     input_manifest_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     output_manifest_hash: Mapped[str | None] = mapped_column(sha256_type())
-    differences: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    differences: Mapped[list] = mapped_column(JSONB, nullable=False)
     fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="RECONCILING")
     completed_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())

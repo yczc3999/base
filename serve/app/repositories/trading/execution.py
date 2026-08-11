@@ -19,6 +19,23 @@ def _rows(result) -> list[dict[str, Any]]:
     return [dict(zip(keys, row)) for row in result.fetchall()]
 
 
+def _assert_exact_material(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    error_prefix: str,
+    decimal_fields: frozenset[str] = frozenset(),
+) -> None:
+    """Reject an idempotency-key collision with different immutable material."""
+    for field, value in expected.items():
+        actual_value = actual[field]
+        if field in decimal_fields:
+            actual_value = Decimal(str(actual_value))
+            value = Decimal(str(value))
+        if actual_value != value:
+            raise RuntimeError(f"{error_prefix}_idempotency_mismatch:{field}")
+
+
 class ExecutionRepository:
     """shadow execution SQL；不持有状态。"""
 
@@ -82,15 +99,18 @@ class ExecutionRepository:
             "fill_role": fill_role,
             "quantity": Decimal(str(quantity)),
             "portfolio_namespace": portfolio_namespace,
+            "quote_checkpoint_id": quote_checkpoint_id,
+            "account_id": account_id,
+            "envelope_id": envelope_id,
+            "order_id": order_id,
+            "trade_id": trade_id,
         }
-        if quote_checkpoint_id is not None:
-            expected["quote_checkpoint_id"] = quote_checkpoint_id
-        for field, value in expected.items():
-            actual = existing[field]
-            if field == "quantity":
-                actual = Decimal(str(actual))
-            if actual != value:
-                raise RuntimeError(f"execution_idempotency_mismatch:{field}")
+        _assert_exact_material(
+            existing,
+            expected,
+            error_prefix="execution",
+            decimal_fields=frozenset({"quantity"}),
+        )
         existing["inserted"] = False
         return existing
 
@@ -610,6 +630,44 @@ class ExecutionRepository:
         )
         return result.rowcount == 1
 
+    async def consume_funds_local(
+        self, session: AsyncSession, *, account_id: int, asset_key: str, amount: Any
+    ) -> bool:
+        """Consume a confirmed fill held in the local UNKNOWN bucket.
+
+        Confirmed and reserved decrease together, so spendable ``available`` does not jump
+        back up after an economic effect.
+        """
+        result = await session.execute(
+            text(
+                "UPDATE trading.account_funds_current SET "
+                "confirmed = confirmed - :amt, local_reserved = local_reserved - :amt, "
+                "available = (confirmed - :amt) - provider_reserved "
+                "            - (local_reserved - :amt), version = version + 1 "
+                "WHERE account_id=:a AND asset_key=:k "
+                "AND confirmed >= :amt AND local_reserved >= :amt"
+            ),
+            {"a": account_id, "k": asset_key, "amt": amount},
+        )
+        return result.rowcount == 1
+
+    async def consume_funds_provider(
+        self, session: AsyncSession, *, account_id: int, asset_key: str, amount: Any
+    ) -> bool:
+        """Consume a confirmed fill held in the provider-bound bucket."""
+        result = await session.execute(
+            text(
+                "UPDATE trading.account_funds_current SET "
+                "confirmed = confirmed - :amt, provider_reserved = provider_reserved - :amt, "
+                "available = (confirmed - :amt) - (provider_reserved - :amt) "
+                "            - local_reserved, version = version + 1 "
+                "WHERE account_id=:a AND asset_key=:k "
+                "AND confirmed >= :amt AND provider_reserved >= :amt"
+            ),
+            {"a": account_id, "k": asset_key, "amt": amount},
+        )
+        return result.rowcount == 1
+
     async def insert_reservation(
         self,
         session: AsyncSession,
@@ -636,6 +694,7 @@ class ExecutionRepository:
         )
         rows = _rows(result)
         if rows:
+            rows[0]["inserted"] = True
             return rows[0]
         existing = await session.execute(
             text(
@@ -647,7 +706,22 @@ class ExecutionRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("reservation_idempotency_lost")
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        expected = {
+            "reservation_key": reservation_key,
+            "intent_id": intent_id,
+            "account_id": account_id,
+            "asset_key": asset_key,
+            "amount": Decimal(str(amount)),
+            "idempotency_key": idempotency_key,
+        }
+        for field, value in expected.items():
+            actual = existing_row[field]
+            if field == "amount":
+                actual = Decimal(str(actual))
+            if actual != value:
+                raise RuntimeError(f"reservation_idempotency_mismatch:{field}")
+        return existing_row
 
     async def get_reservation(
         self, session: AsyncSession, *, reservation_id: int, for_update: bool = False
@@ -686,15 +760,33 @@ class ExecutionRepository:
         return rows[0] if rows else None
 
     async def advance_reservation(
-        self, session: AsyncSession, *, reservation_id: int, new_status: str
+        self,
+        session: AsyncSession,
+        *,
+        reservation_id: int,
+        new_status: str,
+        consumed_delta: Any = 0,
+        released_delta: Any = 0,
+        expected_status: str | None = None,
     ) -> bool:
-        """状态推进；合法转移由 DB trigger 强制，此处只做 WHERE 前缀。"""
+        """CAS reservation state/accounting advance; the DB guard owns legal shapes."""
+        status_predicate = "status <> :ns"
+        if expected_status is not None:
+            status_predicate = "status = :expected"
         result = await session.execute(
             text(
-                "UPDATE trading.capital_reservations SET status=:ns, updated_at=now() "
-                "WHERE id=:r AND status <> :ns"
+                "UPDATE trading.capital_reservations SET status=:ns, "
+                "consumed_amount=consumed_amount+:consumed, "
+                "released_amount=released_amount+:released, updated_at=now() "
+                f"WHERE id=:r AND {status_predicate}"
             ),
-            {"r": reservation_id, "ns": new_status},
+            {
+                "r": reservation_id,
+                "ns": new_status,
+                "consumed": consumed_delta,
+                "released": released_delta,
+                "expected": expected_status,
+            },
         )
         return result.rowcount == 1
 
@@ -709,6 +801,37 @@ class ExecutionRepository:
         if for_update:
             sql += " FOR UPDATE"
         result = await session.execute(text(sql), {"a": account_id, "r": lease_role})
+        rows = _rows(result)
+        return rows[0] if rows else None
+
+    async def get_active_lease_fence(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: int,
+        lease_role: str,
+        owner: str,
+        fencing_token: int,
+        for_update: bool = True,
+    ) -> dict[str, Any] | None:
+        """Return only the exact current, unexpired lease identity.
+
+        ``for_update=True`` holds the lease row through an economic-effect transaction so a
+        takeover cannot interleave between validation and commit.
+        """
+        sql = (
+            "SELECT id, account_id, lease_role, owner, lease_until, fencing_token, "
+            "latest_heartbeat_id, latest_heartbeat_hash, version, updated_at, created_at "
+            "FROM trading.execution_leases WHERE account_id=:a AND lease_role=:r "
+            "AND owner=:o AND fencing_token=:tok "
+            "AND lease_until > statement_timestamp()"
+        )
+        if for_update:
+            sql += " FOR UPDATE"
+        result = await session.execute(
+            text(sql),
+            {"a": account_id, "r": lease_role, "o": owner, "tok": fencing_token},
+        )
         rows = _rows(result)
         return rows[0] if rows else None
 
@@ -738,7 +861,7 @@ class ExecutionRepository:
                 "UPDATE trading.execution_leases SET lease_until=:until, "
                 "updated_at=now(), version=version+1 "
                 "WHERE account_id=:a AND lease_role=:r AND owner=:o "
-                "AND fencing_token=:tok AND lease_until > now()"
+                "AND fencing_token=:tok AND lease_until > statement_timestamp()"
             ),
             {"a": account_id, "r": lease_role, "o": owner, "until": lease_until, "tok": fencing_token},
         )
@@ -753,7 +876,8 @@ class ExecutionRepository:
             text(
                 "UPDATE trading.execution_leases SET owner=:o, lease_until=:until, "
                 "fencing_token=fencing_token+1, updated_at=now(), version=version+1 "
-                "WHERE account_id=:a AND lease_role=:r AND version=:old AND lease_until <= now()"
+                "WHERE account_id=:a AND lease_role=:r AND version=:old "
+                "AND lease_until <= statement_timestamp()"
             ),
             {"a": account_id, "r": lease_role, "o": owner, "until": lease_until, "old": expected_version},
         )
@@ -766,7 +890,7 @@ class ExecutionRepository:
         """释放租约：置过期而非 DELETE，保留单调 fencing 历史。"""
         result = await session.execute(
             text(
-                "UPDATE trading.execution_leases SET lease_until=now(), "
+                "UPDATE trading.execution_leases SET lease_until=statement_timestamp(), "
                 "updated_at=now(), version=version+1 "
                 "WHERE account_id=:a AND lease_role=:r AND owner=:o AND fencing_token=:tok"
             ),
@@ -795,7 +919,7 @@ class ExecutionRepository:
         preflight_hash2: str,
         envelope_hash: str,
     ) -> dict[str, Any]:
-        """幂等插入 envelope；冲突返回既有（material 由 Logic 校验）。"""
+        """Idempotently insert an envelope and exact-match immutable retry material."""
         result = await session.execute(
             text(
                 "INSERT INTO trading.execution_authorization_envelopes "
@@ -822,6 +946,24 @@ class ExecutionRepository:
         existing = await self.get_envelope_by_key(session, envelope_key=envelope_key)
         if existing is None:
             raise RuntimeError("envelope_claim_lost")
+        _assert_exact_material(
+            existing,
+            {
+                "intent_id": intent_id,
+                "account_id": account_id,
+                "release_manifest_id": release_manifest_id,
+                "execution_spec_version_id": execution_spec_version_id,
+                "capital_permission_manifest_id": capital_permission_manifest_id,
+                "authority": authority,
+                "idempotency_key": idempotency_key,
+                "fencing_token": fencing_token,
+                "intent_hash": intent_hash,
+                "preflight_hash1": preflight_hash1,
+                "preflight_hash2": preflight_hash2,
+                "envelope_hash": envelope_hash,
+            },
+            error_prefix="envelope",
+        )
         existing["inserted"] = False
         return existing
 
@@ -922,8 +1064,23 @@ class ExecutionRepository:
         existing_rows = _rows(existing_result)
         if not existing_rows:
             raise RuntimeError("attempt_claim_lost")
-        existing_rows[0]["inserted"] = False
-        return existing_rows[0]
+        existing = existing_rows[0]
+        _assert_exact_material(
+            existing,
+            {
+                "envelope_id": envelope_id,
+                "attempt_no": attempt_no,
+                "body_hash": body_hash,
+                "expected_order_hash": expected_order_hash,
+                "sdk_manifest_hash": sdk_manifest_hash,
+                "salt": salt,
+                "timestamp": timestamp,
+                "fencing_token": fencing_token,
+            },
+            error_prefix="attempt",
+        )
+        existing["inserted"] = False
+        return existing
 
     async def get_attempt(
         self, session: AsyncSession, *, attempt_id: int, for_update: bool = False
@@ -932,6 +1089,82 @@ class ExecutionRepository:
         if for_update:
             sql += " FOR UPDATE"
         result = await session.execute(text(sql), {"a": attempt_id})
+        rows = _rows(result)
+        return rows[0] if rows else None
+
+    async def list_submitted_attempts_for_recovery(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: int,
+        limit: int = 100,
+        for_update: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List persisted-before-send attempts whose provider result is still unknown.
+
+        The default row lock lets one recovery worker claim a deterministic batch inside its
+        transaction.  ``SKIP LOCKED`` prevents duplicate concurrent recovery work.
+        """
+        sql = (
+            "SELECT a.*, e.account_id, o.id AS order_id, o.order_key, "
+            "o.external_order_id, o.status AS order_status "
+            "FROM trading.exchange_order_attempts a "
+            "JOIN trading.execution_authorization_envelopes e ON e.id=a.envelope_id "
+            "LEFT JOIN trading.exchange_orders o ON o.attempt_id=a.id "
+            "WHERE e.account_id=:account AND a.result='SUBMITTED' "
+            "ORDER BY a.id LIMIT :limit"
+        )
+        if for_update:
+            sql += " FOR UPDATE OF a SKIP LOCKED"
+        result = await session.execute(
+            text(sql),
+            {"account": account_id, "limit": limit},
+        )
+        return _rows(result)
+
+    async def get_attempt_by_expected_order_hash(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: int,
+        expected_order_hash: str,
+        for_update: bool = True,
+    ) -> dict[str, Any] | None:
+        sql = (
+            "SELECT a.* FROM trading.exchange_order_attempts a "
+            "JOIN trading.execution_authorization_envelopes e ON e.id=a.envelope_id "
+            "WHERE e.account_id=:account AND a.expected_order_hash=:expected "
+            "ORDER BY a.id DESC LIMIT 1"
+        )
+        if for_update:
+            sql += " FOR UPDATE OF a"
+        result = await session.execute(
+            text(sql),
+            {"account": account_id, "expected": expected_order_hash},
+        )
+        rows = _rows(result)
+        return rows[0] if rows else None
+
+    async def get_attempt_by_body_hash(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: int,
+        body_hash: str,
+        for_update: bool = True,
+    ) -> dict[str, Any] | None:
+        sql = (
+            "SELECT a.* FROM trading.exchange_order_attempts a "
+            "JOIN trading.execution_authorization_envelopes e ON e.id=a.envelope_id "
+            "WHERE e.account_id=:account AND a.body_hash=:body "
+            "ORDER BY a.id DESC LIMIT 1"
+        )
+        if for_update:
+            sql += " FOR UPDATE OF a"
+        result = await session.execute(
+            text(sql),
+            {"account": account_id, "body": body_hash},
+        )
         rows = _rows(result)
         return rows[0] if rows else None
 
@@ -983,6 +1216,18 @@ class ExecutionRepository:
         existing = await self.get_order_by_key(session, order_key=order_key)
         if existing is None:
             raise RuntimeError("order_claim_lost")
+        _assert_exact_material(
+            existing,
+            {
+                "account_id": account_id,
+                "token_id": token_id,
+                "side": side,
+                "price": price,
+                "size": size,
+            },
+            error_prefix="order",
+            decimal_fields=frozenset({"price", "size"}),
+        )
         existing["inserted"] = False
         return existing
 
@@ -1017,6 +1262,31 @@ class ExecutionRepository:
         if for_update:
             sql += " FOR UPDATE"
         result = await session.execute(text(sql), {"a": account_id, "e": external_order_id})
+        rows = _rows(result)
+        return rows[0] if rows else None
+
+    async def get_order_by_expected_order_hash(
+        self,
+        session: AsyncSession,
+        *,
+        account_id: int,
+        expected_order_hash: str,
+        for_update: bool = True,
+    ) -> dict[str, Any] | None:
+        """Resolve a provider order hash through the persisted send attempt lineage."""
+        sql = (
+            "SELECT o.* FROM trading.exchange_orders o "
+            "JOIN trading.exchange_order_attempts a ON a.id=o.attempt_id "
+            "JOIN trading.execution_authorization_envelopes e ON e.id=a.envelope_id "
+            "WHERE o.account_id=:account AND e.account_id=o.account_id "
+            "AND a.expected_order_hash=:expected ORDER BY o.id DESC LIMIT 1"
+        )
+        if for_update:
+            sql += " FOR UPDATE OF o"
+        result = await session.execute(
+            text(sql),
+            {"account": account_id, "expected": expected_order_hash},
+        )
         rows = _rows(result)
         return rows[0] if rows else None
 
@@ -1096,6 +1366,7 @@ class ExecutionRepository:
         )
         rows = _rows(result)
         if rows:
+            rows[0]["inserted"] = True
             return rows[0]
         existing = await session.execute(
             text("SELECT * FROM trading.order_state_events WHERE event_key=:k"),
@@ -1104,7 +1375,22 @@ class ExecutionRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("order_state_event_claim_lost")
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        _assert_exact_material(
+            existing_row,
+            {
+                "order_id": order_id,
+                "event_type": event_type,
+                "transition_from": transition_from,
+                "transition_to": transition_to,
+                "event_payload": event_payload,
+                "event_hash": event_hash,
+                "fence_token": fence_token,
+            },
+            error_prefix="order_state_event",
+        )
+        existing_row["inserted"] = False
+        return existing_row
 
     async def insert_trade(
         self,
@@ -1147,8 +1433,25 @@ class ExecutionRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("trade_claim_lost")
-        existing_rows[0]["inserted"] = False
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        _assert_exact_material(
+            existing_row,
+            {
+                "trade_key": trade_key,
+                "order_id": order_id,
+                "account_id": account_id,
+                "external_trade_id": external_trade_id,
+                "side": side,
+                "price": price,
+                "size": size,
+                "fee": fee,
+                "trade_time": trade_time,
+            },
+            error_prefix="trade",
+            decimal_fields=frozenset({"price", "size", "fee"}),
+        )
+        existing_row["inserted"] = False
+        return existing_row
 
     async def get_trades_for_order(
         self, session: AsyncSession, *, order_id: int
@@ -1204,8 +1507,42 @@ class ExecutionRepository:
         )
         if existing is None:
             raise RuntimeError("reconciliation_claim_lost")
+        _assert_exact_material(
+            existing,
+            {
+                "account_id": account_id,
+                "trigger_reason": trigger_reason,
+                "ws_watermark": ws_watermark,
+                "rest_page_cursor": rest_page_cursor,
+                "rest_page_hash": rest_page_hash,
+                "unknown_queries": unknown_queries,
+                "input_manifest_hash": input_manifest_hash,
+                "fencing_token": fencing_token,
+            },
+            error_prefix="reconciliation",
+        )
         existing["inserted"] = False
         return existing
+
+    async def has_active_reconciliation(
+        self, session: AsyncSession, *, account_id: int
+    ) -> bool:
+        """Fence exposure for in-flight runs and FAILED runs without a later completion."""
+        result = await session.execute(
+            text(
+                "SELECT EXISTS ("
+                " SELECT 1 FROM trading.account_reconciliations r "
+                " WHERE r.account_id=:account AND (r.status='RECONCILING' OR ("
+                "   r.status='FAILED' AND NOT EXISTS ("
+                "     SELECT 1 FROM trading.account_reconciliations recovered "
+                "     WHERE recovered.account_id=r.account_id "
+                "       AND recovered.status='COMPLETED' AND recovered.id > r.id"
+                "   )"
+                " )))"
+            ),
+            {"account": account_id},
+        )
+        return bool(result.scalar_one())
 
     async def get_reconciliation(
         self, session: AsyncSession, *, reconciliation_id: int, for_update: bool = False
@@ -1238,7 +1575,7 @@ class ExecutionRepository:
         output_manifest_hash: str,
         differences: list,
         new_status: str,
-        completed_at: datetime,
+        completed_at: datetime | None,
     ) -> bool:
         from sqlalchemy import bindparam
         from sqlalchemy.dialects.postgresql import JSONB
@@ -1254,7 +1591,24 @@ class ExecutionRepository:
                 "s": new_status, "ca": completed_at,
             },
         )
-        return result.rowcount == 1
+        if result.rowcount == 1:
+            return True
+        existing = await self.get_reconciliation(
+            session, reconciliation_id=reconciliation_id
+        )
+        if existing is None or existing["status"] == "RECONCILING":
+            return False
+        _assert_exact_material(
+            existing,
+            {
+                "output_manifest_hash": output_manifest_hash,
+                "differences": differences,
+                "status": new_status,
+                "completed_at": completed_at,
+            },
+            error_prefix="reconciliation_completion",
+        )
+        return True
 
     async def latest_open_order_external_ids(
         self, session: AsyncSession, *, account_id: int

@@ -82,8 +82,10 @@ class ExecutionHandler:
         elif event.kind == "create_envelope":
             if self._private is None:
                 raise ValueError("private_logic_required")
+            payload = dict(event.payload)
+            owner = str(payload.pop("owner"))
             envelope = await self._private.create_envelope(
-                uow, input_=EnvelopeInput(**event.payload)
+                uow, input_=EnvelopeInput(**payload), owner=owner,
             )
             return HandlerResult(True, envelope)
         elif event.kind == "apply_submit_outcome":
@@ -104,6 +106,7 @@ class ExecutionHandler:
             result = await self._private.cancel_order(
                 uow,
                 input_=CancelOrderInput(**event.payload.get("input", {})),
+                owner=str(event.payload["owner"]),
                 outcome=_OutcomeShim(event.payload.get("outcome_cls")),
                 response_hash=event.payload.get("response_hash"),
                 error_reason=event.payload.get("error_reason"),
@@ -118,6 +121,7 @@ class ExecutionHandler:
                 account_id=int(event.payload["account_id"]),
                 envelope_id=int(event.payload["envelope_id"]),
                 intent_id=int(event.payload["intent_id"]),
+                owner=str(event.payload["owner"]),
                 fencing_token=int(event.payload["fencing_token"]),
                 external_trade_id=str(event.payload["external_trade_id"]),
                 side=str(event.payload["side"]),
@@ -125,13 +129,16 @@ class ExecutionHandler:
                 size=event.payload["size"],
                 fee=event.payload.get("fee", 0),
                 trade_time=_parse_dt(event.payload.get("trade_time")),
+                trade_status=event.payload.get("trade_status") or event.payload.get("status"),
             )
             return HandlerResult(result.ok, result, result.reason)
         elif event.kind == "reconcile_start":
             if self._reconcile is None:
                 raise ValueError("reconcile_logic_required")
+            payload = dict(event.payload)
+            owner = str(payload.pop("owner"))
             reconciliation = await self._reconcile.start_reconcile(
-                uow, input_=ReconcileInput(**event.payload)
+                uow, input_=ReconcileInput(**payload), owner=owner,
             )
             return HandlerResult(True, reconciliation)
         elif event.kind == "reconcile_complete":
@@ -141,11 +148,14 @@ class ExecutionHandler:
                 uow,
                 reconciliation_id=int(event.payload["reconciliation_id"]),
                 account_id=int(event.payload["account_id"]),
+                owner=str(event.payload["owner"]),
+                fencing_token=int(event.payload["fencing_token"]),
                 remote_orders=event.payload.get("remote_orders", []),
                 remote_trades=event.payload.get("remote_trades", []),
                 remote_positions=event.payload.get("remote_positions", []),
                 remote_funds=event.payload.get("remote_funds", []),
                 unknown_queries=event.payload.get("unknown_queries", {}),
+                observation_manifest=event.payload.get("observation_manifest"),
             )
             return HandlerResult(result.ok, result, result.reason)
         elif event.kind == "heartbeat":

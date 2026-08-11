@@ -18,7 +18,9 @@ economic action intent / ledger / metric artifact 业务 hash 逐项相等。
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -34,10 +36,19 @@ from sqlalchemy.pool import NullPool
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.hashing import canonical_hash, deterministic_sample
-from app.logics.trading.decision import DecisionLogic
+from app.logics.trading.decision import (
+    ACTION_IDENTITY_HASH_ALGORITHM_CODE_HASH,
+    DecisionLogic,
+)
 from app.logics.trading.evaluation import EvaluationLogic
-from app.logics.trading.execution import ShadowExecutionLogic
+from app.logics.trading.execution import (
+    EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH,
+    ExecutionLeaseLogic,
+    PrivateExecutionLogic,
+    ShadowExecutionLogic,
+)
 from app.logics.trading.forecast import ForecastLogic, InputManifestMaterial
+from app.logics.trading.portfolio import PortfolioLogic
 from app.repositories.trading.decision import DecisionRepository
 from app.repositories.trading.evaluation import EvaluationRepository
 from app.repositories.trading.execution import ExecutionRepository
@@ -54,6 +65,7 @@ from app.schemas.trading.decision import (
 )
 from app.schemas.trading.evaluation import MetricRunInput
 from app.schemas.trading.execution import ShadowFillInput
+from app.schemas.trading.execution import EnvelopeInput
 from app.schemas.trading.forecast import (
     ForecastLeaseInput,
     ForecastSubmissionInput,
@@ -67,33 +79,31 @@ from tests.trading.integration.test_v2_decision_shadow_workflow import (
     AUDIT_POLICY,
     COVERAGE_POLICY,
     PRIOR,
-    _seed,
+    _seed as _seed_decision_fixture,
     _quote_map,
 )
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
+STABILITY_SNAPSHOT_PATH = (
+    SERVE_DIR / "tests/trading/fixtures/p5_execution/stability_snapshot_v1.json"
+)
 # WP-05 完成后 head=b1000051；P-stability 在完整 head 上验证（与 ORM metadata 对齐）。
 HEAD = "b1000051"
 
 # 固定时基：落在 20260811 partition 且早于测试运行日（今天 2026-08-11）。
 # opportunity/episode 的 opportunity_key 含 triggered_at，故该锚必须固定以保证
-# ``== expected``（冻结 snapshot hash）。trade_decision 的 trigger/quote_bound/decided 时间
-# 单独动态化（见 _run_decision_execution_chain），因为 executions.created_at=now() 要求
-# quote binding stale_at 相对真实时间未来。
+# ``== expected``（冻结 snapshot hash）。book/decision 时间固定到 migration 当前日的下一日；
+# 0011 会建当前日+7日分区，且 stale_at 相对测试执行时仍在未来。
 FIXED = datetime(2026, 8, 11, 3, 4, 5, tzinfo=timezone.utc)
 CUTOFF = FIXED + timedelta(days=2)
+FIXED_BOOK_RECEIVED_AT = FIXED + timedelta(days=1)
 
-def _seed_book_time() -> datetime:
-    """book checkpoint received_at 基准：stale_at（=received+ttl 300s）相对真实 now() 未来。
-
-    executions.created_at 由 DB now() 生成，0031 guard 要求 ``quote.stale_at > created_at``。
-    因此 checkpoint received_at 必须满足 ``received + 300s > now()`` 且 ``received <= quote_bound``
-    （quote_before_decision=60s，trigger=now+10min）。取 ``now+9min``：received=now+9min，
-    stale_at=now+14min > now ✓，received < trigger(now+10min) ✓。业务 hash 不含 checkpoint
-    received_at，``== expected`` 不受影响。
-    """
-    return datetime.now(timezone.utc) + timedelta(minutes=9)
+def _seed_book_time(env: dict | None = None) -> datetime:
+    """Return the frozen book timestamp used by every replay/fault case."""
+    if env is not None and "book_received_at" in env:
+        return env["book_received_at"]
+    return FIXED_BOOK_RECEIVED_AT
 
 
 _METRIC_RUN_KEY = "metric-p5"
@@ -101,6 +111,102 @@ _OBS_KEY = "obs-p5"
 _LABEL_KEY = "label-p5"
 _TARGET_KEY = "target-p5"
 _CLUSTER_KEY = "cluster-p5"
+_EXECUTION_OWNER = "p5-stability-execution-owner"
+
+
+def _refresh_frozen_authorization_hash(actual_hash: str) -> None:
+    """Explicit maintainer-only generator; source is a successful h1==h2 replay."""
+    snapshot = json.loads(STABILITY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    prior_hash = snapshot["expected_business_hashes"]["authorization_envelope"]
+    snapshot["expected_business_hashes"]["authorization_envelope"] = actual_hash
+    snapshot["expected_business_hashes"]["authorization_envelope_note"] = (
+        "real b1000051 reduce-only envelope; authority/market/envelope v2 binds "
+        "natural identity, immutable market facts, neg-risk mode, and the frozen "
+        "official exchange address without surrogate IDs"
+    )
+    change = next(
+        row for row in snapshot["hash_change_log"]
+        if row["field"] == "expected_business_hashes.authorization_envelope"
+    )
+    if prior_hash != actual_hash:
+        prior_change = {
+            key: change.get(key)
+            for key in (
+                "old_hash", "new_hash", "reason", "algorithm_code_hash"
+            )
+        }
+        history = change.setdefault("history", [])
+        # Re-running the explicit generator is idempotent: preserve each
+        # completed migration once, rather than rewriting its provenance.
+        if prior_change["new_hash"] == prior_hash and prior_change not in history:
+            history.append(prior_change)
+    change.update({
+        "old_hash": (
+            prior_hash if prior_hash != actual_hash else change.get("old_hash")
+        ),
+        "new_hash": actual_hash,
+        "reason": (
+            "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal "
+            "full replays after market preflight bound gamma market ID, condition ID, "
+            "market content hash, neg-risk mode, and the frozen official Standard/"
+            "NegRisk exchange address"
+        ),
+        "algorithm_code_hash": EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH,
+    })
+    snapshot.pop("content_hash", None)
+    snapshot["content_hash"] = canonical_hash(snapshot)
+    STABILITY_SNAPSHOT_PATH.write_text(
+        json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _processing_hash_algorithm_code_hash() -> str:
+    return canonical_hash({
+        "schema": "p-stability-processing-disposition/v2",
+        "episode_identity": "episode_key",
+        "fields": [
+            "route_channel", "first_rejected_gate", "reason_code",
+            "processing_disposition", "action_eligible",
+        ],
+        "ordering": "episode_key",
+    })
+
+
+def _refresh_frozen_processing_hash(actual_hash: str) -> None:
+    """Explicit maintainer-only generator for the natural-key projection hash."""
+    snapshot = json.loads(STABILITY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    expected = snapshot["expected_business_hashes"]
+    prior_hash = expected["processing_disposition"]
+    expected["processing_disposition"] = actual_hash
+    changes = snapshot["hash_change_log"]
+    change = next(
+        (
+            row for row in changes
+            if row["field"] == "expected_business_hashes.processing_disposition"
+        ),
+        None,
+    )
+    material = {
+        "field": "expected_business_hashes.processing_disposition",
+        "old_hash": prior_hash,
+        "new_hash": actual_hash,
+        "reason": (
+            "P-stability projection replaces episode_id with episode_key so the "
+            "evidence hash is independent of database sequence allocation"
+        ),
+        "algorithm_code_hash": _processing_hash_algorithm_code_hash(),
+    }
+    if change is None:
+        changes.append(material)
+    else:
+        change.update(material)
+    snapshot.pop("content_hash", None)
+    snapshot["content_hash"] = canonical_hash(snapshot)
+    STABILITY_SNAPSHOT_PATH.write_text(
+        json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 @pytest_asyncio.fixture
@@ -116,6 +222,7 @@ async def stability_env(temp_pg_db):
         "ledger": LedgerRepository(),
         "forecast": ForecastRepository(),
         "wf": WorkflowRepository(),
+        "book_received_at": FIXED_BOOK_RECEIVED_AT,
     }
     yield env
     await engine.dispose()
@@ -142,6 +249,32 @@ def _run(cmd, revision, db_url):
         engine.dispose()
 
 
+async def _seed(env: dict, *, book_received_at: datetime | None = None) -> dict:
+    """Seed the shared decision chain plus complete immutable execution market facts."""
+    ctx = await _seed_decision_fixture(
+        env, book_received_at=book_received_at,
+    )
+    market_facts = {
+        "schema": "p-stability-market/v1",
+        "gamma_market_id": "market-p2",
+        "condition_id": "condition-p2",
+        "neg_risk": False,
+    }
+    async with UnitOfWork(env["sessions"]) as uow:
+        updated = await uow.session.execute(
+            text(
+                "UPDATE trading.pm_markets SET neg_risk=false, content_hash=:hash "
+                "WHERE id=:market"
+            ),
+            {
+                "hash": canonical_hash(market_facts),
+                "market": ctx["market"],
+            },
+        )
+        assert updated.rowcount == 1
+    return ctx
+
+
 def _restart(url: str) -> None:
     """TRUNCATE 决策/执行/账本 + 上游全部表（CASCADE + RESTART IDENTITY）。"""
     engine = create_engine(url, poolclass=NullPool)
@@ -153,9 +286,15 @@ def _restart(url: str) -> None:
                 "trading.resolution_cashflows, trading.action_sets, trading.action_set_legs, "
                 "trading.underwriting_plans, trading.economic_action_intents, "
                 "trading.executions, trading.positions, trading.position_lots, "
+                "trading.execution_authorization_envelopes, "
+                "trading.exchange_order_attempts, trading.exchange_orders, "
+                "trading.order_state_events, trading.exchange_trades, "
+                "trading.account_reconciliations, trading.execution_leases, "
+                "trading.capital_reservations, trading.account_funds_current, "
+                "trading.pm_balance_allowance_snapshots, trading.pm_accounts, "
                 "trading.ledger_transactions, trading.ledger_postings, "
                 "trading.operating_cost_entries, trading.pm_quote_bindings, "
-                "trading.pm_book_checkpoints, trading.gate_decisions, "
+                "trading.pm_book_current, trading.pm_book_checkpoints, trading.gate_decisions, "
                 "trading.metric_runs, trading.score_observations, trading.score_targets, "
                 "trading.score_target_memberships, trading.resolution_labels, "
                 "trading.resolution_clusters, trading.resolution_cluster_memberships, "
@@ -181,7 +320,12 @@ def _restart(url: str) -> None:
         engine.dispose()
 
 
-async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, list[int]]:
+async def _build_blind_committed_episode(
+    env: dict,
+    ctx: dict,
+    *,
+    inject_g6_timeout_after_write: bool = False,
+) -> tuple[int, list[int]]:
     """G0→R0→parent→G1→G2→episode→R1→G4→G5A→G5B→G6 → BLIND_COMMITTED（lease 用 FIXED 基准）。"""
     from app.logics.trading.component import ComponentLogic
     from app.logics.trading.contract import ContractLogic
@@ -321,6 +465,46 @@ async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, lis
         evidence_hash="a" * 64, schema_hash="b" * 64, spec_hash="c" * 64,
     )
     forecast = ForecastLogic(env["forecast"], env["wf"])
+    if inject_g6_timeout_after_write:
+        # Execute the complete G6 write set, then lose the worker before the UoW
+        # can commit.  Cancellation must unwind the transaction and leave no
+        # partial submission/lease/episode advance.  The normal call immediately
+        # below retries the exact same frozen input and seed.
+        wrote_before_timeout = asyncio.Event()
+
+        async def _partial_model_attempt() -> None:
+            async with UnitOfWork(env["sessions"]) as uow:
+                partial = await forecast.run_g6(
+                    uow, episode_id=episode, submission=submission,
+                    material=InputManifestMaterial(
+                        taxonomy_hash="a" * 64,
+                        model_binding_hash="a" * 64,
+                        prompt_hash="a" * 64,
+                        code_hash="a" * 64,
+                    ),
+                    lease=lease,
+                    version_manifest_id=ctx["release"],
+                    policy_hash=ctx["policy_hashes"]["evidence_coverage"],
+                )
+                assert partial.ok, partial.reason
+                wrote_before_timeout.set()
+                await asyncio.Event().wait()
+
+        task = asyncio.create_task(_partial_model_attempt())
+        await wrote_before_timeout.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        async with UnitOfWork(env["sessions"]) as uow:
+            submission_count = (await uow.session.execute(text(
+                "SELECT count(*) FROM trading.forecast_submissions WHERE episode_id=:episode"
+            ), {"episode": episode})).scalar_one()
+            episode_status = (await uow.session.execute(text(
+                "SELECT status FROM trading.forecast_episodes WHERE id=:episode"
+            ), {"episode": episode})).scalar_one()
+        assert submission_count == 0
+        assert episode_status != "BLIND_COMMITTED"
+
     async with UnitOfWork(env["sessions"]) as uow:
         g6 = await forecast.run_g6(
             uow, episode_id=episode, submission=submission,
@@ -338,9 +522,10 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
     logic = DecisionLogic(env["decision"], env["wf"])
     spec_id = spec_ids[0]
 
-    # trade_decision 时间单独动态化到真实 now() 之后（_seed_book_time 用 now+9min）。
-    # opportunity/episode 的 opportunity_key 仍用固定 FIXED，保证业务 hash == expected。
-    trigger_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    # Quote evidence is frozen one minute before the deterministic decision
+    # trigger.  This keeps authorization preflight/envelope hashes reproducible
+    # across independent pytest processes, not merely within one fixture.
+    trigger_at = _seed_book_time(env) + timedelta(minutes=1)
     quote_reveal_at = trigger_at + timedelta(seconds=1)
     decided_at = trigger_at + timedelta(seconds=2)
 
@@ -363,6 +548,16 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
             "d": created.trade_decision_id,
             "p": json.dumps({"kind": "fixed_marginal", "evidence": "observed_zero"})})
 
+        # The WP-05 frozen release is intentionally shadow/zero-capital.  A real
+        # authorization envelope must therefore prove a risk-reducing path, not
+        # an exposure-increasing open.  Seed the already-owned shadow position
+        # that this decision deterministically reduces.
+        await uow.session.execute(text(
+            "INSERT INTO trading.positions "
+            "(portfolio_namespace,contract_spec_id,token_id,market_id,quantity,cost_basis) "
+            "VALUES ('shadow-champion',:spec,:token,:market,100,52)"
+        ), {"spec": spec_id, "token": ctx["yes_token"], "market": ctx["market"]})
+
     async with UnitOfWork(env["sessions"]) as uow:
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
@@ -375,7 +570,7 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
             candidates=[
                 ActionCandidateInput(
                     contract_spec_id=spec_id, token_id=ctx["yes_token"],
-                    action_type="BUY_TOKEN", target_quantity=Decimal("100"),
+                    action_type="SELL_TOKEN_TO_REDUCE", target_quantity=Decimal("100"),
                 )
             ],
             policy_hash=None, version_manifest_id=None)
@@ -392,17 +587,145 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
             uow, trade_decision_id=created.trade_decision_id,
             action_set=ActionSetInput(
                 disposition="ACTION",
-                selected_action_type="BUY_TOKEN",
-                legs={"open": {spec_id: {ctx["yes_token"]: Decimal("100")}}},
+                selected_action_type="SELL_TOKEN_TO_REDUCE",
+                legs={"reduce": {spec_id: {ctx["yes_token"]: Decimal("100")}}},
             ),
-            underwriting=UnderwritingInput(
-                plan_version=1, entry_range={"min": "0.50", "max": "0.55"},
-                hold_to_resolution=True, thesis_hash="a" * 64,
-                invalidation={"evidence": "regime_change"},
-            ),
+            underwriting=None,
             decided_at=decided_at)
     assert terminal.ok, terminal.reason
     assert terminal.disposition == "ACTION"
+
+    # P-stability runs at the complete WP-05 head.  Exercise a real authorization
+    # envelope in the same vertical chain instead of representing the 0051 table
+    # with a ``None`` placeholder.  Stable business keys and hashes deliberately
+    # exclude timestamps; the double replay below proves the generated envelope is
+    # deterministic after a full DB restart.
+    private_logic = PrivateExecutionLogic(
+        execution=env["execution"], ledger=env["ledger"], audit=None,
+    )
+    async with UnitOfWork(env["sessions"]) as uow:
+        intent = (await uow.session.execute(text(
+            "SELECT id, intent_hash FROM trading.economic_action_intents "
+            "WHERE trade_decision_id=:decision"
+        ), {"decision": created.trade_decision_id})).mappings().one()
+        intent_id = intent["id"]
+        account = await env["execution"].insert_account(
+            uow.session,
+            account_key="p5-stability-account",
+            provider="polymarket",
+            chain_id=137,
+            identity_type="FIXTURE_ONLY",
+            funder_address="0x" + "1" * 40,
+            maker_address="0x" + "1" * 40,
+            signing_identity="0x" + "2" * 40,
+            wallet_type="deposit_wallet",
+            signature_type="3",
+            signer_secret_entry_id=None,
+            signer_secret_version_id=None,
+            l2_secret_entry_id=None,
+            l2_secret_version_id=None,
+            release_manifest_id=ctx["release"],
+            capital_permission_manifest_id=ctx["capital"],
+            network_mode="fixture",
+        )
+        # Imported starting inventory predates the local order-lineage tables.
+        # Bind that frozen inventory to the fixture account while bypassing only
+        # the lineage trigger; subsequent preflight/fill reads use normal guards.
+        await uow.session.execute(text("SET LOCAL session_replication_role = replica"))
+        await uow.session.execute(text(
+            "UPDATE trading.positions SET account_id=:account "
+            "WHERE portfolio_namespace='shadow-champion' "
+            "AND contract_spec_id=:spec AND token_id=:token"
+        ), {
+            "account": account["id"],
+            "spec": spec_id,
+            "token": ctx["yes_token"],
+        })
+        await uow.session.execute(text("SET LOCAL session_replication_role = origin"))
+        lease = await ExecutionLeaseLogic(env["execution"]).acquire_lease(
+            uow,
+            account_id=account["id"],
+            lease_role="EXECUTION",
+            owner=_EXECUTION_OWNER,
+            ttl_s=300,
+        )
+        reservation_asset = f"tok:{spec_id}:{ctx['yes_token']}"
+        balance_snapshot = await env["execution"].insert_balance_snapshot(
+            uow.session,
+            account_id=account["id"],
+            asset_key=reservation_asset,
+            spender=None,
+            balance=Decimal("100"),
+            allowance=Decimal("100"),
+            provider_reserved=Decimal("0"),
+            observed_at=_seed_book_time(env),
+            request_hash="5" * 64,
+            fencing_token=lease["fencing_token"],
+            completeness="COMPLETE",
+        )
+        await env["execution"].create_funds(
+            uow.session,
+            account_id=account["id"],
+            asset_key=reservation_asset,
+            confirmed=Decimal("100"),
+            provider_reserved=Decimal("0"),
+            local_reserved=Decimal("0"),
+            available=Decimal("100"),
+            source_snapshot_id=balance_snapshot["id"],
+            reconcile_watermark=1,
+        )
+        await PortfolioLogic(env["execution"]).reserve_funds(
+            uow,
+            reservation_key="p5-stability-reservation",
+            intent_id=intent_id,
+            account_id=account["id"],
+            asset_key=reservation_asset,
+            amount=Decimal("100"),
+            idempotency_key="p5-stability-reservation-v1",
+        )
+        await uow.session.execute(text(
+            "INSERT INTO trading.pm_book_current "
+            "(token_id, checkpoint_id, checkpoint_received_at, best_bid, best_ask, "
+            " tick_size, min_order_size, depth_hash, validity, observed_at) VALUES "
+            "('token-p2-yes',:yes,:received,0.50,0.52,0.01,1,:yes_hash,'VALID',:received),"
+            "('token-p2-no',:no,:received,0.48,0.50,0.01,1,:no_hash,'VALID',:received)"
+        ), {
+            "yes": ctx["checkpoint_yes"],
+            "no": ctx["checkpoint_no"],
+            "received": ctx["checkpoint_recv_yes"],
+            "yes_hash": "3" * 64,
+            "no_hash": "4" * 64,
+        })
+        preflight_hash1, preflight_hash2 = (
+            await private_logic.authoritative_preflight_hashes(
+                uow,
+                intent_id=intent_id,
+                account_id=account["id"],
+                release_manifest_id=ctx["release"],
+                execution_spec_version_id=ctx["exec_spec"],
+                capital_permission_manifest_id=ctx["capital"],
+                fencing_token=lease["fencing_token"],
+            )
+        )
+        envelope = await private_logic.create_envelope(
+            uow,
+            owner=_EXECUTION_OWNER,
+            input_=EnvelopeInput(
+                envelope_key="p5-stability-envelope",
+                intent_id=intent_id,
+                account_id=account["id"],
+                release_manifest_id=ctx["release"],
+                execution_spec_version_id=ctx["exec_spec"],
+                capital_permission_manifest_id=ctx["capital"],
+                authority="FAKE_CONFORMANCE",
+                idempotency_key="p5-stability-envelope-v1",
+                fencing_token=lease["fencing_token"],
+                intent_hash=intent["intent_hash"],
+                preflight_hash1=preflight_hash1,
+                preflight_hash2=preflight_hash2,
+            ),
+        )
+    assert envelope["status"] == "ACTIVE"
 
     execution_logic = ShadowExecutionLogic(env["execution"], env["ledger"])
     async with UnitOfWork(env["sessions"]) as uow:
@@ -423,8 +746,8 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
                 economic_action_intent_id=intent_id,
                 action_set_leg_id=legs[0]["id"],
                 contract_spec_id=spec_id, token_id=ctx["yes_token"],
-                fill_role="open", quantity=Decimal("100"), side="buy",
-                depth_levels=[[Decimal("0.52"), 100], [Decimal("0.53"), 200]],
+                fill_role="reduce", quantity=Decimal("100"), side="sell",
+                depth_levels=[[Decimal("0.50"), 100], [Decimal("0.49"), 200]],
                 taker_fee_bps=Decimal("0"),
                 portfolio_namespace="shadow-champion",
             ),
@@ -438,6 +761,7 @@ async def _run_decision_execution_chain(env: dict, ctx: dict, episode: int, spec
         "trade_decision_id": created.trade_decision_id,
         "intent_id": intent_id,
         "action_set_id": action_sets[0],
+        "authorization_envelope_id": envelope["id"],
     }
 
 
@@ -550,7 +874,7 @@ async def _run_metric(env: dict, metric_input: MetricRunInput) -> str:
 
 async def _run_full_chain(env: dict) -> dict:
     """完整 frozen 链（含 metric），返回业务 hash 快照 + 链上下文。"""
-    ctx = await _seed(env, book_received_at=_seed_book_time())
+    ctx = await _seed(env, book_received_at=_seed_book_time(env))
     episode, spec_ids = await _build_blind_committed_episode(env, ctx)
     chain = await _run_decision_execution_chain(env, ctx, episode, spec_ids)
     obs_id, label_id = _seed_metric_observation(env, ctx, episode, spec_ids[0], chain)
@@ -588,9 +912,11 @@ async def _business_hashes(env: dict) -> dict:
                 "FROM trading.forecast_episodes ORDER BY episode_key"
             )),
             "processing_disposition": canonical_hash(await rows(
-                "SELECT episode_id, route_channel, first_rejected_gate, reason_code, "
-                "processing_disposition, action_eligible "
-                "FROM trading.episode_memberships ORDER BY episode_id"
+                "SELECT fe.episode_key, em.route_channel, em.first_rejected_gate, "
+                "em.reason_code, em.processing_disposition, em.action_eligible "
+                "FROM trading.episode_memberships em "
+                "JOIN trading.forecast_episodes fe ON fe.id=em.episode_id "
+                "ORDER BY fe.episode_key"
             )),
             "blind_commit": canonical_hash(await rows(
                 "SELECT submission_key, status, q::text, u::text, "
@@ -601,7 +927,11 @@ async def _business_hashes(env: dict) -> dict:
                 "SELECT intent_key, intent_hash, status "
                 "FROM trading.economic_action_intents ORDER BY intent_key"
             )),
-            "authorization_envelope": None,  # 0050/0051 表未建；由集成覆盖
+            "authorization_envelope": canonical_hash(await rows(
+                "SELECT envelope_key, authority, idempotency_key, fencing_token, "
+                "intent_hash, preflight_hash1, preflight_hash2, envelope_hash, status "
+                "FROM trading.execution_authorization_envelopes ORDER BY envelope_key"
+            )),
             "ledger": canonical_hash(
                 await rows(
                     "SELECT transaction_key, status, kind, portfolio_namespace "
@@ -628,6 +958,45 @@ async def _business_hashes(env: dict) -> dict:
 def _frozen_event_types() -> list[str]:
     log = load_scenario("event_log")
     return [ev["type"] for ev in log["events"]]
+
+
+def test_p_stability_hash_migration_is_explicit_and_code_bound():
+    """The one intentional frozen-hash migration records old/new/cause/code."""
+    snapshot = frozen_scenario("snapshot")
+    migration = next(
+        row for row in snapshot["hash_change_log"]
+        if row["field"] == "expected_business_hashes.economic_action_intent"
+    )
+    assert migration["old_hash"] == (
+        "e74c3ae6f5a6c0e26500883e2f1a0eab383f4cdafc9706e5bb457bc46c7fbf0d"
+    )
+    assert migration["new_hash"] == snapshot["expected_business_hashes"][
+        "economic_action_intent"
+    ]
+    assert migration["algorithm_code_hash"] == (
+        ACTION_IDENTITY_HASH_ALGORITHM_CODE_HASH
+    )
+    assert "sequence-backed IDs" in migration["reason"]
+    authorization = next(
+        row for row in snapshot["hash_change_log"]
+        if row["field"] == "expected_business_hashes.authorization_envelope"
+    )
+    assert authorization["new_hash"] == snapshot["expected_business_hashes"][
+        "authorization_envelope"
+    ]
+    assert authorization["algorithm_code_hash"] == (
+        EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH
+    )
+    processing = next(
+        row for row in snapshot["hash_change_log"]
+        if row["field"] == "expected_business_hashes.processing_disposition"
+    )
+    assert processing["new_hash"] == snapshot["expected_business_hashes"][
+        "processing_disposition"
+    ]
+    assert processing["algorithm_code_hash"] == (
+        _processing_hash_algorithm_code_hash()
+    )
 
 
 @pytest.mark.asyncio
@@ -665,9 +1034,16 @@ async def test_p_stability_double_replay_hashes_equal(stability_env):
     h2 = await _business_hashes(stability_env)
 
     assert h1 == h2, "double replay drift"
-    assert h1["authorization_envelope"] is None
+    assert h1["authorization_envelope"] is not None
+    assert h1["authorization_envelope"] != canonical_hash([])
+    if os.environ.get("V2_REFRESH_STABILITY_AUTH") == "1":
+        _refresh_frozen_authorization_hash(h1["authorization_envelope"])
+        expected = frozen_scenario("snapshot")["expected_business_hashes"]
+    if os.environ.get("V2_REFRESH_STABILITY_PROCESSING") == "1":
+        _refresh_frozen_processing_hash(h1["processing_disposition"])
+        expected = frozen_scenario("snapshot")["expected_business_hashes"]
     for key, value in expected.items():
-        if key in ("authorization_envelope", "authorization_envelope_note"):
+        if key == "authorization_envelope_note":
             continue
         assert h1[key] == value, f"business hash {key} drifted from frozen snapshot"
 
@@ -678,7 +1054,7 @@ async def test_p_stability_worker_restart_between_stages(stability_env):
     frozen = frozen_scenario("snapshot")
     expected = frozen["expected_business_hashes"]
 
-    ctx = await _seed(stability_env, book_received_at=_seed_book_time())
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
     episode, spec_ids = await _build_blind_committed_episode(stability_env, ctx)
 
     # 进程重启：dispose 全部连接，重建 engine/session。
@@ -690,8 +1066,10 @@ async def test_p_stability_worker_restart_between_stages(stability_env):
     await _run_metric(stability_env, _metric_input(ctx, obs_id, label_id, run_key=_METRIC_RUN_KEY))
 
     h = await _business_hashes(stability_env)
+    assert h["authorization_envelope"] is not None
+    assert h["authorization_envelope"] != canonical_hash([])
     for key, value in expected.items():
-        if key in ("authorization_envelope", "authorization_envelope_note"):
+        if key == "authorization_envelope_note":
             continue
         assert h[key] == value, f"business hash {key} drifted after worker restart"
 
@@ -702,7 +1080,7 @@ async def test_p_stability_transaction_rollback_no_half_evidence(stability_env):
     frozen = frozen_scenario("snapshot")
     expected = frozen["expected_business_hashes"]
 
-    ctx = await _seed(stability_env, book_received_at=_seed_book_time())
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
     episode, spec_ids = await _build_blind_committed_episode(stability_env, ctx)
     chain = await _run_decision_execution_chain(stability_env, ctx, episode, spec_ids)
     obs_id, label_id = _seed_metric_observation(stability_env, ctx, episode, spec_ids[0], chain)
@@ -724,19 +1102,21 @@ async def test_p_stability_transaction_rollback_no_half_evidence(stability_env):
     assert [tuple(r) for r in runs] == [(_METRIC_RUN_KEY, "COMPLETED")], runs
 
     h = await _business_hashes(stability_env)
+    assert h["authorization_envelope"] is not None
+    assert h["authorization_envelope"] != canonical_hash([])
     for key, value in expected.items():
-        if key in ("authorization_envelope", "authorization_envelope_note"):
+        if key == "authorization_envelope_note":
             continue
         assert h[key] == value, f"business hash {key} drifted after rollback"
 
 
 @pytest.mark.asyncio
-async def test_p_stability_duplicate_and_model_retry_fail_closed(stability_env):
-    """重复投递 / 模型 timeout 重试 fail closed：不双提交、不双记 Gate、业务 hash 不漂移。"""
+async def test_p_stability_duplicate_delivery_fail_closed(stability_env):
+    """重复投递 fail closed：不双提交、不双记 Gate、业务 hash 不漂移。"""
     frozen = frozen_scenario("snapshot")
     expected = frozen["expected_business_hashes"]
 
-    ctx = await _seed(stability_env, book_received_at=_seed_book_time())
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
     episode, spec_ids = await _build_blind_committed_episode(stability_env, ctx)
     chain = await _run_decision_execution_chain(stability_env, ctx, episode, spec_ids)
     obs_id, label_id = _seed_metric_observation(stability_env, ctx, episode, spec_ids[0], chain)
@@ -762,7 +1142,8 @@ async def test_p_stability_duplicate_and_model_retry_fail_closed(stability_env):
         ))).scalar_one()
     assert g7a_rows == 1
 
-    # 模型 timeout/partial failure → 同一 frozen 输入重试 run_g6：episode 已 BLIND_COMMITTED，fail closed。
+    # 已提交模型结果的重复投递必须 fail closed；真正的 timeout-before-commit
+    # fault injection 由下一个测试覆盖。
     forecast = ForecastLogic(stability_env["forecast"], stability_env["wf"])
     submission = ForecastSubmissionInput(
         submission_key="sub-p2",
@@ -792,10 +1173,64 @@ async def test_p_stability_duplicate_and_model_retry_fail_closed(stability_env):
     assert submissions == 1
 
     h = await _business_hashes(stability_env)
+    assert h["authorization_envelope"] is not None
+    assert h["authorization_envelope"] != canonical_hash([])
     for key, value in expected.items():
-        if key in ("authorization_envelope", "authorization_envelope_note"):
+        if key == "authorization_envelope_note":
             continue
         assert h[key] == value, f"business hash {key} drifted after duplicate/retry"
+
+
+@pytest.mark.asyncio
+async def test_p_stability_model_timeout_partial_failure_retries_same_seed(stability_env):
+    """G6 写完但 commit 前 timeout：全量回滚；同 seed 重试只产生一条确定性结果。"""
+    expected = frozen_scenario("snapshot")["expected_business_hashes"]
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
+    episode, spec_ids = await _build_blind_committed_episode(
+        stability_env,
+        ctx,
+        inject_g6_timeout_after_write=True,
+    )
+    chain = await _run_decision_execution_chain(
+        stability_env, ctx, episode, spec_ids,
+    )
+    obs_id, label_id = _seed_metric_observation(
+        stability_env, ctx, episode, spec_ids[0], chain,
+    )
+    await _run_metric(
+        stability_env,
+        _metric_input(ctx, obs_id, label_id, run_key=_METRIC_RUN_KEY),
+    )
+
+    async with UnitOfWork(stability_env["sessions"]) as uow:
+        submissions = (await uow.session.execute(text(
+            "SELECT submission_key, status FROM trading.forecast_submissions "
+            "WHERE episode_id=:episode ORDER BY id"
+        ), {"episode": episode})).fetchall()
+        leases = (await uow.session.execute(text(
+            "SELECT count(*) FROM trading.forecast_leases fl "
+            "JOIN trading.forecast_submissions fs ON fs.id=fl.submission_id "
+            "WHERE fs.episode_id=:episode"
+        ), {"episode": episode})).scalar_one()
+        outbox = (await uow.session.execute(text(
+            "SELECT aggregate_id,idempotency_key,payload "
+            "FROM trading.transactional_outbox "
+            "WHERE topic='trading.blind_commit.v1'"
+        ))).mappings().one()
+    assert [tuple(row) for row in submissions] == [("sub-p2", "BLIND_COMMITTED")]
+    assert leases == 1
+    assert outbox["aggregate_id"].endswith(":sub-p2")
+    assert outbox["idempotency_key"] == f"blind-commit:{outbox['aggregate_id']}"
+    assert set(outbox["payload"]) == {
+        "episode_key", "submission_key", "manifest_hash",
+    }
+
+    hashes = await _business_hashes(stability_env)
+    assert hashes["authorization_envelope"] not in (None, canonical_hash([]))
+    for key, value in expected.items():
+        if key == "authorization_envelope_note":
+            continue
+        assert hashes[key] == value, f"business hash {key} drifted after model timeout"
 
 
 @pytest.mark.asyncio
@@ -804,7 +1239,7 @@ async def test_p_stability_out_of_order_fail_closed(stability_env):
     frozen = frozen_scenario("snapshot")
     expected = frozen["expected_business_hashes"]
 
-    ctx = await _seed(stability_env, book_received_at=_seed_book_time())
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
     episode, spec_ids = await _build_blind_committed_episode(stability_env, ctx)
     chain = await _run_decision_execution_chain(stability_env, ctx, episode, spec_ids)
     obs_id, label_id = _seed_metric_observation(stability_env, ctx, episode, spec_ids[0], chain)
@@ -839,7 +1274,7 @@ async def test_p_stability_out_of_order_fail_closed(stability_env):
 
     h = await _business_hashes(stability_env)
     for key, value in expected.items():
-        if key in ("authorization_envelope", "authorization_envelope_note"):
+        if key == "authorization_envelope_note":
             continue
         assert h[key] == value, f"business hash {key} drifted after out-of-order attempt"
 
@@ -850,7 +1285,7 @@ async def test_p_stability_unconfirmed_write_fail_closed(stability_env):
     frozen = frozen_scenario("snapshot")
     expected = frozen["expected_business_hashes"]
 
-    ctx = await _seed(stability_env, book_received_at=_seed_book_time())
+    ctx = await _seed(stability_env, book_received_at=_seed_book_time(stability_env))
     episode, spec_ids = await _build_blind_committed_episode(stability_env, ctx)
 
     logic = DecisionLogic(stability_env["decision"], stability_env["wf"])

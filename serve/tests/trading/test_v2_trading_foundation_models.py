@@ -335,7 +335,10 @@ def test_fk_default_is_restrict_not_cascade():
         for fk in t.foreign_keys:
             if name == "artifact_lineage_edges":
                 assert fk.ondelete == "CASCADE"
-            elif fk.target_fullname.startswith("trading.secret_vault_versions"):
+            elif fk.name in {
+                "fk_secret_vault_versions_supersedes",
+                "fk_secret_access_events_version",
+            }:
                 assert fk.ondelete == "SET NULL"
             else:
                 assert fk.ondelete is None, f"{name} FK {fk.name} 应 RESTRICT"

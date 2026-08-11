@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
+from app.schemas.polymarket.clob_private import PrivateApiCredentials
 from app.schemas.polymarket.common import PolymarketError
-from app.schemas.polymarket.user_ws import UserOrderEvent
+from app.schemas.polymarket.user_ws import UserOrderEvent, parse_user_ws_frame
 from app.services.polymarket.base import REASON_EGRESS_TRIPWIRE
 from app.services.polymarket.user_ws_driver import UserWsDriver, UserWsPolicy
 
@@ -58,14 +60,32 @@ def _policy():
     )
 
 
+def _credentials() -> PrivateApiCredentials:
+    return PrivateApiCredentials(
+        api_key="fixture-api-key",
+        secret="fixture-secret",
+        passphrase="fixture-passphrase",
+    )
+
+
 @pytest.mark.asyncio
-async def test_connect_subscribes_and_sends_redacted_auth():
+async def test_connect_subscribes_with_exact_nested_auth_and_safe_receipt():
     connector, ws = _frame_ws([b'{"event_type":"pong"}'])
     driver = UserWsDriver("wss://fake/user", policy=_policy(), ws_connect=connector, clock=asyncio.get_event_loop().time)
-    await driver.connect(auth_token=None)
-    subscribe = ws.sent[0]
-    assert '"type":"user"' in subscribe
-    assert "REDACTED" in subscribe
+    credentials = _credentials()
+    await driver.connect(credentials)
+    assert json.loads(ws.sent[0]) == {
+        "auth": {
+            "apiKey": "fixture-api-key",
+            "secret": "fixture-secret",
+            "passphrase": "fixture-passphrase",
+        },
+        "type": "user",
+    }
+    persisted_views = repr(driver.receipts) + repr(credentials)
+    assert "fixture-api-key" not in persisted_views
+    assert "fixture-secret" not in persisted_views
+    assert "fixture-passphrase" not in persisted_views
     await driver.aclose()
 
 
@@ -73,7 +93,7 @@ async def test_connect_subscribes_and_sends_redacted_auth():
 async def test_next_frame_order_event_and_artifact_hash():
     connector, ws = _frame_ws([b'{"event_type":"order","order_id":"o1","token_id":"tok-1","side":"BUY","price":"0.5","size":"10"}'])
     driver = UserWsDriver("wss://fake/user", policy=_policy(), ws_connect=connector, clock=asyncio.get_event_loop().time)
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     message = await driver.next_frame()
     assert isinstance(message.frame, UserOrderEvent)
     assert message.frame.order_id == "o1"
@@ -86,7 +106,7 @@ async def test_next_frame_order_event_and_artifact_hash():
 async def test_ping_pong_keeps_alive():
     connector, ws = _frame_ws([])
     driver = UserWsDriver("wss://fake/user", policy=_policy(), ws_connect=connector, clock=asyncio.get_event_loop().time)
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     # 等待 ping 循环发出 PING 并收到 PONG。
     for _ in range(10):
         await asyncio.sleep(0.02)
@@ -106,7 +126,7 @@ async def test_disconnect_sets_terminal_reason_reconciling():
     ws = _DisconnectWs([])
     connector = lambda: _FakeWsConnector(ws)  # noqa: E731
     driver = UserWsDriver("wss://fake/user", policy=_policy(), ws_connect=connector, clock=asyncio.get_event_loop().time)
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     with pytest.raises(PolymarketError, match="wire_ws_disconnect"):
         await driver.next_frame()
     # 断线 → RECONCILING（调用方据此执行 REST 回补）。
@@ -118,11 +138,69 @@ async def test_disconnect_sets_terminal_reason_reconciling():
 async def test_egress_tripwire_without_transport():
     driver = UserWsDriver("wss://fake/user", policy=_policy(), clock=asyncio.get_event_loop().time)
     with pytest.raises(PolymarketError, match="wire_egress_tripwire"):
-        await driver.connect(auth_token=None)
+        await driver.connect(_credentials())
 
 
 def test_frame_unknown_preserved():
-    from app.schemas.polymarket.user_ws import parse_user_ws_frame
-
     frame = parse_user_ws_frame('{"event_type":"weird"}')
     assert frame.event_type == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_private_frame_is_not_retained_and_sensitive_extras_are_removed():
+    raw_frame = json.dumps(
+        {
+            "event_type": "order",
+            "order_id": "o1",
+            "token_id": "tok-1",
+            "side": "BUY",
+            "price": "0.5",
+            "size": "10",
+            "signature": "private-frame-signature",
+            "apiKey": "private-frame-api-key",
+            "provider_note": "retained",
+            "future": {
+                "secret": "nested-private-secret",
+                "safe_value": "retained-nested",
+            },
+        },
+        separators=(",", ":"),
+    )
+    connector, _ws = _frame_ws([raw_frame])
+    driver = UserWsDriver(
+        "wss://fake/user",
+        policy=_policy(),
+        ws_connect=connector,
+        clock=asyncio.get_event_loop().time,
+    )
+    await driver.connect(_credentials())
+    message = await driver.next_frame()
+
+    assert not hasattr(message, "raw_text")
+    assert not hasattr(message.frame, "raw_text")
+    assert message.frame.raw_extra == {
+        "provider_note": "retained",
+        "future": {"safe_value": "retained-nested"},
+    }
+    persisted_views = (
+        repr(message)
+        + repr(message.frame)
+        + json.dumps(message.frame.model_dump(mode="json"), sort_keys=True)
+        + repr(message.receipts)
+    )
+    for private_value in (
+        raw_frame,
+        "private-frame-signature",
+        "private-frame-api-key",
+        "nested-private-secret",
+    ):
+        assert private_value not in persisted_views
+    await driver.aclose()
+
+
+def test_malformed_private_frame_only_retains_controlled_error():
+    frame = parse_user_ws_frame("private-raw-frame-secret")
+    assert frame.event_type == "unknown"
+    assert frame.parse_error == "malformed_json"
+    assert "private-raw-frame-secret" not in repr(frame)
+    assert "private-raw-frame-secret" not in json.dumps(frame.model_dump(mode="json"))

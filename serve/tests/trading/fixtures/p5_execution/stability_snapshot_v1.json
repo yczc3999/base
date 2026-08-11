@@ -7,13 +7,51 @@
     "universe": "e4fbf2ae0606d34f2061cd889e43c2c7e24c2373d1e1feef6995af534a7d0500",
     "opportunity": "bdd562c94355042d1e64378983dd89c6a4884cd7c69ca58965032c8b866a3995",
     "episode_identity": "c67e88ec2017325d640706050dadd95c81abd3938bc61ea63402b836968a7abd",
-    "processing_disposition": "876cdfa72a99cf30b930fc6a9b6b7eef8e44465bec0a9a33cf0965fbc89ed9d1",
+    "processing_disposition": "bdb6029171ee3149d1ca49c3e4e5bc12b4441bee58ddd213b71165c67c796089",
     "blind_commit": "5b1f9611d582368bd69559e34e9e01738654993f65602f187abded8c994fce2a",
-    "economic_action_intent": "e74c3ae6f5a6c0e26500883e2f1a0eab383f4cdafc9706e5bb457bc46c7fbf0d",
-    "authorization_envelope": null,
-    "authorization_envelope_note": "execution_authorization_envelopes table is created by 0050/0051 (Checkpoint B/C); at b1000041 it does not exist, so this hash is deliberately null and must be covered by the 0050/0051 integration tests",
-    "ledger": "6ad4772f8e2faa81451ec58d05b66f07bed69a98040da86d29601305f55a3a79",
+    "economic_action_intent": "b253e214841747e15f8eed7f124ec0641dcb2532718a3aa8abfdb5360a970022",
+    "authorization_envelope": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
+    "authorization_envelope_note": "real b1000051 reduce-only envelope; authority/market/envelope v2 binds natural identity, immutable market facts, neg-risk mode, and the frozen official exchange address without surrogate IDs",
+    "ledger": "b25d71f52f90ed33aaac4efabf70ff06abb02bd3fadcaa2816d9e914c293f585",
     "metric_artifact": "ce37d4946b7933eebeac083e0e93dd5816a4a09c894af41f78229b687e70984f"
   },
-  "content_hash": "6fd331038483a0d9b95e71ecafa43e4599e20398b8b07528f93f999429b4892d"
+  "hash_change_log": [
+    {
+      "field": "expected_business_hashes.economic_action_intent",
+      "old_hash": "e74c3ae6f5a6c0e26500883e2f1a0eab383f4cdafc9706e5bb457bc46c7fbf0d",
+      "new_hash": "b253e214841747e15f8eed7f124ec0641dcb2532718a3aa8abfdb5360a970022",
+      "reason": "decision action identity v2 replaces sequence-backed IDs with sorted natural keys/version hashes; the real authorization evidence uses the release-valid SELL_TOKEN_TO_REDUCE path under shadow zero-capital policy",
+      "algorithm_code_hash": "d7d82c58ff38edc3094c888e835cdb12d5a4b6e6a483ca99870876e2cd1aaba7"
+    },
+    {
+      "field": "expected_business_hashes.authorization_envelope",
+      "old_hash": "46e903beb1cfa760098c08832202734f80c71c18a29a42342f4a38c40340d372",
+      "new_hash": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
+      "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after market preflight bound gamma market ID, condition ID, market content hash, neg-risk mode, and the frozen official Standard/NegRisk exchange address",
+      "algorithm_code_hash": "52323b0b308897b2273cabdd29af803dc5e4078f65dc3a8b5a2fa4f4ab5e07a0",
+      "history": [
+        {
+          "old_hash": null,
+          "new_hash": "46e903beb1cfa760098c08832202734f80c71c18a29a42342f4a38c40340d372",
+          "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after authority/market/envelope v2 removed all surrogate IDs",
+          "algorithm_code_hash": "52323b0b308897b2273cabdd29af803dc5e4078f65dc3a8b5a2fa4f4ab5e07a0"
+        }
+      ]
+    },
+    {
+      "field": "expected_business_hashes.ledger",
+      "old_hash": "6ad4772f8e2faa81451ec58d05b66f07bed69a98040da86d29601305f55a3a79",
+      "new_hash": "b25d71f52f90ed33aaac4efabf70ff06abb02bd3fadcaa2816d9e914c293f585",
+      "reason": "the shadow zero-capital authorization fixture now exercises the policy-valid risk-reducing fill and its balanced ledger projection",
+      "algorithm_code_hash": "393a851d91b57d1a7b12ee533c60937d1f345d63472bebb541f67fede6ed374d"
+    },
+    {
+      "field": "expected_business_hashes.processing_disposition",
+      "old_hash": "876cdfa72a99cf30b930fc6a9b6b7eef8e44465bec0a9a33cf0965fbc89ed9d1",
+      "new_hash": "bdb6029171ee3149d1ca49c3e4e5bc12b4441bee58ddd213b71165c67c796089",
+      "reason": "P-stability projection replaces episode_id with episode_key so the evidence hash is independent of database sequence allocation",
+      "algorithm_code_hash": "a4db998bd994976f8dfa48feb62307ea530f192f7f37fc8133ecf44fa922b196"
+    }
+  ],
+  "content_hash": "dcd8ce0409758b26f063d77262771be0b4035d7c834e03766de5c51cf1b77446"
 }

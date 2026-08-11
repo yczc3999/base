@@ -164,15 +164,9 @@ class VaultRepository:
         return result.rowcount == 1
 
     async def activate_version(self, session: AsyncSession, *, version_id: int) -> bool:
-        """CAS：retired→active；已是 active 或缺失返回 False。单 ACTIVE 由 DB trigger 强制。"""
-        result = await session.execute(
-            text(
-                "UPDATE trading.secret_vault_versions SET status='active' "
-                "WHERE id=:v AND status='retired'"
-            ),
-            {"v": version_id},
-        )
-        return result.rowcount == 1
+        """Historical ciphertext is never reactivated; rotation always appends a new version."""
+        del session, version_id
+        raise RuntimeError("vault_version_reactivation_forbidden")
 
     async def insert_access_event(
         self,

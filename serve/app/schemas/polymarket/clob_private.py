@@ -12,13 +12,36 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
 from app.schemas.polymarket.common import DecimalPrice, DecimalSize, PolymarketModel
+
+
+@dataclass(frozen=True, slots=True)
+class PrivateApiCredentials:
+    """Short-lived L2/User-WS credentials.
+
+    The object deliberately has no serialisation helper and its representation
+    never includes credential material.  Callers should create it inside an
+    authorised vault window and discard it after the wire call.
+    """
+
+    api_key: str = field(repr=False)
+    secret: str = field(repr=False)
+    passphrase: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        for name in ("api_key", "secret", "passphrase"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{name}_required")
+
+    def __repr__(self) -> str:
+        return "PrivateApiCredentials([REDACTED])"
 
 
 class PrivateOrder(PolymarketModel):

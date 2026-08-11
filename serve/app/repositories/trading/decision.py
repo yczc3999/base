@@ -379,8 +379,14 @@ class DecisionRepository:
     ) -> list[dict[str, Any]]:
         result = await session.execute(
             text(
-                "SELECT * FROM trading.action_candidates WHERE trade_decision_id=:d "
-                "ORDER BY contract_spec_id, token_id, action_type"
+                "SELECT ac.*, cs.contract_key, cs.version_no AS contract_spec_version, "
+                "       cs.content_hash AS contract_spec_hash, "
+                "       pt.token_id AS external_token_id "
+                "FROM trading.action_candidates ac "
+                "JOIN trading.contract_specs cs ON cs.id=ac.contract_spec_id "
+                "JOIN trading.pm_tokens pt ON pt.id=ac.token_id "
+                "WHERE ac.trade_decision_id=:d "
+                "ORDER BY cs.contract_key, cs.content_hash, pt.token_id, ac.action_type"
             ),
             {"d": trade_decision_id},
         )
@@ -539,13 +545,17 @@ class DecisionRepository:
             text(
                 "SELECT fe.id AS episode_id, fe.episode_key, fe.status AS episode_status, "
                 "       fe.objective_contract_id, fe.strategy_version_id, "
-                "       fs.id AS submission_id, fs.Q, fs.forecast_input_manifest_id, "
+                "       fs.id AS submission_id, fs.submission_key, fs.Q, "
+                "       fs.contract_schema_prior_evidence_hash, fs.algorithm_hash, "
+                "       fim.manifest_hash AS forecast_input_manifest_hash, "
                 "       fl.id AS lease_id, fl.valid_until, fl.evidence_hash, fl.schema_hash, "
                 "       fl.spec_hash, "
                 "       c.cohort_key, c.release_manifest_id, c.policy_hashes "
                 "FROM trading.forecast_episodes fe "
                 "JOIN trading.forecast_submissions fs ON fs.episode_id=fe.id "
                 "  AND fs.status='BLIND_COMMITTED' "
+                "JOIN trading.forecast_input_manifests fim "
+                "  ON fim.id=fs.forecast_input_manifest_id "
                 "LEFT JOIN trading.forecast_leases fl ON fl.submission_id=fs.id "
                 "JOIN trading.decision_opportunities o ON o.id=fe.decision_opportunity_id "
                 "JOIN trading.evaluation_cohorts c ON c.id=o.cohort_id "
@@ -579,7 +589,8 @@ class DecisionRepository:
     ) -> dict[str, Any] | None:
         result = await session.execute(
             text(
-                "SELECT r.id AS release_manifest_id, r.release_name, r.status AS release_status, "
+                "SELECT r.id AS release_manifest_id, r.release_name, "
+                "       r.total_hash AS release_hash, r.status AS release_status, "
                 "       r.execution_spec_version_id, r.capital_permission_manifest_id, "
                 "       es.status AS exec_spec_status, es.content_hash AS exec_spec_hash, "
                 "       es.content AS exec_spec_content, es.created_at AS exec_spec_frozen_at, "
@@ -621,9 +632,11 @@ class DecisionRepository:
         suffix = " FOR UPDATE OF td" if for_update else ""
         result = await session.execute(
             text(
-                "SELECT td.*, fe.status AS episode_status, fe.component_version_id, "
-                "       cv.component_id, fs.status AS submission_status, fs.q AS committed_q, "
-                "       fs.u AS committed_u, fl.valid_until AS lease_valid_until, "
+                "SELECT td.*, fe.episode_key, fe.status AS episode_status, "
+                "       fe.component_version_id, cv.component_id, "
+                "       fs.submission_key, fs.status AS submission_status, "
+                "       fs.q AS committed_q, fs.u AS committed_u, "
+                "       fl.valid_until AS lease_valid_until, "
                 "       r.status AS release_status, es.status AS exec_spec_status, "
                 "       es.content AS exec_spec_content, es.content_hash AS exec_spec_hash, "
                 "       es.created_at AS exec_spec_frozen_at, cp.status AS capital_status, "

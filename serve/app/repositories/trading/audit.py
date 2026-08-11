@@ -17,6 +17,14 @@ def _rows(result) -> list[dict[str, Any]]:
     return [dict(zip(keys, row)) for row in result.fetchall()]
 
 
+def _assert_exact_material(
+    actual: dict[str, Any], expected: dict[str, Any], *, error_prefix: str
+) -> None:
+    for field, value in expected.items():
+        if actual[field] != value:
+            raise RuntimeError(f"{error_prefix}_idempotency_mismatch:{field}")
+
+
 class AuditRepository:
     """replay/audit SQL；不持有状态。"""
 
@@ -186,7 +194,19 @@ class AuditRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("workflow_event_claim_lost")
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        _assert_exact_material(
+            existing_row,
+            {
+                "event_type": event_type,
+                "aggregate_type": aggregate_type,
+                "aggregate_id": aggregate_id,
+                "payload_hash": payload_hash,
+                "payload": payload,
+            },
+            error_prefix="workflow_event",
+        )
+        return existing_row
 
     async def insert_external_call_attempt(
         self,
@@ -228,7 +248,24 @@ class AuditRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("external_call_attempt_claim_lost")
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        _assert_exact_material(
+            existing_row,
+            {
+                "driver": driver,
+                "endpoint": endpoint,
+                "method": method,
+                "request_hash": request_hash,
+                "response_hash": response_hash,
+                "status_code": status_code,
+                "latency_ms": latency_ms,
+                "rate_limit_remaining": rate_limit_remaining,
+                "error_reason": error_reason,
+                "fence_token": fence_token,
+            },
+            error_prefix="external_call_attempt",
+        )
+        return existing_row
 
     async def insert_alert_event(
         self,
@@ -258,4 +295,14 @@ class AuditRepository:
         existing_rows = _rows(existing)
         if not existing_rows:
             raise RuntimeError("alert_event_claim_lost")
-        return existing_rows[0]
+        existing_row = existing_rows[0]
+        _assert_exact_material(
+            existing_row,
+            {
+                "severity": severity,
+                "code": code,
+                "message_redacted": message_redacted,
+            },
+            error_prefix="alert_event",
+        )
+        return existing_row

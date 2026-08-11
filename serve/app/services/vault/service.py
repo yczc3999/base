@@ -1,20 +1,17 @@
-"""VaultService：envelope encryption 业务编排（WP-05 技术决策 10–11）。
+"""Identity-bound envelope-encryption orchestration for the trading vault.
 
-- 每次 encrypt/decrypt/rotate/deny 追加 access event（identity/purpose/entry/version/
-  key version/result/reason），绝不保存 secret。
-- master key 不入 DB：调用方提供 keyring bytes（config 只给 keyring 引用）。
-- AAD 由 DB 中 entry 的 name/secret_kind/runtime_identity 与调用方 identity/account/purpose
-  构建；错误 identity/AAD/tamper/未知 key version 一律认证失败。
-- 轮换顺序：encrypt new → decrypt/verify old → 原子 activate new/retire old（同一 UoW）。
-- secret 明文绝不写 log / exception / manifest。
+Failure auditing is deliberately separated from the caller's unit of work.  A
+``failure_audit`` callback receives a redacted event and is responsible for its
+own durable transaction.  The callback is never given the caller's session.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
+import hmac
 import logging
-from typing import Any, Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any
 
 from app.services.vault.envelope import (
     VaultAuthError,
@@ -31,17 +28,31 @@ from app.services.vault.envelope import (
 logger = logging.getLogger(__name__)
 
 Keyring = Mapping[tuple[str, str], bytes]
+FailureAuditSink = Callable[[Mapping[str, Any]], Awaitable[None]]
 
 
 class VaultService:
-    """依赖注入 repository + keyring；所有写操作在同一外层 UoW 内由调用方提交。"""
+    """Coordinate vault crypto and persistence inside a caller-owned UoW."""
 
-    def __init__(self, repo: Any, keyring: Keyring, *, env: str = "dev") -> None:
+    def __init__(
+        self,
+        repo: Any,
+        keyring: Keyring,
+        *,
+        env: str = "dev",
+        runtime_identity: str,
+        failure_audit: FailureAuditSink | None = None,
+    ) -> None:
+        if not isinstance(runtime_identity, str) or not runtime_identity.strip():
+            raise ValueError("vault_runtime_identity_required")
         self._repo = repo
         self._keyring = keyring
         self._env = env
-
-    # ---- helpers ----
+        # Identity is supplied by the execution-plane composition root, never by a
+        # per-call DTO.  Calls still carry an identity for explicit audit evidence,
+        # but cannot use that caller-controlled string to impersonate another runtime.
+        self._runtime_identity = runtime_identity.strip()
+        self._failure_audit_sink = failure_audit
 
     @staticmethod
     def _aad_context(
@@ -68,19 +79,41 @@ class VaultService:
             "key_version": key_version,
         }
 
-    def _build_aad(self, entry: dict[str, Any], *, account: str | None, purpose: str,
-                   secret_version: int, key_id: str, key_version: str) -> bytes:
+    def _build_aad(
+        self,
+        entry: dict[str, Any],
+        *,
+        account: str | None,
+        identity: str,
+        purpose: str,
+        secret_version: int,
+        key_id: str,
+        key_version: str,
+    ) -> bytes:
+        # ``identity`` has already passed _require_identity.  Binding that
+        # verified caller value prevents a database value from silently
+        # authenticating a forged caller identity.
         return build_aad(
             env=self._env,
             entry=entry["name"],
             secret_kind=entry["secret_kind"],
             account=account,
-            runtime_identity=entry["runtime_identity"],
+            runtime_identity=identity,
             purpose=purpose,
             secret_version=secret_version,
             key_id=key_id,
             key_version=key_version,
         )
+
+    def _require_identity(self, entry: Mapping[str, Any], identity: str) -> None:
+        expected = entry.get("runtime_identity")
+        if (
+            not isinstance(identity, str)
+            or not hmac.compare_digest(self._runtime_identity, identity)
+            or not isinstance(expected, str)
+            or not hmac.compare_digest(expected, self._runtime_identity)
+        ):
+            raise VaultAuthError("vault_runtime_identity_mismatch")
 
     async def _audit(
         self,
@@ -106,13 +139,90 @@ class VaultService:
             result_reason=reason,
         )
 
-    # ---- public API ----
+    async def _emit_failure_audit(self, event: Mapping[str, Any]) -> None:
+        """Emit outside the caller UoW; the injected sink owns durability.
+
+        A repository can explicitly expose ``insert_durable_failure_event`` as
+        an independent-transaction hook.  The logging fallback is intentionally
+        labelled unconfigured and is not represented as a durable DB audit.
+        """
+        sink = self._failure_audit_sink
+        if sink is not None:
+            await sink(dict(event))
+            return
+        repo_hook = getattr(self._repo, "insert_durable_failure_event", None)
+        if callable(repo_hook):
+            await repo_hook(dict(event))
+            return
+        logger.error(
+            "vault.failure_audit.unconfigured operation=%s entry_id=%s result=%s reason=%s",
+            event["operation"], event["entry_id"], event["result"], event["reason"],
+        )
+
+    async def _record_failure(
+        self,
+        session: Any,
+        *,
+        operation: str,
+        entry_id: int,
+        secret_version_id: int | None,
+        identity: str,
+        purpose: str,
+        key_version: str | None,
+        exc: Exception,
+        entry_exists: bool,
+    ) -> None:
+        auth_failure = isinstance(exc, (VaultAuthError, VaultKeyError))
+        identity_failure = isinstance(exc, VaultAuthError) and str(exc) == (
+            "vault_runtime_identity_mismatch"
+        )
+        result = "AUTH_FAILED" if auth_failure else f"{operation.upper()}_FAILED"
+        reason = "identity_mismatch" if identity_failure else type(exc).__name__
+        # Preserve the existing in-UoW access trail when its FK can be valid,
+        # but never rely on it for failure durability.
+        if entry_exists:
+            try:
+                await self._audit(
+                    session,
+                    entry_id=entry_id,
+                    secret_version_id=secret_version_id,
+                    identity=identity,
+                    purpose=purpose,
+                    key_version=key_version,
+                    result=result,
+                    reason=reason,
+                )
+            except Exception as audit_exc:  # keep the original vault failure
+                logger.error(
+                    "vault.transactional_failure_audit.failed operation=%s entry_id=%s error=%s",
+                    operation, entry_id, type(audit_exc).__name__,
+                )
+        event = {
+            "operation": operation,
+            "entry_id": entry_id,
+            "secret_version_id": secret_version_id,
+            "identity": identity,
+            "purpose": purpose,
+            "key_version": key_version,
+            "result": result,
+            "reason": reason,
+        }
+        try:
+            await self._emit_failure_audit(event)
+        except Exception as audit_exc:  # preserve the security-relevant cause
+            logger.error(
+                "vault.failure_audit.failed operation=%s entry_id=%s error=%s",
+                operation, entry_id, type(audit_exc).__name__,
+            )
 
     async def create_entry(
         self, session: Any, *, name: str, secret_kind: str, runtime_identity: str
     ) -> dict[str, Any]:
-        """创建 vault entry（稳定 identity，无 secret 内容）。"""
-        if secret_kind not in ("generic", "api_credential", "signer_private_key", "l2_secret", "passphrase"):
+        if not hmac.compare_digest(self._runtime_identity, runtime_identity):
+            raise VaultAuthError("vault_runtime_identity_mismatch")
+        if secret_kind not in (
+            "generic", "api_credential", "signer_private_key", "l2_secret", "passphrase"
+        ):
             raise VaultCryptoError(f"vault_secret_kind_unknown:{secret_kind}")
         return await self._repo.insert_entry(
             session, name=name, secret_kind=secret_kind, runtime_identity=runtime_identity,
@@ -131,50 +241,60 @@ class VaultService:
         key_version: str,
         nonce: bytes | None = None,
     ) -> dict[str, Any]:
-        """encrypt + insert version + access event（调用方 UoW 内原子）。"""
-        entry = await self._repo.get_entry(session, entry_id=entry_id)
-        if entry is None:
-            raise VaultKeyError("vault_entry_missing")
-        version_no = await self._repo.next_version_no(session, entry_id=entry_id)
-        nonce_bytes = nonce or new_nonce()
-        aad = self._build_aad(
-            entry, account=account, purpose=purpose, secret_version=version_no,
-            key_id=key_id, key_version=key_version,
-        )
-        key = resolve_key(self._keyring, key_id, key_version)
-        packed = envelope_encrypt(
-            secret, key=key, key_id=key_id, key_version=key_version,
-            nonce=nonce_bytes, aad=aad,
-        )
-        version = await self._repo.insert_version(
-            session,
-            entry_id=entry_id,
-            version_no=version_no,
-            key_id=key_id,
-            key_version=key_version,
-            nonce=nonce_bytes.hex(),
-            ciphertext=packed,
-            aad_context=self._aad_context(
-                env=self._env, entry=entry["name"], secret_kind=entry["secret_kind"],
-                account=account, runtime_identity=entry["runtime_identity"],
-                purpose=purpose, secret_version=version_no,
-                key_id=key_id, key_version=key_version,
-            ),
-            aad_hash=aad_sha256(aad),
-            ciphertext_hash=hashlib.sha256(packed).hexdigest(),
-            algorithm="aes-256-gcm",
-            status="active",
-        )
-        await self._audit(
-            session, entry_id=entry_id, secret_version_id=version["id"],
-            identity=identity, purpose=purpose, key_version=key_version,
-            result="STORED", reason="success",
-        )
-        logger.info(
-            "vault.secret.stored entry_id=%s version_id=%s purpose=%s identity=%s key_version=%s",
-            entry_id, version["id"], purpose, identity, key_version,
-        )
-        return version
+        entry: dict[str, Any] | None = None
+        version_id: int | None = None
+        try:
+            entry = await self._repo.get_entry(session, entry_id=entry_id)
+            if entry is None:
+                raise VaultKeyError("vault_entry_missing")
+            self._require_identity(entry, identity)
+            version_no = await self._repo.next_version_no(session, entry_id=entry_id)
+            nonce_bytes = nonce or new_nonce()
+            aad = self._build_aad(
+                entry, account=account, identity=identity, purpose=purpose,
+                secret_version=version_no, key_id=key_id, key_version=key_version,
+            )
+            key = resolve_key(self._keyring, key_id, key_version)
+            packed = envelope_encrypt(
+                secret, key=key, key_id=key_id, key_version=key_version,
+                nonce=nonce_bytes, aad=aad,
+            )
+            version = await self._repo.insert_version(
+                session,
+                entry_id=entry_id,
+                version_no=version_no,
+                key_id=key_id,
+                key_version=key_version,
+                nonce=nonce_bytes.hex(),
+                ciphertext=packed,
+                aad_context=self._aad_context(
+                    env=self._env, entry=entry["name"], secret_kind=entry["secret_kind"],
+                    account=account, runtime_identity=identity, purpose=purpose,
+                    secret_version=version_no, key_id=key_id, key_version=key_version,
+                ),
+                aad_hash=aad_sha256(aad),
+                ciphertext_hash=hashlib.sha256(packed).hexdigest(),
+                algorithm="aes-256-gcm",
+                status="active",
+            )
+            version_id = version["id"]
+            await self._audit(
+                session, entry_id=entry_id, secret_version_id=version_id,
+                identity=identity, purpose=purpose, key_version=key_version,
+                result="STORED", reason="success",
+            )
+            logger.info(
+                "vault.secret.stored entry_id=%s version_id=%s purpose=%s identity=%s key_version=%s",
+                entry_id, version_id, purpose, identity, key_version,
+            )
+            return version
+        except Exception as exc:
+            await self._record_failure(
+                session, operation="store", entry_id=entry_id,
+                secret_version_id=version_id, identity=identity, purpose=purpose,
+                key_version=key_version, exc=exc, entry_exists=entry is not None,
+            )
+            raise
 
     async def read_secret(
         self,
@@ -186,44 +306,47 @@ class VaultService:
         identity: str,
         account: str | None = None,
     ) -> bytes:
-        """decrypt + verify AAD + access event；任何认证失败抛固定异常。"""
-        entry = await self._repo.get_entry(session, entry_id=entry_id)
-        if entry is None:
-            raise VaultKeyError("vault_entry_missing")
-        version = await self._repo.get_version(session, version_id=version_id)
-        if version is None or version["entry_id"] != entry_id:
-            raise VaultKeyError("vault_version_missing")
-        aad = self._build_aad(
-            entry, account=account, purpose=purpose,
-            secret_version=version["version_no"],
-            key_id=version["key_id"], key_version=version["key_version"],
-        )
+        entry: dict[str, Any] | None = None
+        version: dict[str, Any] | None = None
         try:
+            entry = await self._repo.get_entry(session, entry_id=entry_id)
+            if entry is None:
+                raise VaultKeyError("vault_entry_missing")
+            self._require_identity(entry, identity)
+            version = await self._repo.get_version(session, version_id=version_id)
+            if version is None or version["entry_id"] != entry_id:
+                raise VaultKeyError("vault_version_missing")
+            aad = self._build_aad(
+                entry, account=account, identity=identity, purpose=purpose,
+                secret_version=version["version_no"], key_id=version["key_id"],
+                key_version=version["key_version"],
+            )
             if aad_sha256(aad) != version["aad_hash"]:
                 raise VaultAuthError("vault_aad_context_mismatch")
             key = resolve_key(self._keyring, version["key_id"], version["key_version"])
             plaintext = envelope_decrypt(
                 version["ciphertext"], key=key, key_id=version["key_id"],
-                key_version=version["key_version"],
-                nonce=bytes.fromhex(version["nonce"]), aad=aad,
+                key_version=version["key_version"], nonce=bytes.fromhex(version["nonce"]),
+                aad=aad,
             )
-        except (VaultAuthError, VaultKeyError) as exc:
             await self._audit(
                 session, entry_id=entry_id, secret_version_id=version_id,
                 identity=identity, purpose=purpose, key_version=version["key_version"],
-                result="AUTH_FAILED", reason="decrypt",
+                result="READ", reason="success",
+            )
+            logger.info(
+                "vault.secret.read entry_id=%s version_id=%s purpose=%s identity=%s",
+                entry_id, version_id, purpose, identity,
+            )
+            return plaintext
+        except Exception as exc:
+            await self._record_failure(
+                session, operation="read", entry_id=entry_id, secret_version_id=version_id,
+                identity=identity, purpose=purpose,
+                key_version=version.get("key_version") if version else None,
+                exc=exc, entry_exists=entry is not None,
             )
             raise
-        await self._audit(
-            session, entry_id=entry_id, secret_version_id=version_id,
-            identity=identity, purpose=purpose, key_version=version["key_version"],
-            result="READ", reason="success",
-        )
-        logger.info(
-            "vault.secret.read entry_id=%s version_id=%s purpose=%s identity=%s",
-            entry_id, version_id, purpose, identity,
-        )
-        return plaintext
 
     async def rotate_secret(
         self,
@@ -238,90 +361,121 @@ class VaultService:
         key_version: str,
         nonce: bytes | None = None,
     ) -> dict[str, Any]:
-        """encrypt new → decrypt/verify old → 原子 activate new/retire old（同一 UoW）。"""
-        entry = await self._repo.get_entry(session, entry_id=entry_id)
-        if entry is None:
-            raise VaultKeyError("vault_entry_missing")
-        active = await self._repo.get_active_version(session, entry_id=entry_id)
-        if active is not None:
-            old_aad = self._build_aad(
-                entry, account=account, purpose=purpose,
-                secret_version=active["version_no"],
-                key_id=active["key_id"], key_version=active["key_version"],
+        entry: dict[str, Any] | None = None
+        active: dict[str, Any] | None = None
+        new_version_id: int | None = None
+        try:
+            entry = await self._repo.get_entry(session, entry_id=entry_id)
+            if entry is None:
+                raise VaultKeyError("vault_entry_missing")
+            self._require_identity(entry, identity)
+            # The production repository supports FOR UPDATE; rotation must hold
+            # this lock through insert/retire in the caller's transaction.
+            active = await self._repo.get_active_version(
+                session, entry_id=entry_id, for_update=True,
             )
-            try:
+            version_no = await self._repo.next_version_no(session, entry_id=entry_id)
+            nonce_bytes = nonce or new_nonce()
+            aad = self._build_aad(
+                entry, account=account, identity=identity, purpose=purpose,
+                secret_version=version_no, key_id=key_id, key_version=key_version,
+            )
+            key = resolve_key(self._keyring, key_id, key_version)
+            packed = envelope_encrypt(
+                secret, key=key, key_id=key_id, key_version=key_version,
+                nonce=nonce_bytes, aad=aad,
+            )
+            # Verify the newly-produced ciphertext before the first DB mutation.
+            verified = envelope_decrypt(
+                packed, key=key, key_id=key_id, key_version=key_version,
+                nonce=nonce_bytes, aad=aad,
+            )
+            if not hmac.compare_digest(verified, secret):
+                raise VaultAuthError("vault_rotation_verification_failed")
+
+            # Preserve explicit historical-version readability: after the new
+            # ciphertext has been verified, authenticate the version that will
+            # be retired before mutating lifecycle state.
+            if active is not None:
+                old_aad = self._build_aad(
+                    entry, account=account, identity=identity, purpose=purpose,
+                    secret_version=active["version_no"], key_id=active["key_id"],
+                    key_version=active["key_version"],
+                )
                 if aad_sha256(old_aad) != active["aad_hash"]:
                     raise VaultAuthError("vault_aad_context_mismatch")
-                old_key = resolve_key(self._keyring, active["key_id"], active["key_version"])
+                old_key = resolve_key(
+                    self._keyring, active["key_id"], active["key_version"],
+                )
                 envelope_decrypt(
                     active["ciphertext"], key=old_key, key_id=active["key_id"],
                     key_version=active["key_version"],
                     nonce=bytes.fromhex(active["nonce"]), aad=old_aad,
                 )
-            except (VaultAuthError, VaultKeyError) as exc:
-                await self._audit(
-                    session, entry_id=entry_id, secret_version_id=active["id"],
-                    identity=identity, purpose=purpose, key_version=active["key_version"],
-                    result="ROTATE_VERIFY_FAILED", reason="decrypt",
+
+            supersedes = active["id"] if active is not None else None
+            new_version = await self._repo.insert_version(
+                session,
+                entry_id=entry_id,
+                version_no=version_no,
+                key_id=key_id,
+                key_version=key_version,
+                nonce=nonce_bytes.hex(),
+                ciphertext=packed,
+                aad_context=self._aad_context(
+                    env=self._env, entry=entry["name"], secret_kind=entry["secret_kind"],
+                    account=account, runtime_identity=identity, purpose=purpose,
+                    secret_version=version_no, key_id=key_id, key_version=key_version,
+                ),
+                aad_hash=aad_sha256(aad),
+                ciphertext_hash=hashlib.sha256(packed).hexdigest(),
+                algorithm="aes-256-gcm",
+                status="active",
+                supersedes=supersedes,
+            )
+            new_version_id = new_version["id"]
+            if active is not None:
+                retired = await self._repo.mark_version_retired(
+                    session, version_id=active["id"],
                 )
-                raise
-        version_no = await self._repo.next_version_no(session, entry_id=entry_id)
-        nonce_bytes = nonce or new_nonce()
-        aad = self._build_aad(
-            entry, account=account, purpose=purpose, secret_version=version_no,
-            key_id=key_id, key_version=key_version,
-        )
-        key = resolve_key(self._keyring, key_id, key_version)
-        packed = envelope_encrypt(
-            secret, key=key, key_id=key_id, key_version=key_version,
-            nonce=nonce_bytes, aad=aad,
-        )
-        supersedes = active["id"] if active is not None else None
-        new_version = await self._repo.insert_version(
-            session,
-            entry_id=entry_id,
-            version_no=version_no,
-            key_id=key_id,
-            key_version=key_version,
-            nonce=nonce_bytes.hex(),
-            ciphertext=packed,
-            aad_context=self._aad_context(
-                env=self._env, entry=entry["name"], secret_kind=entry["secret_kind"],
-                account=account, runtime_identity=entry["runtime_identity"],
-                purpose=purpose, secret_version=version_no,
-                key_id=key_id, key_version=key_version,
-            ),
-            aad_hash=aad_sha256(aad),
-            ciphertext_hash=hashlib.sha256(packed).hexdigest(),
-            algorithm="aes-256-gcm",
-            status="active",
-            supersedes=supersedes,
-        )
-        if active is not None:
-            retired = await self._repo.mark_version_retired(session, version_id=active["id"])
-            if not retired:
-                raise VaultCryptoError("vault_rotate_retire_conflict")
-        await self._audit(
-            session, entry_id=entry_id, secret_version_id=new_version["id"],
-            identity=identity, purpose=purpose, key_version=key_version,
-            result="ROTATED", reason="success",
-        )
-        logger.info(
-            "vault.secret.rotated entry_id=%s new_version_id=%s old_version_id=%s identity=%s",
-            entry_id, new_version["id"], supersedes, identity,
-        )
-        return new_version
+                if not retired:
+                    raise VaultCryptoError("vault_rotate_retire_conflict")
+            await self._audit(
+                session, entry_id=entry_id, secret_version_id=new_version_id,
+                identity=identity, purpose=purpose, key_version=key_version,
+                result="ROTATED", reason="success",
+            )
+            logger.info(
+                "vault.secret.rotated entry_id=%s new_version_id=%s old_version_id=%s identity=%s",
+                entry_id, new_version_id, supersedes, identity,
+            )
+            return new_version
+        except Exception as exc:
+            await self._record_failure(
+                session, operation="rotate", entry_id=entry_id,
+                secret_version_id=(active or {}).get("id") or new_version_id,
+                identity=identity, purpose=purpose, key_version=key_version,
+                exc=exc, entry_exists=entry is not None,
+            )
+            raise
 
     async def deny(
         self, session: Any, *, entry_id: int, purpose: str, identity: str, reason: str
     ) -> None:
-        """deny 审计：只记录结果与原因，不接触 secret。"""
-        await self._audit(
-            session, entry_id=entry_id, secret_version_id=None,
-            identity=identity, purpose=purpose, key_version=None,
-            result="DENIED", reason=reason,
-        )
-        logger.info(
-            "vault.secret.denied entry_id=%s purpose=%s identity=%s reason=%s",
-            entry_id, purpose, identity, reason,
-        )
+        try:
+            await self._audit(
+                session, entry_id=entry_id, secret_version_id=None,
+                identity=identity, purpose=purpose, key_version=None,
+                result="DENIED", reason=reason,
+            )
+            logger.info(
+                "vault.secret.denied entry_id=%s purpose=%s identity=%s reason=%s",
+                entry_id, purpose, identity, reason,
+            )
+        except Exception as exc:
+            await self._record_failure(
+                session, operation="deny", entry_id=entry_id, secret_version_id=None,
+                identity=identity, purpose=purpose, key_version=None,
+                exc=exc, entry_exists=False,
+            )
+            raise

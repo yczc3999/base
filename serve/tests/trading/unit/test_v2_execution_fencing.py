@@ -43,6 +43,26 @@ class _FakeLeaseRepo:
         lease = self.leases.get((account_id, lease_role))
         return dict(lease) if lease else None
 
+    async def get_active_lease_fence(
+        self,
+        session,
+        *,
+        account_id,
+        lease_role,
+        owner,
+        fencing_token,
+        for_update=True,
+    ):
+        lease = self.leases.get((account_id, lease_role))
+        if (
+            lease is None
+            or lease["owner"] != owner
+            or lease["fencing_token"] != fencing_token
+            or lease["lease_until"] <= datetime.now(timezone.utc)
+        ):
+            return None
+        return dict(lease)
+
     async def renew_lease(self, session, *, account_id, lease_role, owner, lease_until,
                           fencing_token):
         lease = self.leases.get((account_id, lease_role))
@@ -157,11 +177,15 @@ def test_stale_owner_fence_rejected_after_takeover():
     # 旧 owner A 的 fence 校验必须失败
     with pytest.raises(StaleFenceError, match="stale_fence_rejected"):
         asyncio.run(logic.assert_fence(
-            uow, account_id=1, lease_role="EXECUTION", token=lease_a["fencing_token"],
+            uow,
+            account_id=1,
+            lease_role="EXECUTION",
+            owner="leader-A",
+            token=lease_a["fencing_token"],
         ))
     # 新 owner B 的 fence 校验通过
     asyncio.run(logic.assert_fence(
-        uow, account_id=1, lease_role="EXECUTION", token=2,
+        uow, account_id=1, lease_role="EXECUTION", owner="leader-B", token=2,
     ))
 
 

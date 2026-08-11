@@ -64,6 +64,10 @@ class LedgerRepository:
             "kind": kind, "trade_decision_id": trade_decision_id, "execution_id": execution_id,
             "portfolio_namespace": portfolio_namespace,
             "reference_transaction_id": reference_transaction_id,
+            "account_id": account_id,
+            "envelope_id": envelope_id,
+            "order_id": order_id,
+            "trade_id": trade_id,
         }
         for field, value in expected.items():
             if existing[field] != value:
@@ -89,12 +93,28 @@ class LedgerRepository:
                 "(transaction_id, posting_no, asset_type, asset_key, amount, counterparty) "
                 "SELECT :tx, posting_no, asset_type, asset_key, amount, counterparty "
                 "FROM jsonb_to_recordset(:rows) AS x("
-                " posting_no int, asset_type text, asset_key text, amount numeric, counterparty text)"
+                " posting_no int, asset_type text, asset_key text, amount numeric, counterparty text) "
+                "ON CONFLICT (transaction_id, posting_no) DO NOTHING"
             ).bindparams(bindparam("rows", type_=JSONB())),
             {"tx": transaction_id, "rows": postings},
         )
-        if result.rowcount not in (-1, len(postings)):
-            raise RuntimeError("ledger_postings_partial")
+        del result
+        if len({int(row["posting_no"]) for row in postings}) != len(postings):
+            raise RuntimeError("ledger_postings_duplicate_number")
+        existing = await self.postings_for_transaction(session, transaction_id)
+        if len(existing) != len(postings):
+            raise RuntimeError("ledger_postings_idempotency_mismatch:count")
+        actual_by_no = {int(row["posting_no"]): row for row in existing}
+        for expected in postings:
+            posting_no = int(expected["posting_no"])
+            actual = actual_by_no.get(posting_no)
+            if actual is None:
+                raise RuntimeError("ledger_postings_idempotency_mismatch:posting_no")
+            for field in ("asset_type", "asset_key", "counterparty"):
+                if actual[field] != expected[field]:
+                    raise RuntimeError(f"ledger_postings_idempotency_mismatch:{field}")
+            if Decimal(str(actual["amount"])) != Decimal(str(expected["amount"])):
+                raise RuntimeError("ledger_postings_idempotency_mismatch:amount")
 
     async def mark_posted(
         self, session: AsyncSession, transaction_id: int, *, posted_at: datetime

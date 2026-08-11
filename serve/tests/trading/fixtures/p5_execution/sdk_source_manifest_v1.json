@@ -9,9 +9,9 @@
     "tag": "polymarket-client-v0.5.0",
     "tag_commit": "974d2e22ca92445d8ab7ecd7715a247f1ea7d65a",
     "source_repo": "https://github.com/Polymarket/py-sdk",
-    "golden_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "golden_sha256_note": "PLACEHOLDER golden hash — must equal p_execution_readiness_spec_v1.json sdk.golden_sha256; replace with computed hash of installed polymarket-client==0.5.0 before any canary activation",
-    "pin": "exact_=="
+    "golden_sha256": "5d3ef1ccb77d2a484164d76deb2aad2478ef67ec3883c7c4337f31ed53ef9a92",
+    "pin": "exact_==",
+    "golden_scope": "standard+neg_risk+L1+L2 deterministic vectors"
   },
   "installation_evidence": {
     "method": "importlib.metadata.version",
@@ -46,9 +46,44 @@
       "version": "2",
       "chain_id": 137
     },
-    "final_wire_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-    "final_wire_hash_note": "PLACEHOLDER — fake-transport wire hash; recomputed by Checkpoint C driver test on the locked SDK",
-    "secrets_in_manifest": 0
+    "final_wire_hash": "b3fd58324e5e3deb8c0a0e13be937572e9f76249de4bf83686709664c1ec8569",
+    "secrets_in_manifest": 0,
+    "standard_vector": {
+      "exchange_address": "0x1111111111111111111111111111111111111111",
+      "eoa": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+      "funder": "0x2222222222222222222222222222222222222222",
+      "exact_body_hash": "b3fd58324e5e3deb8c0a0e13be937572e9f76249de4bf83686709664c1ec8569",
+      "order_hash": "ab4e1a41036a017f6f7c5ab408c60402059da1df031eb5b71cdfa23d8f3a8801",
+      "sdk_identity_hash": "acc259f6da1587ab7a33c2848184d665aa8be4895dd1fe52ec4156272770bc92",
+      "signature_vector_hash": "75219ca09faa4bbd0a38380cdf0441ee7d3f77ba037135f7dea091f7d1a14912",
+      "exact_body_bytes": 1203
+    },
+    "neg_risk_vector": {
+      "exchange_address": "0x3333333333333333333333333333333333333333",
+      "eoa": "0x5050A4F4b3f9338C3472dcC01A87C76A144b3c9c",
+      "funder": "0x2222222222222222222222222222222222222222",
+      "exact_body_hash": "c0271d218eb13f1e73dd4ebb076464f358c7a33bfd4c066d22e19d180e45027c",
+      "order_hash": "f251c9d217fa35391bd9060a5290edf0550156a573bfe4fc0e00aee6bc5492bd",
+      "sdk_identity_hash": "a575176d58631d391957abf70299251e9ab58945b5284d6f0a8c3c197bf67caf",
+      "signature_vector_hash": "79c675889299b193d9168a787a33f323c977c08549061afc693282e87ec36cb0",
+      "exact_body_bytes": 1203
+    }
   },
-  "content_hash": "a38d64db4a96f33a2e6232cb68e5e17fcc6b51e51d155ad4708d6ff143a84647"
+  "content_hash": "8bad26508f2d0b1a8373579c0eebaa78375a9ef755787acadce6f9f8e4d10e74",
+  "l1_clob_auth_vector": {
+    "chain_id": 137,
+    "timestamp": 1700000123,
+    "nonce": 0,
+    "address": "0xc48B812bB43401392c037381AcA934F4069C0517",
+    "typed_data_hash": "c8901dec621f7bc762a02d338b1758a17bdbb3c45884b8477b245ae7752d52cc",
+    "signature_hash": "dc549b29ff072574d32d18f560798e4a90c690abecb900470fe1b35854ed83a2"
+  },
+  "l2_heartbeat_vector": {
+    "timestamp": 1700000000,
+    "method": "POST",
+    "path": "/v1/heartbeats",
+    "body_hash": "6752485625dae8e1df51ecd63e102a1207df90f0655cfa6ba932d2eb5c3df974",
+    "message_hash": "7fc5fce9587a0639383d7b81951f389bb63833dbc9213a612d9450c58c052d2e",
+    "signature_hash": "2c71e8518a54d8c2b233664fac91a52de3a589dace0dfc4ff537227cf9592337"
+  }
 }

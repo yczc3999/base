@@ -9,6 +9,7 @@ access event 追加、reservation 状态机（DB trigger 强制）、funds 恒�
 from __future__ import annotations
 
 import hashlib
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from app.logics.trading.portfolio import PortfolioLogic
 from app.repositories.trading.execution import ExecutionRepository
 from app.repositories.trading.vault import VaultRepository
 from app.services.vault import VaultAuthError, VaultService
+from runtimes.trading.execution import build_execution_vault_service
 
 SERVE_DIR = __import__("pathlib").Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
@@ -249,11 +251,15 @@ async def env(temp_pg_db):
         await async_engine.dispose()
 
 
-async def _make_vault_entry(env, *, secret_kind="signer_private_key"):
-    svc = VaultService(env["vault_repo"], KEYRING, env="test")
+async def _make_vault_entry(
+    env, *, secret_kind="signer_private_key", name="pm/signer/fixture-1"
+):
+    svc = VaultService(
+        env["vault_repo"], KEYRING, env="test", runtime_identity="worker-a",
+    )
     async with env["sessions"]() as session:
         entry = await svc.create_entry(
-            session, name="pm/signer/fixture-1", secret_kind=secret_kind,
+            session, name=name, secret_kind=secret_kind,
             runtime_identity="worker-a",
         )
         await session.commit()
@@ -264,6 +270,29 @@ async def _make_account(env, *, signer_entry_id=None, l2_entry_id=None) -> int:
     repo = env["exec_repo"]
     chain = env["chain"]
     async with env["sessions"]() as session:
+        async def active_version(entry_id):
+            if entry_id is None:
+                return None
+            versions = await env["vault_repo"].list_versions(session, entry_id=entry_id)
+            active = next((row for row in versions if row["status"] == "active"), None)
+            if active is None:
+                svc = VaultService(
+                    env["vault_repo"], KEYRING, env="test", runtime_identity="worker-a",
+                )
+                active = await svc.store_secret(
+                    session,
+                    entry_id=entry_id,
+                    secret=b"fixture-account-secret",
+                    purpose="sign",
+                    identity="worker-a",
+                    account="fixture-acct-1",
+                    key_id="k1",
+                    key_version="v1",
+                )
+            return active["id"]
+
+        signer_version_id = await active_version(signer_entry_id)
+        l2_version_id = await active_version(l2_entry_id)
         account = await repo.insert_account(
             session,
             account_key="fixture-acct-1",
@@ -271,14 +300,14 @@ async def _make_account(env, *, signer_entry_id=None, l2_entry_id=None) -> int:
             chain_id=137,
             identity_type="FIXTURE_ONLY",
             funder_address="0x" + "a" * 40,
-            maker_address="0x" + "b" * 40,
+            maker_address="0x" + "a" * 40,
             signing_identity="0x" + "c" * 40,
             wallet_type="deposit_wallet",
             signature_type="3",
             signer_secret_entry_id=signer_entry_id,
-            signer_secret_version_id=1,
+            signer_secret_version_id=signer_version_id,
             l2_secret_entry_id=l2_entry_id,
-            l2_secret_version_id=1,
+            l2_secret_version_id=l2_version_id,
             release_manifest_id=chain["release_manifest_id"],
             capital_permission_manifest_id=chain["capital_permission_manifest_id"],
             network_mode="fixture",
@@ -379,10 +408,86 @@ async def test_single_active_deferred_trigger(env):
         )
         await session.commit()
         old_id = v1["id"]
-        # 试图把 retired 旧版本重新激活 → deferred 单 active trigger 拒绝
-        with pytest.raises(Exception, match="v2_vault_entry_multiple_active"):
+        # Repository 与 DB 都禁止 retired 历史密文重新激活。
+        with pytest.raises(RuntimeError, match="vault_version_reactivation_forbidden"):
             await env["vault_repo"].activate_version(session, version_id=old_id)
-            await session.commit()
+        with pytest.raises(Exception, match="v2_vault_version_transition_invalid"):
+            await session.execute(
+                text("UPDATE trading.secret_vault_versions SET status='active' WHERE id=:id"),
+                {"id": old_id},
+            )
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_active_versions_are_serialized(env):
+    entry_id, _ = await _make_vault_entry(env)
+    repo = env["vault_repo"]
+    aad = {
+        "env": "test",
+        "entry": "pm/signer/fixture-1",
+        "secret_kind": "signer_private_key",
+        "account": "fixture-acct-1",
+        "runtime_identity": "worker-a",
+        "purpose": "sign",
+        "secret_version": 1,
+        "key_id": "k1",
+        "key_version": "v1",
+    }
+
+    async with env["sessions"]() as first, env["sessions"]() as second:
+        await repo.insert_version(
+            first,
+            entry_id=entry_id,
+            version_no=1,
+            key_id="k1",
+            key_version="v1",
+            nonce="01" * 12,
+            ciphertext=b"first",
+            aad_context=aad,
+            aad_hash="1" * 64,
+            ciphertext_hash="2" * 64,
+            algorithm="aes-256-gcm",
+            status="active",
+        )
+        await repo.insert_version(
+            second,
+            entry_id=entry_id,
+            version_no=2,
+            key_id="k1",
+            key_version="v2",
+            nonce="02" * 12,
+            ciphertext=b"second",
+            aad_context={**aad, "secret_version": 2, "key_version": "v2"},
+            aad_hash="3" * 64,
+            ciphertext_hash="4" * 64,
+            algorithm="aes-256-gcm",
+            status="active",
+        )
+
+        async def commit(session):
+            try:
+                await session.commit()
+                return "committed"
+            except Exception as exc:
+                await session.rollback()
+                return str(exc)
+
+        outcomes = await asyncio.gather(commit(first), commit(second))
+        assert outcomes.count("committed") == 1
+        assert any("v2_vault_entry_multiple_active" in value for value in outcomes), outcomes
+
+    async with env["sessions"]() as session:
+        active_count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM trading.secret_vault_versions "
+                    "WHERE entry_id=:entry AND status='active'"
+                ),
+                {"entry": entry_id},
+            )
+        ).scalar_one()
+        assert active_count == 1
 
 
 @pytest.mark.asyncio
@@ -402,6 +507,126 @@ async def test_funds_identity_db_enforced(env):
                 session, account_id=account_id, asset_key="USD", confirmed=100,
                 provider_reserved=0, local_reserved=0, available=99,
                 source_snapshot_id=snapshot["id"], reconcile_watermark=1,
+            )
+            await session.commit()
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_type3_fixture_identity_and_composite_secret_fk(env):
+    repo = env["exec_repo"]
+    chain = env["chain"]
+    base = {
+        "provider": "polymarket",
+        "chain_id": 137,
+        "identity_type": "FIXTURE_ONLY",
+        "funder_address": "0x" + "a" * 40,
+        "maker_address": "0x" + "a" * 40,
+        "signing_identity": "0x" + "c" * 40,
+        "wallet_type": "deposit_wallet",
+        "signature_type": "3",
+        "signer_secret_entry_id": None,
+        "signer_secret_version_id": None,
+        "l2_secret_entry_id": None,
+        "l2_secret_version_id": None,
+        "release_manifest_id": chain["release_manifest_id"],
+        "capital_permission_manifest_id": chain["capital_permission_manifest_id"],
+        "network_mode": "fixture",
+    }
+    invalid_cases = (
+        ("bad-signature", {"signature_type": "0"}, "ck_pm_accounts_signature_type_known"),
+        (
+            "bad-wallet",
+            {"maker_address": "0x" + "b" * 40},
+            "ck_pm_accounts_type3_identity_shape",
+        ),
+        (
+            "bad-network",
+            {"network_mode": "mainnet"},
+            "ck_pm_accounts_fixture_network_pair",
+        ),
+    )
+    for key, override, error in invalid_cases:
+        async with env["sessions"]() as session:
+            with pytest.raises(Exception, match=error):
+                await repo.insert_account(
+                    session, account_key=key, **{**base, **override}
+                )
+                await session.commit()
+            await session.rollback()
+
+    first_entry, service = await _make_vault_entry(env)
+    second_entry, _ = await _make_vault_entry(
+        env, secret_kind="l2_secret", name="pm/l2/fixture-1"
+    )
+    async with env["sessions"]() as session:
+        first_version = await service.store_secret(
+            session,
+            entry_id=first_entry,
+            secret=b"first",
+            purpose="sign",
+            identity="worker-a",
+            account="fixture-acct-1",
+            key_id="k1",
+            key_version="v1",
+        )
+        second_version = await service.store_secret(
+            session,
+            entry_id=second_entry,
+            secret=b"second",
+            purpose="sign",
+            identity="worker-a",
+            account="fixture-acct-1",
+            key_id="k1",
+            key_version="v1",
+        )
+        await session.commit()
+    assert first_version["entry_id"] == first_entry
+    async with env["sessions"]() as session:
+        with pytest.raises(Exception, match="fk_pm_accounts_signer_version"):
+            await repo.insert_account(
+                session,
+                account_key="cross-entry-version",
+                **{
+                    **base,
+                    "signer_secret_entry_id": first_entry,
+                    "signer_secret_version_id": second_version["id"],
+                },
+            )
+            await session.commit()
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_funds_source_snapshot_account_asset_coherence(env):
+    entry_id, _ = await _make_vault_entry(env)
+    account_id = await _make_account(env, signer_entry_id=entry_id)
+    repo = env["exec_repo"]
+    async with env["sessions"]() as session:
+        snapshot = await repo.insert_balance_snapshot(
+            session,
+            account_id=account_id,
+            asset_key="USD",
+            spender=None,
+            balance=100,
+            allowance=100,
+            provider_reserved=0,
+            observed_at=datetime.now(timezone.utc),
+            request_hash="9" * 64,
+            fencing_token=1,
+            completeness="COMPLETE",
+        )
+        with pytest.raises(Exception, match="fk_account_funds_current_source_snapshot"):
+            await repo.create_funds(
+                session,
+                account_id=account_id,
+                asset_key="EUR",
+                confirmed=100,
+                provider_reserved=0,
+                local_reserved=0,
+                available=100,
+                source_snapshot_id=snapshot["id"],
+                reconcile_watermark=1,
             )
             await session.commit()
         await session.rollback()
@@ -440,9 +665,9 @@ async def test_reservation_state_machine_via_db(env):
         await logic.mark_reservation_unknown(_UoW(session), reservation_id=res_id)
         await session.commit()
 
-    # Tx C：UNKNOWN 禁止直接 RELEASED（DB BEFORE trigger）；整 tx 回滚
+    # Tx C：terminal transition 未精确结清 consumed/released 会被 DB 拒绝。
     async with env["sessions"]() as session:
-        with pytest.raises(Exception, match="v2_reservation_transition_invalid"):
+        with pytest.raises(Exception, match="ck_capital_reservations_terminal_accounted"):
             await env["exec_repo"].advance_reservation(
                 session, reservation_id=res_id, new_status="RELEASED"
             )
@@ -465,10 +690,95 @@ async def test_reservation_state_machine_via_db(env):
         assert funds["available"] == funds["confirmed"] - funds["provider_reserved"] - funds["local_reserved"]
         await session.commit()
 
-    # Tx E：PROVIDER_BOUND → CONSUMED：provider reserve 精确消耗 + commit
+    # Tx E：部分成交先累计 consumed；终态精确结清，confirmed 随实际消费减少。
     async with env["sessions"]() as session:
-        await logic.consume_reservation(_UoW(session), reservation_id=res_id)
+        assert await env["exec_repo"].consume_funds_provider(
+            session, account_id=account_id, asset_key="USD", amount=Decimal("25")
+        )
+        assert await env["exec_repo"].advance_reservation(
+            session,
+            reservation_id=res_id,
+            new_status="PROVIDER_BOUND",
+            consumed_delta=Decimal("25"),
+            expected_status="PROVIDER_BOUND",
+        )
+        assert await env["exec_repo"].consume_funds_provider(
+            session, account_id=account_id, asset_key="USD", amount=Decimal("15")
+        )
+        assert await env["exec_repo"].advance_reservation(
+            session,
+            reservation_id=res_id,
+            new_status="CONSUMED",
+            consumed_delta=Decimal("15"),
+            expected_status="PROVIDER_BOUND",
+        )
         funds = await env["exec_repo"].get_funds(session, account_id=account_id, asset_key="USD")
         assert funds["provider_reserved"] == Decimal("0")
-        assert funds["available"] == Decimal("100")
+        assert funds["confirmed"] == Decimal("60")
+        assert funds["available"] == Decimal("60")
+        reservation = await env["exec_repo"].get_reservation(
+            session, reservation_id=res_id
+        )
+        assert reservation["consumed_amount"] == Decimal("40")
+        assert reservation["released_amount"] == Decimal("0")
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_vault_failure_audit_survives_caller_rollback(env):
+    """The security failure trail owns a separate UoW and cannot roll back with caller work."""
+    service = build_execution_vault_service(
+        env["sessions"], KEYRING, env="test", runtime_identity="worker-durable",
+    )
+    async with env["sessions"]() as session:
+        entry = await service.create_entry(
+            session,
+            name="pm/signer/durable-failure",
+            secret_kind="signer_private_key",
+            runtime_identity="worker-durable",
+        )
+        version = await service.store_secret(
+            session,
+            entry_id=entry["id"],
+            secret=b"durable-fixture-secret",
+            purpose="sign",
+            identity="worker-durable",
+            account="fixture-durable",
+            key_id="k1",
+            key_version="v1",
+        )
+        await session.commit()
+
+    async with env["sessions"]() as caller:
+        with pytest.raises(VaultAuthError, match="vault_runtime_identity_mismatch"):
+            await service.read_secret(
+                caller,
+                entry_id=entry["id"],
+                version_id=version["id"],
+                purpose="sign",
+                identity="stale-worker",
+                account="fixture-durable",
+            )
+        await caller.rollback()
+
+    async with env["sessions"]() as verify:
+        durable_access = (
+            await verify.execute(
+                text(
+                    "SELECT count(*) FROM trading.secret_access_events "
+                    "WHERE entry_id=:entry AND subject='vault.read' "
+                    "AND identity='stale-worker' AND result='AUTH_FAILED'"
+                ),
+                {"entry": entry["id"]},
+            )
+        ).scalar_one()
+        durable_alert = (
+            await verify.execute(
+                text(
+                    "SELECT count(*) FROM trading.alert_events "
+                    "WHERE code='vault_failure_audit' AND message_redacted NOT LIKE '%durable-fixture-secret%'"
+                )
+            )
+        ).scalar_one()
+        assert durable_access == 1
+        assert durable_alert == 1

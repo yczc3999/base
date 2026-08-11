@@ -6,6 +6,7 @@ import asyncio
 
 import pytest
 
+from app.schemas.polymarket.clob_private import PrivateApiCredentials
 from app.schemas.polymarket.common import PolymarketError
 from app.services.polymarket.user_ws_driver import UserWsDriver, UserWsPolicy
 
@@ -51,6 +52,14 @@ def _policy():
     )
 
 
+def _credentials() -> PrivateApiCredentials:
+    return PrivateApiCredentials(
+        api_key="fixture-api-key",
+        secret="fixture-secret",
+        passphrase="fixture-passphrase",
+    )
+
+
 @pytest.mark.asyncio
 async def test_user_ws_watermark_increments_per_frame():
     ws = _FakeWs([
@@ -62,7 +71,7 @@ async def test_user_ws_watermark_increments_per_frame():
         "wss://fake/user", policy=_policy(), ws_connect=lambda: _Connector(ws),
         clock=asyncio.get_event_loop().time,
     )
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     m1 = await driver.next_frame()
     m2 = await driver.next_frame()
     assert driver.receive_seq == 2
@@ -82,7 +91,7 @@ async def test_user_ws_disconnect_sets_reconciling_watermark_boundary():
         "wss://fake/user", policy=_policy(), ws_connect=lambda: _Connector(ws),
         clock=asyncio.get_event_loop().time,
     )
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     m = await driver.next_frame()
     assert m.receive_seq == 1
     with pytest.raises(PolymarketError, match="wire_ws_disconnect"):
@@ -100,7 +109,7 @@ async def test_ping_pong_liveness_no_pong_timeout():
         "wss://fake/user", policy=_policy(), ws_connect=lambda: _Connector(ws),
         clock=asyncio.get_event_loop().time,
     )
-    await driver.connect(auth_token=None)
+    await driver.connect(_credentials())
     for _ in range(10):
         await asyncio.sleep(0.02)
         if "PING" in ws.sent:

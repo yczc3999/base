@@ -27,20 +27,19 @@ _INDEX = {gate: index for index, gate in enumerate(ORDER)}
 # 订单唯一状态机：INTENT → SUBMITTED → ACK|PARTIAL|FILLED|CANCELLED|REJECTED|UNKNOWN → RECONCILED。
 
 ORDER_STATES = (
-    "INTENT", "SUBMITTED", "OPEN", "ACK", "PARTIAL", "FILLED",
+    "INTENT", "SUBMITTED", "ACK", "PARTIAL", "FILLED",
     "CANCELLED", "REJECTED", "UNKNOWN", "RECONCILED",
 )
 
 ORDER_TRANSITIONS: dict[str, frozenset[str]] = {
     "INTENT": frozenset({"SUBMITTED"}),
-    "SUBMITTED": frozenset({"OPEN", "ACK", "PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
-    "OPEN": frozenset({"ACK", "PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
+    "SUBMITTED": frozenset({"ACK", "PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
     "ACK": frozenset({"PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
-    "PARTIAL": frozenset({"PARTIAL", "FILLED", "CANCELLED"}),
-    "UNKNOWN": frozenset({"RECONCILED", "FILLED", "CANCELLED", "REJECTED"}),
-    "FILLED": frozenset({"RECONCILED"}),
-    "CANCELLED": frozenset({"RECONCILED"}),
-    "REJECTED": frozenset({"RECONCILED"}),
+    "PARTIAL": frozenset({"FILLED", "CANCELLED", "UNKNOWN"}),
+    "UNKNOWN": frozenset({"RECONCILED"}),
+    "FILLED": frozenset(),
+    "CANCELLED": frozenset(),
+    "REJECTED": frozenset(),
     "RECONCILED": frozenset(),
 }
 
