@@ -39,7 +39,23 @@ from app.logics.trading.decision import (
     G7AResult,
     G7BResult,
 )
-from app.logics.trading.execution import FillResult, ShadowExecutionLogic
+from app.logics.trading.execution import (
+    ExecutionLeaseLogic,
+    FillApplyResult,
+    FillResult,
+    KillSwitchBlocked,
+    LeaseError,
+    PreparedSubmit,
+    PrivateExecutionLogic,
+    ShadowExecutionLogic,
+    StaleFenceError,
+    SubmitApplyResult,
+)
+from app.logics.trading.reconciliation import (
+    ReconcileResult,
+    ReconciliationLogic,
+    compute_reconcile_differences,
+)
 from app.logics.trading.portfolio import PortfolioExposure, PortfolioLogic
 from app.logics.trading.settlement import (
     ClusterResult,
@@ -85,6 +101,19 @@ __all__ = [
     "FillResult",
     "PortfolioLogic",
     "PortfolioExposure",
+    # WP-05
+    "ExecutionLeaseLogic",
+    "LeaseError",
+    "StaleFenceError",
+    # WP-05 Checkpoint C
+    "PrivateExecutionLogic",
+    "PreparedSubmit",
+    "SubmitApplyResult",
+    "FillApplyResult",
+    "KillSwitchBlocked",
+    "ReconciliationLogic",
+    "ReconcileResult",
+    "compute_reconcile_differences",
     # WP-04
     "SettlementLogic",
     "LabelRevisionResult",

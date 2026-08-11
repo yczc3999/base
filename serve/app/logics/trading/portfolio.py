@@ -1,4 +1,4 @@
-"""DB-backed G7B minimum-portfolio capacity checks."""
+"""DB-backed G7B minimum-portfolio capacity checks + WP-05 funds/reservation logic."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.portfolio import cap_check
+from app.repositories.trading.execution import ExecutionRepository
 
 
 ZERO = Decimal("0")
@@ -32,12 +33,21 @@ class PortfolioExposure:
 
 
 class PortfolioLogic:
-    """Derive positions + active intent claims while holding a transaction lock."""
+    """Derive positions + active intent claims while holding a transaction lock.
+
+    WP-05 追加 funds/reservation 原子占用逻辑（决策 §12）：preflight 用条件 UPDATE 或
+    ``SELECT ... FOR UPDATE`` 原子占用，禁止先查后写；HELD/UNKNOWN 计入 local reserved；
+    ACK 后同一 UoW 把等额 provider reserve 纳入 current funds 才转 PROVIDER_BOUND。
+    """
 
     def __init__(self, execution: Any | None = None) -> None:
         # Kept for source compatibility; authoritative reads are performed here so
         # callers cannot supply projections.
-        self._execution = execution
+        self._execution = execution if execution is not None else ExecutionRepository()
+
+    @staticmethod
+    def _decimal(value: Any) -> Decimal:
+        return Decimal(str(value))
 
     async def acquire_capacity_lock(
         self,
@@ -169,3 +179,142 @@ class PortfolioLogic:
             per_component_cap,
             global_cap,
         )
+
+    # ---- WP-05 funds / reservation（决策 §12：原子占用、无漏计/双计）----
+
+    async def reserve_funds(
+        self,
+        uow: UnitOfWork,
+        *,
+        reservation_key: str,
+        intent_id: int,
+        account_id: int,
+        asset_key: str,
+        amount: Decimal,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """原子占用 local_reserved 并写入 HELD reservation。
+
+        持 funds 行锁 → 幂等判定 → 条件 UPDATE 占用 → INSERT reservation；同一 UoW，
+        crash 回滚无半条 reservation。两个并发 reservation 由行锁串行化，不越过可用额。
+        """
+        funds = await self._execution.get_funds(
+            uow.session, account_id=account_id, asset_key=asset_key, for_update=True
+        )
+        if funds is None:
+            raise RuntimeError("funds_projection_missing")
+        existing = await self._execution.get_reservation_by_idempotency(
+            uow.session, account_id=account_id, asset_key=asset_key,
+            idempotency_key=idempotency_key, for_update=True,
+        )
+        if existing is not None:
+            if existing["status"] in ("CONSUMED", "RELEASED"):
+                raise RuntimeError("reservation_idempotency_terminal")
+            return existing
+        by_key = await self._execution.get_reservation_by_key(
+            uow.session, reservation_key=reservation_key
+        )
+        if by_key is not None:
+            raise RuntimeError("reservation_key_collision")
+        if self._decimal(funds["available"]) < amount:
+            raise RuntimeError("funds_insufficient")
+        updated = await self._execution.reserve_funds_update(
+            uow.session, account_id=account_id, asset_key=asset_key, amount=amount
+        )
+        if not updated:
+            raise RuntimeError("funds_reserve_conflict")
+        return await self._execution.insert_reservation(
+            uow.session, reservation_key=reservation_key, intent_id=intent_id,
+            account_id=account_id, asset_key=asset_key, amount=amount,
+            idempotency_key=idempotency_key,
+        )
+
+    async def mark_reservation_unknown(self, uow: UnitOfWork, *, reservation_id: int) -> None:
+        """HELD→UNKNOWN：提交结果不确定；资金仍计入 local reserved，不释放。"""
+        res = await self._execution.get_reservation(
+            uow.session, reservation_id=reservation_id, for_update=True
+        )
+        if res is None or res["status"] != "HELD":
+            raise RuntimeError("reservation_not_held")
+        if not await self._execution.advance_reservation(
+            uow.session, reservation_id=reservation_id, new_status="UNKNOWN"
+        ):
+            raise RuntimeError("reservation_advance_conflict")
+
+    async def ack_reservation(self, uow: UnitOfWork, *, reservation_id: int) -> None:
+        """ACK：同一 UoW 把等额 local_reserved 转入 provider_reserved 才转 PROVIDER_BOUND。
+
+        先 transfer（恒等式保持），再推进状态；任一失败整体回滚，无漏计/双计窗口。
+        """
+        res = await self._execution.get_reservation(
+            uow.session, reservation_id=reservation_id, for_update=True
+        )
+        if res is None or res["status"] not in ("HELD", "UNKNOWN"):
+            raise RuntimeError("reservation_not_ackable")
+        amount = self._decimal(res["amount"])
+        updated = await self._execution.transfer_funds_local_to_provider(
+            uow.session, account_id=res["account_id"], asset_key=res["asset_key"], amount=amount
+        )
+        if not updated:
+            raise RuntimeError("funds_transfer_conflict")
+        if not await self._execution.advance_reservation(
+            uow.session, reservation_id=reservation_id, new_status="PROVIDER_BOUND"
+        ):
+            raise RuntimeError("reservation_advance_conflict")
+
+    async def release_reservation(self, uow: UnitOfWork, *, reservation_id: int) -> None:
+        """HELD/PROVIDER_BOUND→RELEASED，精确释放等额保留；UNKNOWN 禁止直接 RELEASED。"""
+        res = await self._execution.get_reservation(
+            uow.session, reservation_id=reservation_id, for_update=True
+        )
+        if res is None:
+            raise RuntimeError("reservation_missing")
+        status = res["status"]
+        if status == "CONSUMED":
+            raise RuntimeError("reservation_already_consumed")
+        if status == "UNKNOWN":
+            raise RuntimeError("reservation_unknown_not_releasable")
+        amount = self._decimal(res["amount"])
+        if status == "HELD":
+            updated = await self._execution.release_funds_local(
+                uow.session, account_id=res["account_id"], asset_key=res["asset_key"],
+                amount=amount,
+            )
+        elif status == "PROVIDER_BOUND":
+            updated = await self._execution.release_funds_provider(
+                uow.session, account_id=res["account_id"], asset_key=res["asset_key"],
+                amount=amount,
+            )
+        else:
+            raise RuntimeError("reservation_release_invalid")
+        if not updated:
+            raise RuntimeError("funds_release_conflict")
+        if not await self._execution.advance_reservation(
+            uow.session, reservation_id=reservation_id, new_status="RELEASED"
+        ):
+            raise RuntimeError("reservation_advance_conflict")
+
+    async def consume_reservation(self, uow: UnitOfWork, *, reservation_id: int) -> None:
+        """UNKNOWN/PROVIDER_BOUND→CONSUMED（FILLED）：按实际 quantity 精确消耗保留。"""
+        res = await self._execution.get_reservation(
+            uow.session, reservation_id=reservation_id, for_update=True
+        )
+        if res is None or res["status"] not in ("UNKNOWN", "PROVIDER_BOUND"):
+            raise RuntimeError("reservation_not_consumable")
+        amount = self._decimal(res["amount"])
+        if res["status"] == "PROVIDER_BOUND":
+            updated = await self._execution.release_funds_provider(
+                uow.session, account_id=res["account_id"], asset_key=res["asset_key"],
+                amount=amount,
+            )
+        else:  # UNKNOWN（资金仍记 local reserved）
+            updated = await self._execution.release_funds_local(
+                uow.session, account_id=res["account_id"], asset_key=res["asset_key"],
+                amount=amount,
+            )
+        if not updated:
+            raise RuntimeError("funds_consume_conflict")
+        if not await self._execution.advance_reservation(
+            uow.session, reservation_id=reservation_id, new_status="CONSUMED"
+        ):
+            raise RuntimeError("reservation_advance_conflict")

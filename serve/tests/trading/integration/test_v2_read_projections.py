@@ -52,7 +52,9 @@ from tests.trading.integration.test_v2_decision_shadow_workflow import (
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-HEAD = "b1000041"
+# WP-05 后 head=b1000051；本测试用 live ORM（executions 含 account_id 等新列），
+# 必须在 head schema 上跑，否则 UndefinedColumnError。
+HEAD = "b1000051"
 
 # 与 replay 集成测试一致：book checkpoints 落在已建分区（当前日）。
 FIXED = datetime(2026, 8, 11, 3, 4, 5, tzinfo=timezone.utc)
@@ -103,7 +105,9 @@ async def _run_decision_chain(env: dict, ctx: dict, episode: int, spec_ids: list
     """create → reveal → market_relative → G7A → G7B → terminalize(ACTION) → shadow_fill。"""
     logic = DecisionLogic(env["decision"], env["wf"])
     spec_id = spec_ids[0]
-    trigger_at = FIXED + timedelta(hours=12)
+    # trade_decision 时间动态化到 now() 之后：executions.created_at=now() 要求 quote binding
+    # stale_at 相对真实时间未来（_seed_book_time 用 now+9min）。本测试无冻结 hash 断言，安全。
+    trigger_at = datetime.now(timezone.utc) + timedelta(minutes=10)
     quote_reveal_at = trigger_at + timedelta(seconds=1)
     decided_at = trigger_at + timedelta(seconds=2)
 
@@ -223,7 +227,8 @@ async def _seed_extra_positions(env: dict, *, spec_id: int, token_id: int,
 
 async def _build_and_rebuild(env: dict, *, extra_positions: int = 0) -> dict:
     """建决策链 + 额外 shadow positions，然后 rebuild_all。返回 env/ctx/spec/component 信息。"""
-    ctx = await _seed(env, book_received_at=FIXED + timedelta(hours=11, minutes=59))
+    # checkpoint received 动态化：stale_at(=received+300s) 相对真实 now() 未来。
+    ctx = await _seed(env, book_received_at=datetime.now(timezone.utc) + timedelta(minutes=9))
     episode, spec_ids = await _build_blind_committed_episode(env, ctx)
     await _run_decision_chain(env, ctx, episode, spec_ids)
     async with UnitOfWork(env["sessions"]) as uow:

@@ -16,6 +16,7 @@ from app.repositories.trading.settlement import SettlementRepository
 from app.repositories.trading.evaluation import EvaluationRepository
 from app.repositories.trading.audit import AuditRepository
 from app.repositories.trading.projection import ProjectionRepository
+from app.repositories.trading.vault import VaultRepository
 
 __all__ = [
     "CohortRepository",
@@ -32,4 +33,6 @@ __all__ = [
     "EvaluationRepository",
     "AuditRepository",
     "ProjectionRepository",
+    # WP-05
+    "VaultRepository",
 ]

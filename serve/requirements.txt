@@ -23,3 +23,4 @@ opentelemetry-sdk>=1.29,<2
 opentelemetry-exporter-otlp-proto-http>=1.29,<2
 # FastAPI 默认响应类 ORJSONResponse 需要（WP-00d2-r1：可复现依赖，不得手工改 venv）
 orjson>=3.10,<4
+polymarket-client==0.5.0

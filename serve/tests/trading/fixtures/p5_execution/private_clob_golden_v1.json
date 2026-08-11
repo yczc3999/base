@@ -1,0 +1,82 @@
+{
+  "schema_version": "p5/private-clob-golden/v1",
+  "manifest_key": "p5-private-clob-golden-v1",
+  "observed_at": "2026-08-11T00:00:00Z",
+  "sdk_ref": {
+    "package": "polymarket-client",
+    "version": "0.5.0",
+    "tag": "polymarket-client-v0.5.0",
+    "tag_commit": "974d2e22ca92445d8ab7ecd7715a247f1ea7d65a"
+  },
+  "identity": {
+    "signature_type": 3,
+    "signature_type_name": "POLY_1271",
+    "signing_actor": "EOA",
+    "maker": "Deposit Wallet",
+    "funder": "Deposit Wallet",
+    "wire_signer": "Deposit Wallet",
+    "inner_signature_recovery": "EOA",
+    "erc7739_wrapper": true
+  },
+  "submit": {
+    "endpoint": "POST /order",
+    "transport_policy": "single_send_no_automatic_retry",
+    "exact_body_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "order_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sdk_identity_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature_vector_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash_note": "PLACEHOLDER fake-transport hashes — recomputed by Checkpoint C ClobTradingDriver test; never store signature/secret plaintext in DB/log/manifest",
+    "pre_send_persisted": [
+      "exact_body_hash",
+      "expected_order_hash",
+      "sdk_manifest_hash",
+      "salt_timestamp",
+      "fencing_token",
+      "state_event"
+    ]
+  },
+  "cancel": {
+    "endpoint": "DELETE /order",
+    "per_item_result": "canceled_or_not_canceled",
+    "duplicate_cancel": "converge_on_rest_actual_state",
+    "exact_body_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "response_classification": [
+    {
+      "code": 200,
+      "body_has": "success",
+      "class": "ACK"
+    },
+    {
+      "code": 200,
+      "body_has": "success+errorMsg",
+      "class": "REJECTED"
+    },
+    {
+      "code": 400,
+      "class": "REJECTED"
+    },
+    {
+      "code": 401,
+      "class": "AUTH_STOP"
+    },
+    {
+      "code": 425,
+      "class": "THROTTLED"
+    },
+    {
+      "code": 429,
+      "class": "THROTTLED"
+    },
+    {
+      "code": "5xx",
+      "class": "UNKNOWN"
+    },
+    {
+      "code": "timeout",
+      "class": "UNKNOWN"
+    }
+  ],
+  "no_secret_plaintext_in_db_log_artifact": true,
+  "content_hash": "316070a8ffc3e460ccab6ee5f8bf65c6dbd0283b47698d8fbb761044f6693fd9"
+}

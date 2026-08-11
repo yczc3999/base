@@ -85,7 +85,13 @@ from app.models.trading.decision import (
     UnderwritingPlan,
 )
 from app.models.trading.execution import (
+    AccountReconciliation,
+    ExchangeOrder,
+    ExchangeOrderAttempt,
     Execution,
+    ExecutionAuthorizationEnvelope,
+    ExchangeTrade,
+    OrderStateEvent,
     Position,
     PositionLot,
 )
@@ -112,6 +118,11 @@ from app.models.trading.outbox import (
     TransactionalOutbox,
 )
 from app.models.trading.vault import (
+    AccountFundsCurrent,
+    CapitalReservation,
+    ExecutionLease,
+    PMAccount,
+    PMBalanceAllowanceSnapshot,
     SecretAccessEvent,
     SecretVaultEntry,
     SecretVaultVersion,
@@ -134,7 +145,10 @@ from app.models.trading.evaluation import (
     ScoreObservation,
 )
 from app.models.trading.audit import (
+    AlertEvent,
+    ExternalCallAttempt,
     ReplayRun,
+    WorkflowEvent,
 )
 from app.models.trading.projection import (
     AccountRiskCurrent,
@@ -221,6 +235,13 @@ __all__ = [
     "Execution",
     "Position",
     "PositionLot",
+    # WP-05 Checkpoint C
+    "ExecutionAuthorizationEnvelope",
+    "ExchangeOrder",
+    "ExchangeOrderAttempt",
+    "OrderStateEvent",
+    "ExchangeTrade",
+    "AccountReconciliation",
     # ledger
     "LedgerTransaction",
     "LedgerPosting",
@@ -239,6 +260,12 @@ __all__ = [
     "SecretVaultEntry",
     "SecretVaultVersion",
     "SecretAccessEvent",
+    # WP-05 execution plane
+    "PMAccount",
+    "PMBalanceAllowanceSnapshot",
+    "AccountFundsCurrent",
+    "CapitalReservation",
+    "ExecutionLease",
     # outbox
     "IdempotencyClaim",
     "TransactionalOutbox",
@@ -261,6 +288,10 @@ __all__ = [
     "PromotionDecision",
     # audit (WP-04)
     "ReplayRun",
+    # WP-05 Checkpoint C audit/ops
+    "WorkflowEvent",
+    "ExternalCallAttempt",
+    "AlertEvent",
     # read projections (WP-04)
     "OpsHealthCurrent",
     "PipelineFunnelHourly",

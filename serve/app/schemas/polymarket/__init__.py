@@ -56,6 +56,34 @@ from app.schemas.polymarket.market_ws import (
     MarketWsUnknown,
     parse_market_ws_frame,
 )
+from app.schemas.polymarket.clob_private import (
+    CancelItemResult,
+    CancelOrdersResponse,
+    OrderBook,
+    OrderBookLevel,
+    OrderResponse,
+    OrderResponseClass,
+    PrivateOrder,
+    classify_order_response,
+)
+from app.schemas.polymarket.user_ws import (
+    UserOrderEvent,
+    UserTradeEvent,
+    UserWsFrame,
+    UserWsFrameBase,
+    UserWsPong,
+    UserWsUnknown,
+    parse_user_ws_frame,
+    user_ws_frame_artifact_hash,
+)
+from app.schemas.polymarket.data_api import (
+    DataApiOpenOrder,
+    DataApiOpenOrders,
+    DataApiPosition,
+    DataApiPositions,
+    DataApiTrade,
+    DataApiTrades,
+)
 
 __all__ = [
     "Cursor",
@@ -103,4 +131,29 @@ __all__ = [
     "MarketWsTickSizeChange",
     "MarketWsUnknown",
     "parse_market_ws_frame",
+    # WP-05 private CLOB
+    "PrivateOrder",
+    "OrderResponse",
+    "OrderResponseClass",
+    "CancelOrdersResponse",
+    "CancelItemResult",
+    "OrderBook",
+    "OrderBookLevel",
+    "classify_order_response",
+    # WP-05 user WS
+    "UserWsFrame",
+    "UserWsFrameBase",
+    "UserOrderEvent",
+    "UserTradeEvent",
+    "UserWsPong",
+    "UserWsUnknown",
+    "parse_user_ws_frame",
+    "user_ws_frame_artifact_hash",
+    # WP-05 data API
+    "DataApiOpenOrder",
+    "DataApiOpenOrders",
+    "DataApiTrade",
+    "DataApiTrades",
+    "DataApiPosition",
+    "DataApiPositions",
 ]

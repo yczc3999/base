@@ -214,3 +214,49 @@ def new_registry() -> CollectorRegistry:
 
 def default_registry() -> CollectorRegistry:
     return _default_catalog.registry
+
+
+# ---- WP-05 Checkpoint C：execution metrics（低基数；label 全在 allowlist）----
+
+def execution_event_counter(catalog: MetricCatalog | None = None) -> Counter:
+    """execution 事件计数：label ``(operation, result)``，均为低基数枚举。"""
+    return make_counter(
+        "pm_execution_events_total",
+        "execution order/reconcile events by operation and result",
+        ("operation", "result"),
+        catalog=catalog,
+    )
+
+
+def execution_unknown_counter(catalog: MetricCatalog | None = None) -> Counter:
+    """UNKNOWN 提交计数（hard stop 次数），label ``status_class``。"""
+    return make_counter(
+        "pm_execution_unknown_total",
+        "indeterminate private submit outcomes (UNKNOWN hard stop)",
+        ("status_class",),
+        catalog=catalog,
+    )
+
+
+def execution_heartbeat_drift_gauge(catalog: MetricCatalog | None = None) -> Gauge:
+    """heartbeat 漂移毫秒（monotonic 调度漂移 ≤500ms），label ``mode``。"""
+    return make_gauge(
+        "pm_execution_heartbeat_drift_ms",
+        "heartbeat schedule drift in milliseconds",
+        ("mode",),
+        catalog=catalog,
+    )
+
+
+def execution_latency_histogram(
+    catalog: MetricCatalog | None = None,
+    buckets: tuple[float, ...] = DEFAULT_BUCKETS,
+) -> Histogram:
+    """execution 步骤延迟（submit/fill/reconcile），label ``operation``。"""
+    return make_histogram(
+        "pm_execution_latency_seconds",
+        "execution step latency in seconds",
+        ("operation",),
+        buckets,
+        catalog=catalog,
+    )

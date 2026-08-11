@@ -90,6 +90,26 @@ class LedgerTransaction(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         BigInteger,
         ForeignKey("trading.ledger_transactions.id", name="fk_ledger_transactions_reversal_ref"),
     )
+    # WP-05 Checkpoint C lineage：account/envelope/order/trade 引用（shadow 旧行可为 NULL）
+    account_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.pm_accounts.id", name="fk_ledger_transactions_account"),
+    )
+    envelope_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "trading.execution_authorization_envelopes.id",
+            name="fk_ledger_transactions_envelope",
+        ),
+    )
+    order_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.exchange_orders.id", name="fk_ledger_transactions_exchange_order"),
+    )
+    trade_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.exchange_trades.id", name="fk_ledger_transactions_exchange_trade"),
+    )
 
 
 class LedgerPosting(TradingBase, BigIntIdentityMixin, CreatedAtMixin):

@@ -210,6 +210,52 @@ def _request_fingerprint(
     return json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
 
 
+# ---- WP-05 Checkpoint C：私有 submit 单次发送辅助（不继承公共自动重试）----
+
+REASON_EGRESS_TRIPWIRE = "wire_egress_tripwire"
+REASON_ORDER_INDETERMINATE = "wire_order_indeterminate"
+
+
+@dataclass(frozen=True)
+class PrivateSubmitPolicy:
+    """私有 submit 的 wire policy：强制单次发送、禁止盲重发。
+
+    与公共 ``WirePolicy`` 的 425/429/5xx 自动重试**不互通**；私有 submit 只发一次，
+    任何不确定结果进入 UNKNOWN。
+    """
+
+    send_once: bool = True
+    max_clock_skew_s: float = 30.0
+    heartbeat_drift_ms: float = 500.0
+
+    def __post_init__(self) -> None:
+        if self.send_once is not True:
+            raise ValueError("send_once must be True for private submit")
+        for name in ("max_clock_skew_s", "heartbeat_drift_ms"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or value < 0
+            ):
+                raise ValueError(f"{name} must be >= 0")
+
+
+def build_l2_hmac_message(
+    *,
+    unix_seconds: int,
+    method: str,
+    path_without_query: str,
+    body: bytes | None,
+) -> str:
+    """L2 HMAC 规范输入：``unix_seconds + UPPERCASE_METHOD + PATH_WITHOUT_QUERY +
+    EXACT_BODY_OR_EMPTY``。必须对最终发送的同一 body bytes 签名。"""
+    method_upper = str(method).upper()
+    body_text = body.decode("utf-8", errors="replace") if body else ""
+    return f"{int(unix_seconds)}{method_upper}{path_without_query}{body_text}"
+
+
 class HttpPolymarketDriver:
     """HTTP Driver 基类：统一超时、有限重试、限流、JSON/Decimal 解析与 receipts。"""
 

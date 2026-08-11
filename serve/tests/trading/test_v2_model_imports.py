@@ -112,6 +112,22 @@ from app.models.trading import (
     OpsHealthCurrent,
     PipelineFunnelHourly,
     ProviderCostDaily,
+    # WP-05（b1000050）vault/account/funds/fencing
+    AccountFundsCurrent,
+    CapitalReservation,
+    ExecutionLease,
+    PMAccount,
+    PMBalanceAllowanceSnapshot,
+    # WP-05（b1000051）execution orders
+    AccountReconciliation,
+    AlertEvent,
+    ExchangeOrder,
+    ExchangeOrderAttempt,
+    ExchangeTrade,
+    ExecutionAuthorizationEnvelope,
+    ExternalCallAttempt,
+    OrderStateEvent,
+    WorkflowEvent,
 )
 from app.models.trading.constants import TRADING_SCHEMA
 
@@ -222,6 +238,22 @@ EXPECTED = [
     "account_risk_current",
     "provider_cost_daily",
     "latest_chain_summary",
+    # WP-05（b1000050）：vault/account/funds/fencing
+    "pm_accounts",
+    "pm_balance_allowance_snapshots",
+    "account_funds_current",
+    "capital_reservations",
+    "execution_leases",
+    # WP-05（b1000051）：execution orders
+    "execution_authorization_envelopes",
+    "exchange_order_attempts",
+    "exchange_orders",
+    "order_state_events",
+    "exchange_trades",
+    "account_reconciliations",
+    "workflow_events",
+    "external_call_attempts",
+    "alert_events",
 ]
 
 
@@ -336,6 +368,22 @@ def test_explicit_model_symbols_importable():
         "account_risk_current": AccountRiskCurrent,
         "provider_cost_daily": ProviderCostDaily,
         "latest_chain_summary": LatestChainSummary,
+        # WP-05（b1000050）
+        "pm_accounts": PMAccount,
+        "pm_balance_allowance_snapshots": PMBalanceAllowanceSnapshot,
+        "account_funds_current": AccountFundsCurrent,
+        "capital_reservations": CapitalReservation,
+        "execution_leases": ExecutionLease,
+        # WP-05（b1000051）
+        "execution_authorization_envelopes": ExecutionAuthorizationEnvelope,
+        "exchange_order_attempts": ExchangeOrderAttempt,
+        "exchange_orders": ExchangeOrder,
+        "order_state_events": OrderStateEvent,
+        "exchange_trades": ExchangeTrade,
+        "account_reconciliations": AccountReconciliation,
+        "workflow_events": WorkflowEvent,
+        "external_call_attempts": ExternalCallAttempt,
+        "alert_events": AlertEvent,
     }
     for tablename, model in symbols.items():
         assert model.__tablename__ == tablename
@@ -367,6 +415,11 @@ def test_app_models_exports_trading():
         "AIInvocation", "AIToolCall", "AIValidationResult",
         "OpsHealthCurrent", "PipelineFunnelHourly", "AccountRiskCurrent",
         "ProviderCostDaily", "LatestChainSummary",
+        "PMAccount", "PMBalanceAllowanceSnapshot", "AccountFundsCurrent",
+        "CapitalReservation", "ExecutionLease",
+        "ExecutionAuthorizationEnvelope", "ExchangeOrderAttempt", "ExchangeOrder",
+        "OrderStateEvent", "ExchangeTrade", "AccountReconciliation",
+        "WorkflowEvent", "ExternalCallAttempt", "AlertEvent",
     ):
         assert model in exported, model
 

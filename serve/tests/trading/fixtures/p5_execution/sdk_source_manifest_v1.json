@@ -1,0 +1,54 @@
+{
+  "schema_version": "p5/sdk-source-manifest/v1",
+  "manifest_key": "p5-sdk-source-manifest-v1",
+  "observed_at": "2026-08-11T00:00:00Z",
+  "sdk": {
+    "package": "polymarket-client",
+    "import_package": "polymarket",
+    "version": "0.5.0",
+    "tag": "polymarket-client-v0.5.0",
+    "tag_commit": "974d2e22ca92445d8ab7ecd7715a247f1ea7d65a",
+    "source_repo": "https://github.com/Polymarket/py-sdk",
+    "golden_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "golden_sha256_note": "PLACEHOLDER golden hash — must equal p_execution_readiness_spec_v1.json sdk.golden_sha256; replace with computed hash of installed polymarket-client==0.5.0 before any canary activation",
+    "pin": "exact_=="
+  },
+  "installation_evidence": {
+    "method": "importlib.metadata.version",
+    "expected_version": "0.5.0",
+    "pip_check": "No broken requirements found",
+    "forbid": [
+      "range_version",
+      "unpinned_vcs_head",
+      "vendored_copy",
+      "alternate_clob_sdk"
+    ]
+  },
+  "type3_wire_golden": {
+    "signature_type": 3,
+    "signature_type_name": "POLY_1271",
+    "signing_actor": "EOA",
+    "maker": "Deposit Wallet",
+    "funder": "Deposit Wallet",
+    "wire_signer": "Deposit Wallet",
+    "inner_signature_recovery": "EOA",
+    "erc7739_wrapper": {
+      "use_official_locked_sdk_implementation": true,
+      "no_manual_assembly_or_rewrite": true
+    },
+    "standard_domain": {
+      "name": "Polymarket CTF Exchange",
+      "version": "2",
+      "chain_id": 137
+    },
+    "neg_risk_domain": {
+      "name": "Polymarket CTF Exchange",
+      "version": "2",
+      "chain_id": 137
+    },
+    "final_wire_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "final_wire_hash_note": "PLACEHOLDER — fake-transport wire hash; recomputed by Checkpoint C driver test on the locked SDK",
+    "secrets_in_manifest": 0
+  },
+  "content_hash": "a38d64db4a96f33a2e6232cb68e5e17fcc6b51e51d155ad4708d6ff143a84647"
+}

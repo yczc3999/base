@@ -9,9 +9,13 @@ from runtimes.trading.cognition import (
     CognitionRuntime,
     RoleBinding,
 )
-from runtimes.trading.execution import ShadowExecutionRuntime
+from runtimes.trading.execution import (
+    PrivateExecutionRuntime,
+    ShadowExecutionRuntime,
+)
 from runtimes.trading.evaluation import EvaluationRuntime
 from runtimes.trading.replay import ReplayRuntime
+from runtimes.trading.reconciliation import ReconciliationRuntime
 
 __all__ = [
     "FrameRunResult",
@@ -23,4 +27,7 @@ __all__ = [
     # WP-04
     "EvaluationRuntime",
     "ReplayRuntime",
+    # WP-05 Checkpoint C
+    "PrivateExecutionRuntime",
+    "ReconciliationRuntime",
 ]

@@ -26,7 +26,9 @@ from app.repositories.trading.ledger import LedgerRepository
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-V31 = "b1000031"
+# WP-05 后 head=b1000051；本测试用 live ExecutionRepository（executions 含 account_id 列），
+# 必须在 head schema 上跑，否则 UndefinedColumnError。
+V31 = "b1000051"
 
 
 def _run(cmd, revision, db_url):

@@ -66,6 +66,22 @@ _SENSITIVE_SUBSTR = (
     "cookie",
     "authorization",
     "set_cookie",
+    # WP-05 vault：钱包/keystore 助记词类 secret（key 归一后子串命中）
+    "mnemonic",
+    "seed_phrase",
+    "recovery_phrase",
+    "wallet_secret",
+    "encryption_key",
+    # WP-05 Checkpoint C：private key / signature / order body / L2 HMAC 相关
+    "l2_hmac",
+    "hmac",
+    "order_body",
+    "wire_body",
+    "signed_order",
+    "signedorder",
+    "order_signature",
+    "private_key",
+    "passphrase",
 )
 
 # key 归一化后精确命中即视为敏感
@@ -101,6 +117,11 @@ _SENSITIVE_ASSIGNMENT_KEYS = frozenset({
     "prompt", "requestbody", "responsebody", "toolinput", "tooloutput",
     "rawpayload", "payload", "token",
     "sid", "session", "jwt", "csrf", "auth",
+    # WP-05 vault：助记词类 key（归一后精确匹配，覆盖 mnemonic / seed-phrase / seed_phrase）
+    "mnemonic", "seedphrase", "recoveryphrase", "walletsecret", "encryptionkey",
+    # WP-05 Checkpoint C：private key / signature / order body / L2 HMAC
+    "l2hmac", "hmac", "orderbody", "wirebody", "signedorder", "ordersignature",
+    "privatekey", "passphrase", "signature",
 })
 
 # unquoted 时清洗到行尾的 key（body/prompt/tool/raw payload/cookie header；归一后形式）

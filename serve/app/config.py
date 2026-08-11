@@ -224,6 +224,25 @@ class Settings(BaseSettings):
     # ---- V2 Runtime（WP-00d2；health 探测超时，秒，>0）----
     RUNTIME_HEALTH_TIMEOUT_S: float = Field(2.0, gt=0)
 
+    # ---- V2 Vault（WP-05；只保存 keyring/secret 引用，绝不保存 key/secret 明文）----
+    # keyring 引用形如 "env://PM_V2_VAULT_MASTER_KEY" / "file:///run/secrets/pm-v2-keyring" /
+    # KMS ARN；master key bytes 由调用方从该引用加载，不入 DB、不入 env 明文。
+    PM_V2_VAULT_KEYRING_REF: str = ""
+    # AAD 绑定的环境名（dev/staging/prod）；随 config 版本冻结。
+    PM_V2_VAULT_ENV: str = "dev"
+    # 执行 egress 模式：shadow（fake transport，WP-05 唯一合法值）；真实 provider 激活阻塞。
+    PM_V2_EXECUTION_EGRESS_MODE: str = "shadow"
+
+    # ---- V2 Provider endpoint / timeout（WP-05；基础设施 typed 配置）----
+    # 真实 provider 基址留空（fake-only）；激活前必须由部署显式注入。
+    PM_V2_PROVIDER_BASE_URL: str = ""
+    PM_V2_PROVIDER_CONNECT_TIMEOUT_S: float = Field(2.0, gt=0)
+    PM_V2_PROVIDER_READ_TIMEOUT_S: float = Field(10.0, gt=0)
+    PM_V2_PROVIDER_MAX_ATTEMPTS: int = Field(3, ge=1)
+    # /v1/heartbeats 调度间隔（秒）；使用 monotonic clock，漂移≤500ms。
+    PM_V2_HEARTBEAT_INTERVAL_S: float = Field(5.0, gt=0)
+    PM_V2_HEARTBEAT_DRIFT_MS: float = Field(500.0, ge=0)
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -614,6 +633,24 @@ class Settings(BaseSettings):
         if self.RUNTIME_HEALTH_TIMEOUT_S <= 0:
             raise ValueError(
                 f"RUNTIME_HEALTH_TIMEOUT_S must be > 0, got {self.RUNTIME_HEALTH_TIMEOUT_S}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_execution_egress(self) -> "Settings":
+        """WP-05 fake-only 门：egress mode 只允许 shadow；heartbeat 漂移上界非负。"""
+        if self.PM_V2_EXECUTION_EGRESS_MODE not in ("shadow",):
+            raise ValueError(
+                "PM_V2_EXECUTION_EGRESS_MODE must be 'shadow' in WP-05 "
+                f"(real provider activation is blocked), got {self.PM_V2_EXECUTION_EGRESS_MODE!r}"
+            )
+        if self.PM_V2_VAULT_ENV not in ("dev", "staging", "prod"):
+            raise ValueError(
+                f"PM_V2_VAULT_ENV must be one of dev/staging/prod, got {self.PM_V2_VAULT_ENV!r}"
+            )
+        if self.PM_V2_HEARTBEAT_DRIFT_MS < 0:
+            raise ValueError(
+                f"PM_V2_HEARTBEAT_DRIFT_MS must be >= 0, got {self.PM_V2_HEARTBEAT_DRIFT_MS}"
             )
         return self
 

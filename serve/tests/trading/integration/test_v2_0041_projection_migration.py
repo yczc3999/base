@@ -18,7 +18,9 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 V40 = "b1000040"
 V41 = "b1000041"
-HEAD_REVISION = V41
+V50 = "b1000050"
+V51 = "b1000051"
+HEAD_REVISION = V51
 
 PROJECTION_TABLES = [
     "ops_health_current", "pipeline_funnel_hourly", "account_risk_current",

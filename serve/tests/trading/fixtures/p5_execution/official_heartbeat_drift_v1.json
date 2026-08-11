@@ -1,0 +1,32 @@
+{
+  "schema_version": "p5/official-heartbeat-drift/v1",
+  "manifest_key": "p5-official-heartbeat-drift-v1",
+  "observed_at": "2026-08-11T00:00:00Z",
+  "url": "https://docs.polymarket.com/api-reference/trade/send-heartbeat",
+  "frozen_contract": {
+    "endpoint": "POST /v1/heartbeats",
+    "first_body": {
+      "heartbeat_id": ""
+    },
+    "subsequent_body": "echo_latest_heartbeat_id_from_previous_response",
+    "id_chain": "no_skip",
+    "schedule_interval_seconds": 5,
+    "drift_max_ms": 500
+  },
+  "observed_contract": {
+    "endpoint": "POST /heartbeats",
+    "body": {
+      "status": "ok"
+    },
+    "heartbeat_id_chain": "not_documented"
+  },
+  "diff_reason": "official_docs_page_shows_unversioned_path_POST_heartbeats_with_status_ok_and_does_not_document_the_heartbeat_id_chain_frozen_in_this_repo",
+  "behavior": {
+    "no_silent_switch_to_observed_path": true,
+    "no_double_send_of_both_paths": true,
+    "no_fallback_guess": true,
+    "real_provider_activation_blocked": true,
+    "implemented_conformance": "IMPLEMENTED_FAKE_CONFORMANCE"
+  },
+  "content_hash": "1dc398b6a3fae6899f8f35a0caf11d9285fc1eaf66393624607159a95302bc6a"
+}

@@ -41,11 +41,11 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_104_trading_tables():
+def test_exactly_118_trading_tables():
     """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+
     12 cohort/episode（0013）+ 11 cognition（0020）+ 3 AI（0021）+ 9 decision（0030）
     + 3 execution（0031）+ 3 ledger（0031）+ 14 learning（0040：5 settlement + 8 evaluation
-    + 1 audit）+ 5 projection（0041）。"""
+    + 1 audit）+ 5 projection（0041）+ 5 vault/account（0050）+ 9 execution order（0051）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -82,6 +82,13 @@ def test_exactly_104_trading_tables():
         # WP-04（b1000041）read projections
         "ops_health_current", "pipeline_funnel_hourly", "account_risk_current",
         "provider_cost_daily", "latest_chain_summary",
+        # WP-05（b1000050）vault/account/funds/fencing
+        "pm_accounts", "pm_balance_allowance_snapshots", "account_funds_current",
+        "capital_reservations", "execution_leases",
+        # WP-05（b1000051）execution orders
+        "execution_authorization_envelopes", "exchange_order_attempts", "exchange_orders",
+        "order_state_events", "exchange_trades", "account_reconciliations",
+        "workflow_events", "external_call_attempts", "alert_events",
     }
 
 

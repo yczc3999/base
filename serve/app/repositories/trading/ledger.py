@@ -31,17 +31,23 @@ class LedgerRepository:
         execution_id: int | None,
         portfolio_namespace: str,
         reference_transaction_id: int | None = None,
+        account_id: int | None = None,
+        envelope_id: int | None = None,
+        order_id: int | None = None,
+        trade_id: int | None = None,
     ) -> int:
         result = await session.execute(
             text(
                 "INSERT INTO trading.ledger_transactions "
                 "(transaction_key, status, kind, trade_decision_id, execution_id, "
-                " portfolio_namespace, reference_transaction_id) "
-                "VALUES (:k, 'PENDING', :kind, :d, :e, :ns, :ref) "
+                " portfolio_namespace, reference_transaction_id, account_id, envelope_id, "
+                " order_id, trade_id) "
+                "VALUES (:k, 'PENDING', :kind, :d, :e, :ns, :ref, :acct, :env, :o, :t) "
                 "ON CONFLICT (transaction_key) DO NOTHING RETURNING id"
             ),
             {"k": transaction_key, "kind": kind, "d": trade_decision_id,
-             "e": execution_id, "ns": portfolio_namespace, "ref": reference_transaction_id},
+             "e": execution_id, "ns": portfolio_namespace, "ref": reference_transaction_id,
+             "acct": account_id, "env": envelope_id, "o": order_id, "t": trade_id},
         )
         inserted = result.scalar_one_or_none()
         if inserted is not None:

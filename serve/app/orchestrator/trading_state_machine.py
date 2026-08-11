@@ -23,6 +23,37 @@ def _p3_promotion_policy_hash() -> str:
 ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
 _INDEX = {gate: index for index, gate in enumerate(ORDER)}
 
+# ---------------- WP-05 Checkpoint C：订单状态机校验辅助（不改 G0..G8） ----------------
+# 订单唯一状态机：INTENT → SUBMITTED → ACK|PARTIAL|FILLED|CANCELLED|REJECTED|UNKNOWN → RECONCILED。
+
+ORDER_STATES = (
+    "INTENT", "SUBMITTED", "OPEN", "ACK", "PARTIAL", "FILLED",
+    "CANCELLED", "REJECTED", "UNKNOWN", "RECONCILED",
+)
+
+ORDER_TRANSITIONS: dict[str, frozenset[str]] = {
+    "INTENT": frozenset({"SUBMITTED"}),
+    "SUBMITTED": frozenset({"OPEN", "ACK", "PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
+    "OPEN": frozenset({"ACK", "PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
+    "ACK": frozenset({"PARTIAL", "FILLED", "CANCELLED", "REJECTED", "UNKNOWN"}),
+    "PARTIAL": frozenset({"PARTIAL", "FILLED", "CANCELLED"}),
+    "UNKNOWN": frozenset({"RECONCILED", "FILLED", "CANCELLED", "REJECTED"}),
+    "FILLED": frozenset({"RECONCILED"}),
+    "CANCELLED": frozenset({"RECONCILED"}),
+    "REJECTED": frozenset({"RECONCILED"}),
+    "RECONCILED": frozenset(),
+}
+
+
+def assert_order_transition(from_status: str, to_status: str) -> None:
+    """校验订单状态转移；非法/倒退一律拒绝（DB guard 与 Logic 双重校验）。"""
+    if from_status not in ORDER_TRANSITIONS:
+        raise IllegalTransitionError(f"unknown_order_state:{from_status}")
+    if to_status not in ORDER_TRANSITIONS:
+        raise IllegalTransitionError(f"unknown_order_state:{to_status}")
+    if to_status not in ORDER_TRANSITIONS[from_status]:
+        raise IllegalTransitionError(f"illegal_order_transition:{from_status}->{to_status}")
+
 
 class IllegalTransitionError(RuntimeError):
     pass

@@ -146,3 +146,116 @@ class AuditRepository:
             {"mh": manifest_hash},
         )
         return _rows(result)
+
+
+# ---------------- WP-05 Checkpoint C：workflow / external-call / alert（append-only） ----------------
+
+    async def insert_workflow_event(
+        self,
+        session: AsyncSession,
+        *,
+        event_key: str,
+        event_type: str,
+        aggregate_type: str,
+        aggregate_id: str,
+        payload_hash: str,
+        payload: dict,
+    ) -> dict[str, Any]:
+        from sqlalchemy import bindparam
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        result = await session.execute(
+            text(
+                "INSERT INTO trading.workflow_events "
+                "(event_key, event_type, aggregate_type, aggregate_id, payload_hash, payload) "
+                "VALUES (:k, :et, :at, :aid, :ph, :payload) "
+                "ON CONFLICT (event_key) DO NOTHING RETURNING *"
+            ).bindparams(bindparam("payload", type_=JSONB())),
+            {
+                "k": event_key, "et": event_type, "at": aggregate_type, "aid": aggregate_id,
+                "ph": payload_hash, "payload": payload,
+            },
+        )
+        rows = _rows(result)
+        if rows:
+            return rows[0]
+        existing = await session.execute(
+            text("SELECT * FROM trading.workflow_events WHERE event_key=:k"),
+            {"k": event_key},
+        )
+        existing_rows = _rows(existing)
+        if not existing_rows:
+            raise RuntimeError("workflow_event_claim_lost")
+        return existing_rows[0]
+
+    async def insert_external_call_attempt(
+        self,
+        session: AsyncSession,
+        *,
+        attempt_key: str,
+        driver: str,
+        endpoint: str,
+        method: str,
+        request_hash: str,
+        response_hash: str | None,
+        status_code: int | None,
+        latency_ms: int,
+        rate_limit_remaining: int | None,
+        error_reason: str | None,
+        fence_token: int,
+    ) -> dict[str, Any]:
+        result = await session.execute(
+            text(
+                "INSERT INTO trading.external_call_attempts "
+                "(attempt_key, driver, endpoint, method, request_hash, response_hash, "
+                " status_code, latency_ms, rate_limit_remaining, error_reason, fence_token) "
+                "VALUES (:k, :dr, :ep, :m, :rh, :rsh, :sc, :lm, :rl, :er, :fence) "
+                "ON CONFLICT (attempt_key) DO NOTHING RETURNING *"
+            ),
+            {
+                "k": attempt_key, "dr": driver, "ep": endpoint, "m": method, "rh": request_hash,
+                "rsh": response_hash, "sc": status_code, "lm": latency_ms, "rl": rate_limit_remaining,
+                "er": error_reason, "fence": fence_token,
+            },
+        )
+        rows = _rows(result)
+        if rows:
+            return rows[0]
+        existing = await session.execute(
+            text("SELECT * FROM trading.external_call_attempts WHERE attempt_key=:k"),
+            {"k": attempt_key},
+        )
+        existing_rows = _rows(existing)
+        if not existing_rows:
+            raise RuntimeError("external_call_attempt_claim_lost")
+        return existing_rows[0]
+
+    async def insert_alert_event(
+        self,
+        session: AsyncSession,
+        *,
+        alert_key: str,
+        severity: str,
+        code: str,
+        message_redacted: str,
+    ) -> dict[str, Any]:
+        result = await session.execute(
+            text(
+                "INSERT INTO trading.alert_events "
+                "(alert_key, severity, code, message_redacted) "
+                "VALUES (:k, :sev, :code, :msg) "
+                "ON CONFLICT (alert_key) DO NOTHING RETURNING *"
+            ),
+            {"k": alert_key, "sev": severity, "code": code, "msg": message_redacted},
+        )
+        rows = _rows(result)
+        if rows:
+            return rows[0]
+        existing = await session.execute(
+            text("SELECT * FROM trading.alert_events WHERE alert_key=:k"),
+            {"k": alert_key},
+        )
+        existing_rows = _rows(existing)
+        if not existing_rows:
+            raise RuntimeError("alert_event_claim_lost")
+        return existing_rows[0]

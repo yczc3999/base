@@ -1,0 +1,19 @@
+{
+  "schema_version": "p5/stability-snapshot/v1",
+  "snapshot_key": "p5-stability-snapshot-v1",
+  "seed_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "event_log_ref": "p5-stability-event-log-v1",
+  "expected_business_hashes": {
+    "universe": "e4fbf2ae0606d34f2061cd889e43c2c7e24c2373d1e1feef6995af534a7d0500",
+    "opportunity": "bdd562c94355042d1e64378983dd89c6a4884cd7c69ca58965032c8b866a3995",
+    "episode_identity": "c67e88ec2017325d640706050dadd95c81abd3938bc61ea63402b836968a7abd",
+    "processing_disposition": "876cdfa72a99cf30b930fc6a9b6b7eef8e44465bec0a9a33cf0965fbc89ed9d1",
+    "blind_commit": "5b1f9611d582368bd69559e34e9e01738654993f65602f187abded8c994fce2a",
+    "economic_action_intent": "e74c3ae6f5a6c0e26500883e2f1a0eab383f4cdafc9706e5bb457bc46c7fbf0d",
+    "authorization_envelope": null,
+    "authorization_envelope_note": "execution_authorization_envelopes table is created by 0050/0051 (Checkpoint B/C); at b1000041 it does not exist, so this hash is deliberately null and must be covered by the 0050/0051 integration tests",
+    "ledger": "6ad4772f8e2faa81451ec58d05b66f07bed69a98040da86d29601305f55a3a79",
+    "metric_artifact": "ce37d4946b7933eebeac083e0e93dd5816a4a09c894af41f78229b687e70984f"
+  },
+  "content_hash": "6fd331038483a0d9b95e71ecafa43e4599e20398b8b07528f93f999429b4892d"
+}

@@ -94,7 +94,9 @@ from tests.trading.integration.test_v2_decision_shadow_workflow import (
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-HEAD = "b1000031"
+# WP-05 后 head=b1000051；本测试用 live ORM（executions 含 account_id 等新列），
+# 必须在 head schema 上跑，否则 UndefinedColumnError。
+HEAD = "b1000051"
 # Stable timestamp inside the migration's current-day stream partition and after P2 freeze.
 FIXED = datetime(2026, 8, 11, 3, 4, 5, tzinfo=timezone.utc)
 CUTOFF = FIXED + timedelta(days=2)
@@ -275,13 +277,17 @@ async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, lis
 
 async def _run_chain(env: dict) -> dict:
     """完整 decision → shadow execution 链一次运行，返回可对比 snapshot。"""
-    ctx = await _seed(env, book_received_at=FIXED + timedelta(hours=11, minutes=59))
+    # checkpoint received 与 trade_decision 时间动态化：executions.created_at=now() 要求
+    # quote binding stale_at(=received+300s) 相对真实 now() 未来。业务 hash（input/output/
+    # action_set/intent/ledger）不含时间戳，保持稳定；仅 decision_key（canonical_hash 含
+    # trigger_at）随输入时间漂移，故 _snapshot 排除它（时间变化是输入的一部分，非业务漂移）。
+    ctx = await _seed(env, book_received_at=datetime.now(timezone.utc) + timedelta(minutes=9))
     episode, spec_ids = await _build_blind_committed_episode(env, ctx)
     logic = DecisionLogic(env["decision"], env["wf"])
     spec_id = spec_ids[0]
 
-    # 确定性时间线：trigger 在 CUTOFF 前、早于 lease 过期；quote_reveal 在 trigger 后。
-    trigger_at = FIXED + timedelta(hours=12)
+    # 确定性时间线：trigger 在真实 now() 之后（checkpoint received 为 now+9min）。
+    trigger_at = datetime.now(timezone.utc) + timedelta(minutes=10)
     quote_reveal_at = trigger_at + timedelta(seconds=1)
     decided_at = trigger_at + timedelta(seconds=2)
 
@@ -388,8 +394,10 @@ async def _snapshot(env: dict) -> dict:
 
         return {
             "trade_decisions": await rows(
-                "SELECT decision_key, status, input_hash, output_hash, selected_action_type "
-                "FROM trading.trade_decisions ORDER BY decision_key"
+                # decision_key/input_hash 均含 trigger_at（时间敏感，动态时间线下两次重放漂移，
+                # 属输入时间变化而非业务不稳定）；保留 status/output_hash/selected_action_type。
+                "SELECT status, output_hash, selected_action_type "
+                "FROM trading.trade_decisions ORDER BY status, output_hash"
             ),
             "market_relative": await rows(
                 "SELECT decision_mode, q_decision::text, u_decision::text, u_blind_hash, "

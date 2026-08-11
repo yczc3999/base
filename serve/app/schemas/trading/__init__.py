@@ -41,8 +41,19 @@ from app.schemas.trading.decision import (
     UnderwritingInput,
 )
 from app.schemas.trading.execution import (
+    AccountInput,
+    CancelOrderInput,
+    EnvelopeInput,
+    FenceAssertInput,
+    FundsUpsertInput,
+    LeaseAcquireInput,
+    LeaseRenewInput,
     PositionUpdateInput,
+    ReconcileInput,
+    ReservationAdvanceInput,
+    ReservationInput,
     ShadowFillInput,
+    SubmitOrderInput,
 )
 from app.schemas.trading.settlement import (
     ClusterInput,
@@ -86,6 +97,19 @@ __all__ = [
     "UnderwritingInput",
     "ShadowFillInput",
     "PositionUpdateInput",
+    # WP-05 execution plane
+    "AccountInput",
+    "FundsUpsertInput",
+    "ReservationInput",
+    "ReservationAdvanceInput",
+    "LeaseAcquireInput",
+    "LeaseRenewInput",
+    "FenceAssertInput",
+    # WP-05 Checkpoint C private CLOB
+    "EnvelopeInput",
+    "SubmitOrderInput",
+    "CancelOrderInput",
+    "ReconcileInput",
     # settlement (WP-04)
     "LabelRevisionInput",
     "ClusterInput",
