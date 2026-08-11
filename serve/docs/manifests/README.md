@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04：✅ COMPLETE**；`WP-05` ⚠ DONE（待审）。
+> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05：✅ COMPLETE**；`WP-06` ⏳ pending。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -41,7 +41,7 @@
 | WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ✅ DONE，审查通过 | `wp-02-minimal-cognition-ai-observability.md` | `5bc49cf3db17b3e42b46f136b1a5bc3569694cb89ee5cee40cfc96707f29d316` | 2026-08-11 |
 | WP-03 | 0030/0031 decision/portfolio/shadow execution/ledger | ✅ DONE，审查通过 | `wp-03-market-relative-decision-shadow-ledger.md` | `996869e25bf818d0fe58b2463a6784a477f43c15b508fa1ec78d0e28621822b5` | 2026-08-11 |
 | WP-04 | 0040/0041 label/evaluation/replay/promotion/read projections | ✅ DONE，审查通过 | `wp-04-learning-evaluation-read-projections.md` | `c22daa477f748354538c484fff5957e237a0f03db39907c2767580e957bf638a` | 2026-08-11 |
-| WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ⚠ DONE（待审） | `wp-05-execution-readiness-private-clob.md` | `c1bac2fd2eb1d066a8ada6afe618f7e28198573f859500839addccfaaa788dbc` | 2026-08-11 |
+| WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ✅ DONE，审查通过 | `wp-05-execution-readiness-private-clob.md` | `04e365b4b1c18dc529dd2f6aa73c0cccf29c6a6cab5487787776f74a9bdc2fc9` | 2026-08-11 |
 | WP-06 | 0052 Polygon/relayer/settlement | ⏳ pending | — | — | — |
 | WP-07A | Admin API + frontend types/query scaffolding | ⏳ pending | — | — | — |
 | WP-07B | 14 菜单页、5 详情页与交互 | ⏳ pending | — | — | — |
@@ -51,12 +51,28 @@
 
 1. 打开目标 WP 的 manifest，核对：修改文件（§1）、实现内容（§2）、命令与真实结果（§3）、配置/预算证据（§4）、未解决 blocker（§5）、回滚方式（§6）、manifest 路径 + SHA（§7）。
 2. 先复跑最能证明核心不变量的定向测试，再跑里程碑集成/全量回归；范围内问题由审查者直接修复并计入同一 manifest，不生成 R 链。
-3. SHA-256 口径：对 manifest **删除"恰好为 64 位十六进制"的哈希行**后的内容计算，与存储值无关、可复现。
+3. SHA-256 口径以目标 task 的 manifest 合同为准。WP-05 必须按 task §9：只删除且只删除最后一行
+   `COMPLETION_MANIFEST_SHA256: <64 lowercase hex>`（连同行尾 LF）后计算；不得使用会误删 artifact hash 的
+   “删除所有 64 位 hex 行”规则。WP-00～04 的 legacy bare-hash manifest 继续使用各自已冻结口径。
 4. `DONE` 是实现者交付状态，审查接受状态以 [`../tasks/README.md`](../tasks/README.md) 为准。
 
 ```bash
-# 复验某个 manifest 的哈希
-sed -e '/^[0-9a-f]\{64\}$/d' serve/docs/manifests/<manifest>.md | sha256sum
+# 精确复验 WP-05 manifest
+python3 - <<'PY'
+from hashlib import sha256
+from pathlib import Path
+import re
+
+p = Path("serve/docs/manifests/wp-05-execution-readiness-private-clob.md")
+raw = p.read_bytes()
+payload, count = re.subn(
+    rb"(?m)^COMPLETION_MANIFEST_SHA256: [0-9a-f]{64}\n\Z",
+    b"",
+    raw,
+)
+assert count == 1
+print(sha256(payload).hexdigest())
+PY
 ```
 
 ## 依赖链

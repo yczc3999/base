@@ -1,6 +1,6 @@
 # WP-05 — P-stability、Execution Readiness、Private CLOB 与确定性对账
 
-> 状态：**READY**
+> 状态：**ACCEPTED（审查通过）**
 > 前置：`WP-04` 已 ACCEPTED；Alembic head=`b1000041`
 > 执行模型：DeepSeek V4 Flash
 > 唯一完成交付：`serve/docs/manifests/wp-05-execution-readiness-private-clob.md`
@@ -62,8 +62,9 @@ conformance 必须显式保留为后续资本激活 blocker，不能用本 WP �
 2. **Type 3 身份分离**：签名主体/SDK signer 是 EOA；`funder` 和 maker 是 Deposit Wallet；
    `signatureType=3`（`POLY_1271`），签名使用 ERC-7739 包装（任务输入中的 `ERP7739` 即此协议）。
    传给 SDK 的 private-key signer 必须是 EOA，wallet/funder 必须是 Deposit Wallet。锁定 SDK 的 type-3 wire
-   golden 还必须断言：外层 order 的 `maker` 和 wire `signer` 均为 Deposit Wallet，而 ERC-7739 内层签名
-   可恢复到 EOA；不得把 EOA 当 funder/maker，也不得手工拼接或改写 SDK 生成的 wrapper。
+   golden 还必须断言：外层 order 的 `maker`/`funder` 为 Deposit Wallet，`signer` 与 SDK
+   private-key signing actor 为 EOA，ERC-7739 签名可恢复到该 EOA；不得把 EOA 当
+   funder/maker，也不得手工拼接或改写 SDK 生成的 wrapper。
 3. **CLOB V2**：chainId=137；订单 EIP-712 domain 固定
    `Polymarket CTF Exchange/version=2`，Standard/NegRisk exchange 由冻结 market config 选择。最终发送 body
    bytes、order hash、SDK identity 和签名向量 hash 必须在发送前持久化其 hash；数据库、日志和 manifest
@@ -382,8 +383,8 @@ serve/tests/trading/performance/execution_readiness_smoke.py
 
 ### 7.2 必须证明的事实
 
-1. SDK version/tag/commit fixture 和官方 type-3 golden 全等；maker/funder Deposit Wallet、EOA signing actor、
-   wire signer Deposit Wallet、signatureType 3、ERC-7739 wrapper、L1/L2 exact bytes 均精确。
+1. SDK version/tag/commit fixture 和官方 type-3 golden 全等；maker/funder Deposit Wallet、signer/SDK
+   signing actor EOA、signatureType 3、ERC-7739 wrapper、L1/L2 exact bytes 均精确。
 2. `/v1/heartbeats` 首空 ID→轮换 ID 链、5s 调度、fence takeover、迟到响应、失败 cancel/reconcile 全覆盖；
    官方 `/heartbeats` 页面漂移被记录但从未触发双发/fallback。
 3. AES-GCM roundtrip、nonce uniqueness、AAD/identity/account/purpose mismatch、ciphertext/tag tamper、未知 key、
