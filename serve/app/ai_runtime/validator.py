@@ -62,7 +62,9 @@ class OutputValidator:
 async def validate_json_schema(*, raw_response, parsed_output, normalized_output, blind_context, network_policy) -> ValidatorResult:
     """parsed output 必须可解析且为 JSON object（若 provider 返回了 text）。"""
     version = "json-schema/v1"
-    if parsed_output is None and raw_response:
+    if parsed_output is None:
+        if not raw_response:
+            return ValidatorResult("json_parser", version, False, HARD, "json_output_missing")
         try:
             decoded = json.loads(raw_response)
         except (json.JSONDecodeError, TypeError):
@@ -70,7 +72,19 @@ async def validate_json_schema(*, raw_response, parsed_output, normalized_output
         if not isinstance(decoded, dict):
             return ValidatorResult("json_parser", version, False, HARD, "json_not_object")
         return ValidatorResult("json_parser", version, True, HARD)
+    if not isinstance(parsed_output, dict):
+        return ValidatorResult("json_parser", version, False, HARD, "json_not_object")
     return ValidatorResult("json_parser", version, True, HARD)
+
+
+async def validate_normalized_output(*, raw_response, parsed_output, normalized_output, blind_context, network_policy) -> ValidatorResult:
+    """ACCEPTED 必须有可绑定的 normalized JSON object。"""
+    version = "normalized-output/v1"
+    if not isinstance(normalized_output, dict):
+        return ValidatorResult(
+            "normalized_output", version, False, HARD, "normalized_output_missing"
+        )
+    return ValidatorResult("normalized_output", version, True, HARD)
 
 
 async def validate_secret_quarantine(*, raw_response, parsed_output, normalized_output, blind_context, network_policy) -> ValidatorResult:
@@ -119,6 +133,7 @@ async def validate_probability_rollup(*, raw_response, parsed_output, normalized
 
 DEFAULT_VALIDATORS = [
     validate_json_schema,
+    validate_normalized_output,
     validate_secret_quarantine,
     validate_blind_taint,
     validate_probability_rollup,

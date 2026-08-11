@@ -7,13 +7,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
-_SENSITIVE_KEY_RE = re.compile(
-    r"(?i)(authorization|api[-_]?key|cookie|set-cookie|password|passphrase|"
-    r"private[-_]?key|secret|token|signature)"
-)
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]{8,}")
 _PRIVATE_KEY_RE = re.compile(r"(?i)-----begin [a-z ]*private key-----")
 _URL_USERINFO_RE = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/@:]+:[^\s/@]+@")
@@ -25,6 +22,59 @@ TAINT_KEYS = frozenset(
         "label", "future_fact", "edge", "best_bid", "best_ask",
     }
 )
+
+_SENSITIVE_KEYS = frozenset(
+    {
+        "authorization",
+        "proxy_authorization",
+        "api_key",
+        "apikey",
+        "cookie",
+        "set_cookie",
+        "password",
+        "passphrase",
+        "private_key",
+        "secret",
+        "secret_key",
+        "signature",
+        "request_signature",
+        "webhook_signature",
+        "token",
+        "access_token",
+        "refresh_token",
+        "session_token",
+        "auth_token",
+        "bearer_token",
+        "id_token",
+        "csrf_token",
+        "oauth_token",
+    }
+)
+_PUBLIC_TOKEN_KEYS = frozenset(
+    {
+        "token_id",
+        "token_ids",
+        "clob_token_id",
+        "clob_token_ids",
+        "input_tokens",
+        "cache_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "max_tokens",
+    }
+)
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    """Match credential field boundaries without corrupting public token metadata."""
+    normalized = re.sub(r"[-\s]+", "_", str(key).strip().casefold())
+    if normalized in _PUBLIC_TOKEN_KEYS:
+        return False
+    if normalized in _SENSITIVE_KEYS:
+        return True
+    return normalized.endswith(
+        ("_api_key", "_password", "_passphrase", "_private_key", "_secret")
+    )
 
 
 def _secret_echo_in(value: Any) -> bool:
@@ -48,7 +98,7 @@ def redact_for_storage(value: Any) -> Any:
         return {
             key: (
                 "[REDACTED]"
-                if _SENSITIVE_KEY_RE.search(str(key))
+                if _is_sensitive_key(key)
                 else redact_for_storage(item)
             )
             for key, item in value.items()
@@ -68,7 +118,13 @@ def requires_quarantine(value: Any) -> bool:
 
 
 def detect_taint(value: Any) -> list[str]:
-    """递归查找 Blind 禁止字段（quote/odds/crowd/label/future-fact）；返回命中路径。"""
+    """递归查找 Blind 禁止字段；JSON 字符串也按其结构递归检查。
+
+    Provider driver 的 ``raw_text`` 是字符串。只检查 ``dict`` 会让
+    ``{"nested":{"quote":"0.7"}}`` 绕过 blind 边界，因此对象/数组形态的 JSON
+    字符串必须先解码，再沿用同一 key allowlist。普通自然语言字符串不做关键词猜测，
+    避免把新闻正文里的单词误当成结构字段。
+    """
     hits: list[str] = []
 
     def walk(item: Any, path: str) -> None:
@@ -81,6 +137,16 @@ def detect_taint(value: Any) -> list[str]:
         elif isinstance(item, (list, tuple)):
             for index, child in enumerate(item):
                 walk(child, f"{path}[{index}]" if path else str(index))
+        elif isinstance(item, str):
+            candidate = item.strip()
+            if not candidate or candidate[0] not in "[{":
+                return
+            try:
+                decoded = json.loads(candidate)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return
+            if isinstance(decoded, (dict, list)):
+                walk(decoded, f"{path}.$json" if path else "$json")
 
     walk(value, "")
     return sorted(set(hits))

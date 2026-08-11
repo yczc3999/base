@@ -21,6 +21,7 @@ import platform
 import resource
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ sys.path.insert(0, str(SERVE_DIR))
 
 from app.ai_runtime.runner import AIRunner  # noqa: E402
 from app.ai_runtime.validator import OutputValidator  # noqa: E402
+from app.config import Settings  # noqa: E402
 from app.db.uow import UnitOfWork  # noqa: E402
 from app.logics.trading.component import ComponentLogic  # noqa: E402
 from app.logics.trading.contract import ContractLogic  # noqa: E402
@@ -48,6 +50,8 @@ from app.logics.trading.screening import ScreeningLogic  # noqa: E402
 from app.orchestrator.trading_state_machine import EpisodeInput, TradingStateMachine  # noqa: E402
 from app.services.model_gateway.contracts import ModelRequest  # noqa: E402
 from app.services.model_gateway.service import ModelGatewayService  # noqa: E402
+from app.services.artifact_store import ArtifactStore  # noqa: E402
+from app.services.artifact_store.drivers.local import LocalArtifactDriver  # noqa: E402
 from app.schemas.trading.evidence import (  # noqa: E402
     EvidenceBundleInput,
     EvidenceRevisionInput,
@@ -141,18 +145,12 @@ async def _seed(env: dict) -> dict:
                              objective_ref=OBJECTIVE_HASH),
             g0=g0, r0_policy=R0_POLICY, audit_policy=AUDIT_POLICY)
     ctx["selected_episode_id"] = selected.episode_id
-    # AI binding（draft strategy；xai WEB_X researcher 角色）
+    # AI binding 必须属于 episode 的冻结 strategy；xai WEB_X researcher 角色。
     async with UnitOfWork(env["sessions"]) as uow:
-        strategy = (
-            await uow.session.execute(
-                text(
-                    "INSERT INTO trading.strategy_versions "
-                    "(strategy_key,version_no,content,schema_version,content_hash,status) "
-                    "VALUES (:k,1,'{}',1,:h,'draft') RETURNING id"
-                ),
-                {"k": f"perf-strat-{uuid.uuid4().hex[:8]}", "h": "b" * 64},
-            )
-        ).scalar_one()
+        # Replay seed publishes the strategy before this performance-only role is
+        # installed. Bypass the publication mutation trigger only for fixture setup;
+        # every measured invocation/binding guard remains enabled.
+        await uow.session.execute(text("SET LOCAL session_replication_role='replica'"))
         binding = (
             await uow.session.execute(
                 text(
@@ -162,9 +160,10 @@ async def _seed(env: dict) -> dict:
                     "VALUES (:s,'researcher','xai','direct','grok-4.5','WEB_X',"
                     " CAST('[\"web_search\"]' AS jsonb),'[]'::jsonb,'{}'::jsonb,0,:ch) RETURNING id"
                 ),
-                {"s": strategy, "ch": "a" * 64},
+                {"s": ctx["strategy"], "ch": "a" * 64},
             )
         ).scalar_one()
+        await uow.session.execute(text("SET LOCAL session_replication_role='origin'"))
     ctx["binding"] = binding
     return ctx
 
@@ -195,23 +194,8 @@ class CommitMetrics:
 
 
 def _ai_validators() -> OutputValidator:
-    """5 个恒过 validator —— 每条 attempt 产生 5 行 validator。"""
-    async def v0(**kwargs):
-        from app.ai_runtime.validator import ValidatorResult
-        return ValidatorResult("v0_json", "v1", True, "soft")
-    async def v1(**kwargs):
-        from app.ai_runtime.validator import ValidatorResult
-        return ValidatorResult("v1_secret", "v1", True, "soft")
-    async def v2(**kwargs):
-        from app.ai_runtime.validator import ValidatorResult
-        return ValidatorResult("v2_taint", "v1", True, "soft")
-    async def v3(**kwargs):
-        from app.ai_runtime.validator import ValidatorResult
-        return ValidatorResult("v3_prob", "v1", True, "soft")
-    async def v4(**kwargs):
-        from app.ai_runtime.validator import ValidatorResult
-        return ValidatorResult("v4_cutoff", "v1", True, "soft")
-    return OutputValidator([v0, v1, v2, v3, v4])
+    """Canonical WP-02 validator set —— 每条 attempt 产生受 DB 冻结的 5 行。"""
+    return OutputValidator()
 
 
 def _tool_transport(provider: str = "xai"):
@@ -250,13 +234,13 @@ async def _run_ai_shard(
 ) -> None:
     binding = env["binding"]
     await start_event.wait()
-    attempt = sequence + 1
     local = 0
     while time.perf_counter() - benchmark_started < AI_SECONDS:
         try:
             await _run_ai_once(
                 env=env, runner=runner, metrics=metrics, sequence=sequence,
-                local=local, attempt=attempt, benchmark_started=benchmark_started,
+                local=local, attempt=local * POOL_SIZE + sequence + 1,
+                benchmark_started=benchmark_started,
                 engine=engine, code_hash=code_hash, binding=binding,
             )
         except Exception:
@@ -271,16 +255,16 @@ async def _run_ai_once(*, env, runner, metrics, sequence, local, attempt,
         async with env["sessions"]() as session:
             plan_kwargs = {
                 "invocation_key": f"perf-ai-{sequence}-{local}",
-                "episode_id": (sequence + local) % 1000 + 1,
+                "episode_id": env["ai_episode"],
                 "stage": "g5a", "role": "researcher", "attempt_no": attempt,
-                "experiment_variant": "champion",
+                "experiment_variant": "control",
                 "requested_provider": "xai", "requested_route": "direct",
                 "requested_model": "grok-4.5",
                 "network_policy": "WEB_X", "context_class": "EVIDENCE",
                 "input_manifest": {"k": "v", "seq": sequence, "local": local},
                 "input_manifest_hash": "a" * 64,
                 "model_role_binding_id": binding,
-                "pricing_snapshot": {"usd_per_1m": 0}, "taint_report": {},
+                "pricing_snapshot": {"status": "UNPRICED"}, "taint_report": {},
                 "allowed_tools": ["web_search"],
                 "git_sha": code_hash,
             }
@@ -294,12 +278,13 @@ async def _run_ai_once(*, env, runner, metrics, sequence, local, attempt,
             outcome = await runner.run(
                 session, invocation_id=invocation_id, model_role_binding_id=binding,
                 model_request=ModelRequest(
-                    role="researcher", stage="g5a", episode_id=(sequence + local) % 1000 + 1,
-                    attempt_no=attempt, experiment_variant="champion",
+                    role="researcher", stage="g5a", episode_id=env["ai_episode"],
+                    attempt_no=attempt, experiment_variant="control",
                     requested_provider="xai", requested_route="direct",
                     requested_model="grok-4.5", network_policy="WEB_X",
                     allowed_tools=["web_search"], prompt_text="p",
-                    input_manifest={"k": "v"}, input_manifest_hash="a" * 64,
+                    input_manifest={"k": "v", "seq": sequence, "local": local},
+                    input_manifest_hash="a" * 64,
                     sampling={},
                 ),
                 blind_context=True,
@@ -484,6 +469,11 @@ async def _run() -> dict[str, Any]:
     async_url = make_url(url).set(drivername="postgresql+asyncpg").render_as_string(hide_password=False)
     async_engine = create_async_engine(async_url, pool_size=POOL_SIZE, max_overflow=0)
     sessions = async_sessionmaker(async_engine, expire_on_commit=False)
+    artifact_tmp = tempfile.TemporaryDirectory(prefix="pm_v2_perf_artifacts_")
+    artifacts = ArtifactStore(
+        LocalArtifactDriver(artifact_tmp.name),
+        Settings(_env_file=None, ARTIFACT_LOCAL_ROOT=artifact_tmp.name),
+    )
     env = {
         "sessions": sessions,
         "forecast": __import__("app.repositories.trading.forecast", fromlist=["ForecastRepository"]).ForecastRepository(),
@@ -495,9 +485,20 @@ async def _run() -> dict[str, Any]:
         code_hash = _git_sha()
         ctx = await _seed(env)
         env["binding"] = ctx["binding"]
+        env["ai_episode"], _ = await _prepare_commit_episode(
+            env, ctx, 10_000_000
+        )
+        async with UnitOfWork(sessions) as uow:
+            wal_start_lsn = (
+                await uow.session.execute(text("SELECT pg_current_wal_lsn()"))
+            ).scalar_one()
 
         # ---- Contract A：AI terminalizations ----
-        runner = AIRunner(ModelGatewayService(_tool_transport), _ai_validators())
+        runner = AIRunner(
+            ModelGatewayService(_tool_transport),
+            _ai_validators(),
+            artifacts=artifacts,
+        )
         ai_metrics = AIMetrics(pool_wait_ms=[], terminalization_ms=[], completion_offsets=[])
         start_event = asyncio.Event()
         benchmark_started = time.perf_counter()
@@ -608,9 +609,8 @@ async def _run() -> dict[str, Any]:
             ).scalar_one()
             wal_bytes = (
                 await uow.session.execute(
-                    text("SELECT sum(pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')) "
-                         "FROM pg_stat_database WHERE datname=:n"),
-                    {"n": dbname},
+                    text("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), :start_lsn)"),
+                    {"start_lsn": wal_start_lsn},
                 )
             ).scalar_one() or 0
             db_version = (
@@ -705,6 +705,8 @@ async def _run() -> dict[str, Any]:
         OUT_PATH.write_text(json.dumps(results, indent=2, sort_keys=True))
         return results
     finally:
+        artifacts.aclose()
+        artifact_tmp.cleanup()
         await async_engine.dispose()
         admin = create_engine(ADMIN_URL, isolation_level="AUTOCOMMIT", poolclass=NullPool)
         try:

@@ -7,9 +7,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.orchestrator.trading_state_machine import IllegalTransitionError, TradingStateMachine
+from runtimes.trading.cognition import CognitionRuntime
 
 ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6")
 
@@ -93,3 +96,67 @@ class TestTerminalG6Fail:
         machine, _wf = await self._gate("FAIL", "g6_q_incoherent")
         with pytest.raises(IllegalTransitionError):
             await machine.terminal_g6_fail(_FakeUoW(), 1, "g6_other_reason")
+
+
+class _RuntimeSession:
+    def __init__(self) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+        self.closes = 0
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+
+    async def close(self) -> None:
+        self.closes += 1
+
+
+class _RecordingHandler:
+    def __init__(self) -> None:
+        self.events = []
+
+    async def handle(self, uow, event, **kwargs):
+        # Accessing this property is the regression check: passing an un-entered
+        # UnitOfWork used to raise ``uow_not_entered`` here.
+        assert uow.session is not None
+        self.events.append((event, kwargs))
+        return SimpleNamespace(ok=True, reason=None)
+
+
+@pytest.mark.asyncio
+async def test_cognition_runtime_enters_uow_and_binds_accepted_invocations():
+    session = _RuntimeSession()
+    runtime = CognitionRuntime(
+        lambda: session,
+        gateway=object(),
+        artifacts=object(),
+    )
+    handler = _RecordingHandler()
+    runtime._handler = handler
+
+    result = await runtime.run_cognition_chain(
+        episode_id=7,
+        version_manifest_id=3,
+        evidence_coverage_policy_hash="p" * 64,
+        prior_payload={},
+        revision_payloads=[{}],
+        bundle_payload={},
+        coverage_policy_payload={},
+        covered_branches=[],
+        submission_payload={},
+        material_payload={},
+        lease_payload={},
+        prior_invocation_id=101,
+        revision_invocation_ids=[102],
+        forecast_invocation_id=103,
+    )
+
+    assert result["ok"] is True
+    assert session.commits == 1 and session.rollbacks == 0 and session.closes == 1
+    by_kind = {event.kind: event for event, _kwargs in handler.events}
+    assert by_kind["g4_prior"].accepted_invocation_id == 101
+    assert by_kind["evidence_revision"].accepted_invocation_id == 102
+    assert by_kind["g6_commit"].accepted_invocation_id == 103

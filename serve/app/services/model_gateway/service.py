@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable
 
 from sqlalchemy import text
@@ -67,13 +68,49 @@ class ModelGatewayService:
         model_role_binding_id: int,
         model_request: ModelRequest,
     ) -> ModelResponse:
-        """构造 binding 对应 driver 并执行一次 request（网络调用不在 DB 事务内）。"""
-        binding = await self.resolve_binding(session, model_role_binding_id)
-        if binding["role"] != model_request.role:
-            raise ValueError("model_binding_role_mismatch")
-        if binding["network_policy"] != model_request.network_policy:
-            raise ValueError("model_binding_network_policy_mismatch")
+        """解析 exact binding，结束 SELECT 事务后才执行 provider request。
+
+        ``AsyncSession.execute(SELECT ...)`` 会隐式开启事务。若直接在其后 await HTTP，
+        provider 整段延迟都会占着连接/事务。调用方必须传入 clean session；本方法只在
+        只读解析期间开启事务，并在任何退出路径 rollback 该只读事务。
+        """
+        if session.in_transaction():
+            raise RuntimeError("model_gateway_requires_clean_session")
+        try:
+            binding = await self.resolve_binding(session, model_role_binding_id)
+            self._assert_exact_binding(binding, model_request)
+            driver = self.build_driver(binding)
+        finally:
+            if session.in_transaction():
+                await session.rollback()
+
+        try:
+            if model_request.timeout_seconds is not None:
+                return await asyncio.wait_for(
+                    driver.request(model_request), timeout=model_request.timeout_seconds
+                )
+            return await driver.request(model_request)
+        except asyncio.TimeoutError as exc:
+            from app.services.model_gateway.contracts import ProviderError
+
+            raise ProviderError("provider_timeout", retriable=True) from exc
+
+    @staticmethod
+    def _assert_exact_binding(
+        binding: dict[str, Any], model_request: ModelRequest
+    ) -> None:
+        """Request 的 provider/route/model/capability 必须与冻结 binding 逐项相等。"""
+        expected = {
+            "role": model_request.role,
+            "provider": model_request.requested_provider,
+            "route": model_request.requested_route,
+            "model_ref": model_request.requested_model,
+            "network_policy": model_request.network_policy,
+        }
+        for column, requested in expected.items():
+            if binding[column] != requested:
+                raise ValueError(f"model_binding_{column}_mismatch")
         if set(binding["allowed_tools"] or []) != set(model_request.allowed_tools):
             raise ValueError("model_binding_tools_mismatch")
-        driver = self.build_driver(binding)
-        return await driver.request(model_request)
+        if set(binding["allowed_domains"] or []) != set(model_request.allowed_domains):
+            raise ValueError("model_binding_domains_mismatch")

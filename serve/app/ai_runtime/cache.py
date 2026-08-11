@@ -28,8 +28,11 @@ def cache_key(
     code_hash: str,
     network_policy: str,
     tools: list[str] | None,
+    domains: list[str] | None,
     sampling: dict,
     seed: int | None,
+    effort: str | None,
+    max_tokens: int | None,
 ) -> str:
     """exact cache key；输入顺序无关（内部排序）。"""
     return canonical_hash(
@@ -44,8 +47,11 @@ def cache_key(
             "code_hash": code_hash,
             "network_policy": network_policy,
             "tools": sorted(tools or []),
+            "domains": sorted(domains or []),
             "sampling": sampling,
             "seed": seed,
+            "effort": effort,
+            "max_tokens": max_tokens,
         }
     )
 

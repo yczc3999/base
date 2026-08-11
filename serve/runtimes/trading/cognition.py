@@ -27,6 +27,7 @@ from app.repositories.trading.forecast import ForecastRepository
 from app.repositories.trading.workflow import WorkflowRepository
 from app.services.model_gateway.contracts import ModelRequest
 from app.services.model_gateway.service import ModelGatewayService
+from app.services.artifact_store import ArtifactStore
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,17 @@ class CognitionRuntime:
         self,
         sessions_factory: Any,
         gateway: ModelGatewayService,
+        artifacts: ArtifactStore,
         validator: OutputValidator | None = None,
     ) -> None:
         self._sessions = sessions_factory
-        self._runner = AIRunner(gateway, validator or OutputValidator())
+        self._runner = AIRunner(
+            gateway, validator or OutputValidator(), artifacts=artifacts
+        )
         self._handler = CognitionHandler(
             EvidenceLogic(ForecastRepository(), WorkflowRepository()),
             ForecastLogic(ForecastRepository(), WorkflowRepository()),
+            artifacts,
         )
 
     async def run_ai_attempt(
@@ -80,6 +85,38 @@ class CognitionRuntime:
         plan_kwargs: dict[str, Any],
     ) -> int:
         """执行一次 AI attempt：plan → (cache hit? 记录) → run。返回 invocation id。"""
+        plan_kwargs = {
+            **plan_kwargs,
+            "effort": model_request.effort,
+        }
+        code_hash = plan_kwargs.get("git_sha")
+        if isinstance(code_hash, str):
+            plan_kwargs["cache_key_hash"] = self._runner.request_cache_key(
+                model_request, code_hash
+            )
+            async with self._sessions() as session:
+                hit = await self._runner.check_cache(
+                    session,
+                    model_request=model_request,
+                    code_hash=code_hash,
+                )
+                if hit.hit and hit.source_invocation_id is not None:
+                    invocation_id = await self._runner.record_cache_hit(
+                        session,
+                        plan_kwargs=plan_kwargs,
+                        source_invocation_id=hit.source_invocation_id,
+                        occurred_at=plan_kwargs.get("occurred_at")
+                        or datetime.now(timezone.utc),
+                        model_request=model_request,
+                        code_hash=code_hash,
+                    )
+                    await session.commit()
+                    logger.info(
+                        "ai_attempt role=%s episode=%s state=ACCEPTED cache_hit=true",
+                        role,
+                        episode_id,
+                    )
+                    return invocation_id
         async with self._sessions() as session:
             invocation_id = await self._runner.plan(session, **plan_kwargs)
             await session.commit()
@@ -109,27 +146,38 @@ class CognitionRuntime:
         submission_payload: dict,
         material_payload: dict,
         lease_payload: dict,
+        prior_invocation_id: int,
+        revision_invocation_ids: list[int],
+        forecast_invocation_id: int,
     ) -> dict[str, Any]:
         """推进一次完整 cognition 链（G4→revisions→G5A→G5B→G6）并返回每步结果。
 
         AI 调用（planner/researcher/verifier/forecaster）由调用方先经 ``run_ai_attempt``
         完成；这里把结构化结果以 handler event 落到同一 DB 事实链。
         """
+        if len(revision_payloads) != len(revision_invocation_ids):
+            raise ValueError("revision_invocation_cardinality_mismatch")
         results: dict[str, Any] = {}
-        async with self._sessions() as session:
-            uow = UnitOfWork(session)
+        async with UnitOfWork(self._sessions) as uow:
             # G4 prior
             g4 = await self._handler.handle(
                 uow, CognitionEvent(kind="g4_prior", episode_id=episode_id,
-                                    payload={"prior": prior_payload}),
+                                    payload={"prior": prior_payload},
+                                    accepted_invocation_id=prior_invocation_id),
                 version_manifest_id=version_manifest_id,
             )
             results["g4"] = g4.reason
+            if not g4.ok:
+                results["ok"] = False
+                return results
             # evidence revisions
-            for revision in revision_payloads:
+            for revision, invocation_id in zip(
+                revision_payloads, revision_invocation_ids, strict=True
+            ):
                 await self._handler.handle(
                     uow, CognitionEvent(kind="evidence_revision", episode_id=episode_id,
-                                        payload={"revision": revision}),
+                                        payload={"revision": revision},
+                                        accepted_invocation_id=invocation_id),
                     version_manifest_id=version_manifest_id,
                 )
             # G5A bundle
@@ -139,6 +187,9 @@ class CognitionRuntime:
                 version_manifest_id=version_manifest_id,
             )
             results["g5a"] = g5a.reason
+            if not g5a.ok:
+                results["ok"] = False
+                return results
             # G5B sufficiency
             g5b = await self._handler.handle(
                 uow, CognitionEvent(kind="g5b_sufficiency", episode_id=episode_id,
@@ -147,12 +198,16 @@ class CognitionRuntime:
                 version_manifest_id=version_manifest_id,
             )
             results["g5b"] = g5b.reason
+            if not g5b.ok:
+                results["ok"] = False
+                return results
             # G6 atomic commit
             g6 = await self._handler.handle(
                 uow, CognitionEvent(kind="g6_commit", episode_id=episode_id,
                                     payload={"submission": submission_payload,
                                              "material": material_payload,
-                                             "lease": lease_payload}),
+                                             "lease": lease_payload},
+                                    accepted_invocation_id=forecast_invocation_id),
                 version_manifest_id=version_manifest_id,
                 policy_hash=evidence_coverage_policy_hash,
             )

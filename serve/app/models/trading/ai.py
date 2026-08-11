@@ -21,6 +21,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    ForeignKeyConstraint,
     Identity,
     Integer,
     PrimaryKeyConstraint,
@@ -64,6 +65,16 @@ class AIInvocation(TradingBase, CreatedAtMixin):
     __tablename__ = "ai_invocations"
     __table_args__ = (
         PrimaryKeyConstraint("id", "occurred_at", name="pk_ai_invocations"),
+        ForeignKeyConstraint(
+            ["episode_id"],
+            ["trading.forecast_episodes.id"],
+            name="fk_ai_invocations_episode",
+        ),
+        ForeignKeyConstraint(
+            ["model_role_binding_id"],
+            ["trading.model_role_bindings.id"],
+            name="fk_ai_invocations_model_role_binding",
+        ),
         UniqueConstraint(
             "episode_id", "stage", "role", "experiment_variant", "attempt_no", "occurred_at",
             name="uq_ai_invocations_attempt_identity",
@@ -109,6 +120,10 @@ class AIInvocation(TradingBase, CreatedAtMixin):
             name="ck_ai_invocations_cost_estimated_nonneg",
         ),
         CheckConstraint(
+            "tool_count >= 0 AND search_count >= 0 AND search_count <= tool_count",
+            name="ck_ai_invocations_tool_counts_valid",
+        ),
+        CheckConstraint(
             "tool_count = 0 OR network_policy <> 'NONE'",
             name="ck_ai_invocations_tool_requires_network",
         ),
@@ -128,8 +143,40 @@ class AIInvocation(TradingBase, CreatedAtMixin):
             "jsonb_typeof(taint_report) = 'object'",
             name="ck_ai_invocations_taint_report_object",
         ),
+        CheckConstraint(
+            "cache_key_hash IS NULL OR cache_key_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_ai_invocations_cache_key_hash_hex",
+        ),
+        CheckConstraint(
+            "lifecycle_state <> 'ACCEPTED' OR ("
+            "result IS NOT NULL AND result IN ('accepted','cache_hit') AND "
+            "model_role_binding_id IS NOT NULL AND "
+            "returned_provider = requested_provider AND "
+            "returned_route = requested_route AND returned_model = requested_model AND "
+            "prompt_version IS NOT NULL AND schema_version IS NOT NULL AND "
+            "request_artifact_ref IS NOT NULL AND "
+            "request_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "prompt_artifact_ref IS NOT NULL AND "
+            "prompt_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "schema_artifact_ref IS NOT NULL AND "
+            "schema_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "raw_response_artifact_ref IS NOT NULL AND "
+            "raw_response_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "parsed_output_artifact_ref IS NOT NULL AND "
+            "parsed_output_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "normalized_output_artifact_ref IS NOT NULL AND "
+            "normalized_output_artifact_ref ~ '^[0-9a-f]{64}$' AND "
+            "accepted_output_binding = normalized_output_artifact_ref AND "
+            "(network_policy <> 'NONE' OR cache_key_hash IS NOT NULL) AND "
+            "queued_at IS NOT NULL AND started_at IS NOT NULL AND "
+            "response_at IS NOT NULL AND parsed_at IS NOT NULL AND "
+            "validated_at IS NOT NULL AND completed_at IS NOT NULL"
+            ")",
+            name="ck_ai_invocations_accepted_shape",
+        ),
         Index("ix_ai_invocations_episode", "episode_id", "occurred_at"),
         Index("ix_ai_invocations_role", "role", "occurred_at"),
+        Index("ix_ai_invocations_cache_key", "cache_key_hash", "occurred_at"),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -163,6 +210,7 @@ class AIInvocation(TradingBase, CreatedAtMixin):
     effort: Mapped[str | None] = mapped_column(String(32))
     sampling: Mapped[dict | None] = mapped_column(JSONB)
     seed: Mapped[int | None] = mapped_column(BigInteger)
+    cache_key_hash: Mapped[str | None] = mapped_column(sha256_type())
     # 权限/污染
     network_policy: Mapped[str] = mapped_column(String(32), nullable=False)
     allowed_tools: Mapped[list | None] = mapped_column(JSONB)
@@ -176,7 +224,8 @@ class AIInvocation(TradingBase, CreatedAtMixin):
     schema_artifact_ref: Mapped[str | None] = mapped_column(sha256_type())
     input_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False)
     input_manifest_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
-    # 输出 Artifact
+    # Request / 输出 Artifact
+    request_artifact_ref: Mapped[str | None] = mapped_column(sha256_type())
     raw_response_artifact_ref: Mapped[str | None] = mapped_column(sha256_type())
     parsed_output_artifact_ref: Mapped[str | None] = mapped_column(sha256_type())
     normalized_output_artifact_ref: Mapped[str | None] = mapped_column(sha256_type())
@@ -217,8 +266,13 @@ class AIToolCall(TradingBase, CreatedAtMixin):
     __table_args__ = (
         PrimaryKeyConstraint("id", "occurred_at", name="pk_ai_tool_calls"),
         UniqueConstraint(
-            "invocation_id", "ordinal", "occurred_at",
+            "invocation_id", "invocation_occurred_at", "ordinal", "occurred_at",
             name="uq_ai_tool_calls_invocation_ordinal",
+        ),
+        ForeignKeyConstraint(
+            ["invocation_id", "invocation_occurred_at"],
+            ["trading.ai_invocations.id", "trading.ai_invocations.occurred_at"],
+            name="fk_ai_tool_calls_invocation",
         ),
         CheckConstraint(
             "status IN ('STARTED','COMPLETED','FAILED','TIMED_OUT','CANCELLED')",
@@ -237,13 +291,21 @@ class AIToolCall(TradingBase, CreatedAtMixin):
             "cost >= 0",
             name="ck_ai_tool_calls_cost_nonneg",
         ),
-        Index("ix_ai_tool_calls_invocation", "invocation_id", "occurred_at"),
+        Index(
+            "ix_ai_tool_calls_invocation",
+            "invocation_id",
+            "invocation_occurred_at",
+            "occurred_at",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False, primary_key=True)
     invocation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    invocation_occurred_at: Mapped[datetime] = mapped_column(
+        utc_timestamp_type(), nullable=False
+    )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     tool_type: Mapped[str] = mapped_column(String(64), nullable=False)
     tool_version: Mapped[str | None] = mapped_column(String(64))
@@ -269,8 +331,13 @@ class AIValidationResult(TradingBase, CreatedAtMixin):
     __table_args__ = (
         PrimaryKeyConstraint("id", "occurred_at", name="pk_ai_validation_results"),
         UniqueConstraint(
-            "invocation_id", "validator_name", "occurred_at",
+            "invocation_id", "invocation_occurred_at", "validator_name", "occurred_at",
             name="uq_ai_validation_results_invocation_validator",
+        ),
+        ForeignKeyConstraint(
+            ["invocation_id", "invocation_occurred_at"],
+            ["trading.ai_invocations.id", "trading.ai_invocations.occurred_at"],
+            name="fk_ai_validation_results_invocation",
         ),
         CheckConstraint(
             "severity IN ('hard','soft')",
@@ -280,13 +347,21 @@ class AIValidationResult(TradingBase, CreatedAtMixin):
             "validator_name <> ''",
             name="ck_ai_validation_results_name_nonempty",
         ),
-        Index("ix_ai_validation_results_invocation", "invocation_id", "occurred_at"),
+        Index(
+            "ix_ai_validation_results_invocation",
+            "invocation_id",
+            "invocation_occurred_at",
+            "occurred_at",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False, primary_key=True)
     invocation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    invocation_occurred_at: Mapped[datetime] = mapped_column(
+        utc_timestamp_type(), nullable=False
+    )
     validator_name: Mapped[str] = mapped_column(String(64), nullable=False)
     validator_version: Mapped[str | None] = mapped_column(String(64))
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
