@@ -20,25 +20,20 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
-from app.domain.trading.hashing import canonical_hash
+from app.domain.trading.hashing import canonical_bytes, canonical_hash
+from app.domain.trading.evaluation_policy import evaluation_policy
 from app.domain.trading.payout import apply_payout_lookup
 from app.repositories.trading.settlement import SettlementRepository
 from app.schemas.trading.settlement import CLUSTER_SPLITS, LabelRevisionInput
+from app.services.artifact_store import ArtifactRef, ArtifactStore
 
 SETTLEMENT_CONFLICT = "SETTLEMENT_CONFLICT"
 _FINAL_STATES = ("final_admissible", "final_excluded", "disputed")
-
-_SPEC_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "tests" / "trading" / "fixtures" / "p3_learning" / "p_evaluation_spec_v1.json"
-)
-
 
 def _rows(result) -> list[dict[str, Any]]:
     keys = list(result.keys())
@@ -46,10 +41,8 @@ def _rows(result) -> list[dict[str, Any]]:
 
 
 def load_label_policy() -> dict:
-    """读取冻结 P3 spec 的 label_policy（与 p3_helpers.frozen_spec 同源）。"""
-    with open(_SPEC_PATH, encoding="utf-8") as f:
-        spec = json.load(f)
-    return spec["label_policy"]
+    """Read the deployment-owned, content-verified frozen label policy."""
+    return evaluation_policy("label_policy")
 
 
 def _decimal(value: Any, path: str) -> Decimal:
@@ -83,8 +76,13 @@ class SplitIntegrityResult:
 class SettlementLogic:
     """label / cluster 确定性业务规则；写路径全部走 SettlementRepository。"""
 
-    def __init__(self, settlement: SettlementRepository | None = None) -> None:
+    def __init__(
+        self,
+        settlement: SettlementRepository | None = None,
+        artifact_store: ArtifactStore | None = None,
+    ) -> None:
         self._settlement = settlement or SettlementRepository()
+        self._artifact_store = artifact_store
 
     # ---------------- label revision compiler ----------------
 
@@ -92,7 +90,11 @@ class SettlementLogic:
         self, uow: UnitOfWork, *, input_: LabelRevisionInput
     ) -> LabelRevisionResult:
         policy = load_label_policy()
-        R_c, payouts, h_c = await self._load_contract_material(
+        if input_.policy_code_hash != canonical_hash(policy):
+            return LabelRevisionResult(False, reason="label_policy_hash_mismatch")
+        if input_.state in _FINAL_STATES and not (input_.auditor_identity or "").strip():
+            return LabelRevisionResult(False, reason="label_terminal_auditor_required")
+        R_c, payouts, h_c, expected_resolution_source = await self._load_contract_material(
             uow, input_.contract_spec_id
         )
         if R_c is None:
@@ -130,7 +132,7 @@ class SettlementLogic:
                 # 无证据 → 保持 pending（不追加 revision）。
                 return LabelRevisionResult(False, reason="label_evidence_missing")
             conflicts = self._detect_conflicts(
-                policy, input_, R_c, payouts, h_c
+                policy, input_, R_c, payouts, h_c, expected_resolution_source
             )
             if conflicts:
                 # 固定 SETTLEMENT_CONFLICT → disputed（fail closed）。
@@ -182,15 +184,23 @@ class SettlementLogic:
         time_block_start: datetime,
         time_block_end: datetime,
         horizon: str,
-        contract_spec_ids: list[int],
-        token_ids: list[int],
+        contract_spec_ids: list[int] | None = None,
+        token_ids: list[int] | None = None,
+        contract_token_ids: dict[int, list[int]] | None = None,
     ) -> ClusterResult:
         if split not in CLUSTER_SPLITS:
             return ClusterResult(False, reason=f"cluster_split_unknown:{split}")
         if time_block_end <= time_block_start:
             return ClusterResult(False, reason="cluster_block_order_invalid")
-        if not contract_spec_ids or len(contract_spec_ids) != len(set(contract_spec_ids)):
-            return ClusterResult(False, reason="cluster_spec_set_invalid")
+        mapping, mapping_error = self._exact_contract_token_mapping(
+            contract_spec_ids=contract_spec_ids,
+            token_ids=token_ids,
+            contract_token_ids=contract_token_ids,
+        )
+        if mapping_error is not None:
+            return ClusterResult(False, reason=mapping_error)
+        assert mapping is not None
+        contract_spec_ids = sorted(mapping)
 
         for spec_id in sorted(set(contract_spec_ids)):
             active = await self._active_cluster_for_spec(uow, spec_id)
@@ -207,7 +217,9 @@ class SettlementLogic:
                 "time_block_end": time_block_end,
                 "horizon": horizon,
                 "contract_spec_ids": sorted(set(contract_spec_ids)),
-                "token_ids": sorted(set(token_ids)),
+                "contract_token_ids": {
+                    str(spec_id): mapping[spec_id] for spec_id in contract_spec_ids
+                },
             }
         )
         cluster_id = await self._settlement.insert_cluster(
@@ -220,8 +232,8 @@ class SettlementLogic:
             horizon=horizon,
             status="OPEN",
         )
-        for spec_id in sorted(set(contract_spec_ids)):
-            for token_id in sorted(set(token_ids)):
+        for spec_id in contract_spec_ids:
+            for token_id in mapping[spec_id]:
                 await self._settlement.insert_cluster_membership(
                     uow.session,
                     resolution_cluster_id=cluster_id,
@@ -237,8 +249,9 @@ class SettlementLogic:
         time_block_start: datetime,
         time_block_end: datetime,
         horizon: str,
-        contract_spec_ids: list[int],
-        token_ids: list[int],
+        contract_spec_ids: list[int] | None = None,
+        token_ids: list[int] | None = None,
+        contract_token_ids: dict[int, list[int]] | None = None,
     ) -> ClusterResult:
         """forward-holdout 专用别名：split 固定为 forward_holdout（创建时 outcome 未知）。"""
         return await self.create_cluster(
@@ -249,6 +262,7 @@ class SettlementLogic:
             horizon=horizon,
             contract_spec_ids=contract_spec_ids,
             token_ids=token_ids,
+            contract_token_ids=contract_token_ids,
         )
 
     async def check_split_integrity(self, uow: UnitOfWork) -> SplitIntegrityResult:
@@ -280,17 +294,19 @@ class SettlementLogic:
 
     async def _load_contract_material(
         self, uow: UnitOfWork, contract_spec_id: int
-    ) -> tuple[list[str] | None, dict[int, dict], dict]:
+    ) -> tuple[list[str] | None, dict[int, dict], dict, str | None]:
         spec_result = await uow.session.execute(
             text(
-                "SELECT kc_resolution_states, contract_key FROM trading.contract_specs "
-                "WHERE id=:cs"
+                "SELECT cs.kc_resolution_states, cs.contract_key, s.resolution_source "
+                "FROM trading.contract_specs cs "
+                "LEFT JOIN trading.contract_snapshots s ON s.id=cs.snapshot_id "
+                "WHERE cs.id=:cs"
             ),
             {"cs": contract_spec_id},
         )
         spec_row = spec_result.first()
         if spec_row is None:
-            return None, {}, {}
+            return None, {}, {}, None
         R_c = list(spec_row[0])
         payout_result = await uow.session.execute(
             text(
@@ -309,13 +325,17 @@ class SettlementLogic:
         )
         hc_row = hc_result.first()
         h_c = hc_row[0] if hc_row else {}
-        return R_c, payouts, h_c
+        return R_c, payouts, h_c, spec_row[2]
 
     async def _evidence_ok(self, uow: UnitOfWork, input_: LabelRevisionInput) -> bool:
-        if input_.evidence_artifact_id is None:
+        if input_.evidence_artifact_id is None or self._artifact_store is None:
             return False
         result = await uow.session.execute(
-            text("SELECT sha256 FROM trading.artifact_objects WHERE id=:a"),
+            text(
+                "SELECT sha256, original_size, stored_size, mime, compression, "
+                "       storage_driver, storage_version, locator "
+                "FROM trading.artifact_objects WHERE id=:a"
+            ),
             {"a": input_.evidence_artifact_id},
         )
         row = result.first()
@@ -324,8 +344,26 @@ class SettlementLogic:
         sha = row[0]
         if not isinstance(sha, str) or len(sha) != 64:
             return False
-        # 证据 artifact 内容 hash 必须可验（canonical hash of raw outcome）。
-        return canonical_hash(input_.raw_outcome or {}) == sha
+        try:
+            ref = ArtifactRef(
+                sha256=sha,
+                original_size=int(row[1]),
+                stored_size=int(row[2]),
+                mime=row[3],
+                compression=row[4],
+                storage_driver=row[5],
+                storage_version=row[6],
+                locator=row[7],
+            )
+            payload = self._artifact_store.get_bytes(ref, verify=True)
+            decoded = json.loads(payload)
+        except Exception:
+            return False
+        return (
+            payload == canonical_bytes(decoded)
+            and decoded == (input_.raw_outcome or {})
+            and canonical_hash(decoded) == sha
+        )
 
     def _detect_conflicts(
         self,
@@ -334,36 +372,115 @@ class SettlementLogic:
         R_c: list[str],
         payouts: dict[int, dict],
         h_c: dict,
+        expected_resolution_source: str | None,
     ) -> list[str]:
         conflicts: list[str] = []
         if input_.resolution_state not in R_c:
             conflicts.append("rule")
-        if not input_.resolution_source:
+        if (
+            not expected_resolution_source
+            or input_.resolution_source != expected_resolution_source
+        ):
             conflicts.append("resolution_source")
-        cashflow = input_.token_cashflow or {}
-        actual_cashflow = {}
+        cashflow = input_.token_cashflow
+        actual_cashflow: Any = None
         if isinstance(input_.raw_outcome, dict):
-            actual_cashflow = input_.raw_outcome.get("actual_cashflow") or {}
-        # token_mapping / rule：token_cashflow 与冻结 IR 重算不符。
-        for token_key, reported in cashflow.items():
-            token_id = self._token_key_to_id(payouts, token_key)
-            if token_id is None:
-                conflicts.append("token_mapping")
-                continue
-            expected = self._expected_payout(payouts[token_id], input_.resolution_state)
-            if expected is None or _decimal(reported, "label_cashflow") != expected:
-                conflicts.append("token_mapping")
-                conflicts.append("rule")
-        # cashflow：raw_outcome.actual_cashflow 与冻结 IR 重算不符。
-        for token_key, reported in actual_cashflow.items():
-            token_id = self._token_key_to_id(payouts, token_key)
-            if token_id is None:
+            actual_cashflow = input_.raw_outcome.get("actual_cashflow")
+
+        # h must actually map at least one frozen world state to the reported R_c state.
+        # Merely accepting a string that appears in R_c is not an h/g recomputation.
+        if not isinstance(h_c, dict) or input_.resolution_state not in set(h_c.values()):
+            conflicts.append("rule")
+
+        # Every payout function is required exactly once.  Iterating only caller supplied
+        # keys allowed an empty or partial map to become final_admissible.
+        expected_ids = set(payouts)
+        cashflow_ids = self._cashflow_token_ids(payouts, cashflow)
+        if cashflow_ids is None or cashflow_ids != expected_ids:
+            conflicts.append("token_mapping")
+        else:
+            for token_key, reported in cashflow.items():
+                token_id = self._token_key_to_id(payouts, token_key)
+                assert token_id is not None
+                expected = self._expected_payout(payouts[token_id], input_.resolution_state)
+                try:
+                    matches = expected is not None and _decimal(
+                        reported, "label_cashflow"
+                    ) == expected
+                except (ValueError, ArithmeticError):
+                    matches = False
+                if not matches:
+                    conflicts.extend(("token_mapping", "rule"))
+
+        # If the evidence payload carries an independently observed cashflow, it too must
+        # be a complete exact map.  ``token_cashflow`` remains the required canonical
+        # actual-cashflow field for sources that do not duplicate it inside raw evidence.
+        if actual_cashflow is not None:
+            actual_ids = self._cashflow_token_ids(payouts, actual_cashflow)
+            if actual_ids is None or actual_ids != expected_ids:
                 conflicts.append("cashflow")
-                continue
-            expected = self._expected_payout(payouts[token_id], input_.resolution_state)
-            if expected is None or _decimal(reported, "label_actual_cashflow") != expected:
-                conflicts.append("cashflow")
+            else:
+                for token_key, reported in actual_cashflow.items():
+                    token_id = self._token_key_to_id(payouts, token_key)
+                    assert token_id is not None
+                    expected = self._expected_payout(
+                        payouts[token_id], input_.resolution_state
+                    )
+                    try:
+                        matches = expected is not None and _decimal(
+                            reported, "label_actual_cashflow"
+                        ) == expected
+                    except (ValueError, ArithmeticError):
+                        matches = False
+                    if not matches:
+                        conflicts.append("cashflow")
         return sorted(set(conflicts))
+
+    @classmethod
+    def _cashflow_token_ids(
+        cls, payouts: dict[int, dict], cashflow: Any
+    ) -> set[int] | None:
+        if not isinstance(cashflow, dict):
+            return None
+        token_ids: list[int] = []
+        for token_key in cashflow:
+            token_id = cls._token_key_to_id(payouts, token_key)
+            if token_id is None:
+                return None
+            token_ids.append(token_id)
+        if len(token_ids) != len(set(token_ids)):
+            return None
+        return set(token_ids)
+
+    @staticmethod
+    def _exact_contract_token_mapping(
+        *,
+        contract_spec_ids: list[int] | None,
+        token_ids: list[int] | None,
+        contract_token_ids: dict[int, list[int]] | None,
+    ) -> tuple[dict[int, list[int]] | None, str | None]:
+        if contract_token_ids is not None:
+            if contract_spec_ids is not None or token_ids is not None:
+                return None, "cluster_token_mapping_ambiguous"
+            raw_mapping = contract_token_ids
+        else:
+            specs = list(contract_spec_ids or [])
+            tokens = list(token_ids or [])
+            if len(specs) != 1:
+                return None, "cluster_exact_token_mapping_required"
+            raw_mapping = {specs[0]: tokens}
+        if not raw_mapping:
+            return None, "cluster_spec_set_invalid"
+        mapping: dict[int, list[int]] = {}
+        for raw_spec, raw_tokens in raw_mapping.items():
+            spec_id = int(raw_spec)
+            values = [int(value) for value in raw_tokens]
+            if spec_id <= 0 or not values or any(value <= 0 for value in values):
+                return None, "cluster_token_mapping_invalid"
+            if len(values) != len(set(values)) or spec_id in mapping:
+                return None, "cluster_token_mapping_invalid"
+            mapping[spec_id] = sorted(values)
+        return mapping, None
 
     @staticmethod
     def _token_key_to_id(payouts: dict[int, dict], token_key: Any) -> int | None:
@@ -420,7 +537,11 @@ class SettlementLogic:
         result = await uow.session.execute(
             text(
                 "SELECT 1 FROM trading.resolution_labels rl "
-                "WHERE rl.contract_spec_id = ANY(:specs) AND rl.state='final_admissible' "
+                "JOIN trading.resolution_cluster_memberships m "
+                "  ON m.contract_spec_id=rl.contract_spec_id "
+                "JOIN trading.resolution_clusters c ON c.id=m.resolution_cluster_id "
+                "WHERE rl.contract_spec_id = ANY(:specs) AND c.split='forward_holdout' "
+                "  AND rl.state='final_admissible' AND rl.created_at <= m.added_at "
                 "LIMIT 1"
             ),
             {"specs": list(holdout_specs)},

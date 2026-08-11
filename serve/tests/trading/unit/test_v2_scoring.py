@@ -45,7 +45,7 @@ D = Decimal
 EXPECTED_POLICY_HASHES = {
     "label_policy_hash": "4ff6f251915007150ff8fb4a1558baeb885d1ed62d2c5a5fde8e31e614567197",
     "target_policy_hash": "bdcd2cf91793c8d41eee58df932bc7404dbdd1c5270d278a27fafdfd093c906a",
-    "baseline_policy_hash": "670246d7e408e32f4442650e1eca928de484f242c67f5359dde212ecaff5bd9b",
+    "baseline_policy_hash": "ef752818a0fc39b9ca42b6678f28f3f353198bc06098bbb8b60ab0cb227a9839",
     "split_policy_hash": "ddd31b216926db79d838e9f3129cf3ac4a3ef5c08038009f7973f443ef60b178",
     "bootstrap_policy_hash": "ba19e6fa54d73cb8f38f12fa750f4ea1871bb9ee8842678692d4fe2a409332fb",
     "metric_policy_hash": "9e4653f4a55ee719634d0398fc0007640451a9950ae48abf484d816d181db7a6",
@@ -63,6 +63,13 @@ def test_bernoulli_brier_golden():
     assert bernoulli_brier(D("0.7"), 1) == D("0.09")
     assert bernoulli_brier(D("0.7"), 0) == D("0.49")
     assert bernoulli_brier(D("0.3"), 1) == D("0.49")
+
+
+def test_bernoulli_probability_out_of_range_rejected_not_clamped():
+    with pytest.raises(ValueError, match="scoring_brier_prob_out_of_range"):
+        bernoulli_brier(D("1.01"), 1)
+    with pytest.raises(ValueError, match="scoring_logloss_prob_out_of_range"):
+        bernoulli_log_loss(D("-0.01"), 0)
 
 
 def test_bernoulli_log_loss_golden():
@@ -177,6 +184,20 @@ def test_cluster_bootstrap_deterministic_and_n_eff():
     other_seed = cluster_bootstrap(cluster_losses, seed=7)
     assert other_seed["point"] == first["point"]  # 点估计不依赖 seed
     assert first["ci_low"] >= D("0") and first["ci_high"] <= D("1")
+
+
+def test_cluster_bootstrap_stratifies_time_blocks_and_cluster_neff_is_equal_weight():
+    result = cluster_bootstrap(
+        [[D("0.1")], [D("0.2"), D("0.3"), D("0.4")]],
+        seed=9,
+        time_blocks=2,
+        cluster_time_blocks=["early", "late"],
+    )
+    assert result["n_eff"] == D("2")
+    # One cluster per stratum is selected every resample, so the CI collapses.
+    assert result["ci_low"] == result["point"] == result["ci_high"]
+    with pytest.raises(ValueError, match="time_block_labels_required"):
+        cluster_bootstrap([[D("0.1")], [D("0.2")]], seed=1, time_blocks=2)
 
 
 # ---------------- properness / spec ----------------

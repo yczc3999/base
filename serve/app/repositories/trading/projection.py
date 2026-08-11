@@ -142,6 +142,48 @@ class ProjectionRepository:
 
     # ---------------- write ----------------
 
+    async def _replace_if_new(
+        self,
+        session: AsyncSession,
+        table: str,
+        rows: list[dict[str, Any]],
+        *,
+        watermark: int,
+    ) -> int:
+        """Apply a projection generation once; older/identical deliveries are no-ops."""
+        # Serialize the compare-and-replace sequence.  Taking the lock before
+        # reading the current watermark prevents a delayed older consumer from
+        # winning a SELECT→TRUNCATE race against a newer generation.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"v2_projection:{table}"},
+        )
+        current = await session.execute(
+            text(
+                f"SELECT source_high_watermark, projection_hash FROM trading.{table} "
+                "ORDER BY projection_hash"
+            )
+        )
+        existing = current.fetchall()
+        if existing:
+            current_watermark = max(int(row[0]) for row in existing)
+            if watermark < current_watermark:
+                return 0
+            current_hashes = [row[1] for row in existing]
+            incoming_hashes = sorted(str(row["projection_hash"]) for row in rows)
+            if watermark == current_watermark and incoming_hashes == current_hashes:
+                return 0
+        await session.execute(text(f"TRUNCATE TABLE trading.{table} RESTART IDENTITY"))
+        normalized = [{**row, "source_high_watermark": watermark} for row in rows]
+        return await _insert_batch(session, table, normalized, on_conflict=None)
+
+    async def replace_health_current(
+        self, session: AsyncSession, rows: list[dict[str, Any]], watermark: int
+    ) -> int:
+        return await self._replace_if_new(
+            session, "ops_health_current", rows, watermark=watermark
+        )
+
     async def upsert_health_current(
         self, session: AsyncSession, rows: list[dict[str, Any]]
     ) -> int:
@@ -158,10 +200,9 @@ class ProjectionRepository:
         watermark: int | None = None,
     ) -> int:
         """整表清空重插 pipeline_funnel_hourly（可重建；``watermark`` 为来源高水位提示）。"""
-        await session.execute(text("TRUNCATE TABLE trading.pipeline_funnel_hourly RESTART IDENTITY"))
-        if watermark is not None:
-            rows = [{**row, "source_high_watermark": watermark} for row in rows]
-        return await _insert_batch(session, "pipeline_funnel_hourly", rows, on_conflict=None)
+        return await self._replace_if_new(
+            session, "pipeline_funnel_hourly", rows, watermark=watermark or 0
+        )
 
     async def replace_risk_current(
         self,
@@ -170,10 +211,9 @@ class ProjectionRepository:
         watermark: int | None = None,
     ) -> int:
         """整表清空重插 account_risk_current（可重建）。"""
-        await session.execute(text("TRUNCATE TABLE trading.account_risk_current RESTART IDENTITY"))
-        if watermark is not None:
-            rows = [{**row, "source_high_watermark": watermark} for row in rows]
-        return await _insert_batch(session, "account_risk_current", rows, on_conflict=None)
+        return await self._replace_if_new(
+            session, "account_risk_current", rows, watermark=watermark or 0
+        )
 
     async def replace_provider_cost_daily(
         self,
@@ -182,10 +222,9 @@ class ProjectionRepository:
         watermark: int | None = None,
     ) -> int:
         """整表清空重插 provider_cost_daily（可重建）。"""
-        await session.execute(text("TRUNCATE TABLE trading.provider_cost_daily RESTART IDENTITY"))
-        if watermark is not None:
-            rows = [{**row, "source_high_watermark": watermark} for row in rows]
-        return await _insert_batch(session, "provider_cost_daily", rows, on_conflict=None)
+        return await self._replace_if_new(
+            session, "provider_cost_daily", rows, watermark=watermark or 0
+        )
 
     async def replace_chain_summary(
         self,
@@ -194,10 +233,9 @@ class ProjectionRepository:
         watermark: int | None = None,
     ) -> int:
         """整表清空重插 latest_chain_summary（可重建）。"""
-        await session.execute(text("TRUNCATE TABLE trading.latest_chain_summary RESTART IDENTITY"))
-        if watermark is not None:
-            rows = [{**row, "source_high_watermark": watermark} for row in rows]
-        return await _insert_batch(session, "latest_chain_summary", rows, on_conflict=None)
+        return await self._replace_if_new(
+            session, "latest_chain_summary", rows, watermark=watermark or 0
+        )
 
     # ---------------- keyset list ----------------
 
@@ -216,6 +254,7 @@ class ProjectionRepository:
         *,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
+        snapshot_as_of: datetime | None = None,
         limit: int = 200,
         sort_ts: str = "as_of",
         metric_name: str | None = None,
@@ -230,7 +269,7 @@ class ProjectionRepository:
             filters["status"] = status
         return await self._list(
             session, "ops_health_current", after_id=after_id, after_as_of=after_as_of,
-            limit=limit, sort_ts=sort_ts, filters=filters,
+            snapshot_as_of=snapshot_as_of, limit=limit, sort_ts=sort_ts, filters=filters,
         )
 
     async def list_funnel_hourly(
@@ -239,6 +278,7 @@ class ProjectionRepository:
         *,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
+        snapshot_as_of: datetime | None = None,
         limit: int = 200,
         sort_ts: str = "as_of",
         stage: str | None = None,
@@ -250,7 +290,7 @@ class ProjectionRepository:
             filters["stage"] = stage
         return await self._list(
             session, "pipeline_funnel_hourly", after_id=after_id, after_as_of=after_as_of,
-            limit=limit, sort_ts=sort_ts, filters=filters,
+            snapshot_as_of=snapshot_as_of, limit=limit, sort_ts=sort_ts, filters=filters,
         )
 
     async def list_risk_current(
@@ -259,6 +299,7 @@ class ProjectionRepository:
         *,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
+        snapshot_as_of: datetime | None = None,
         limit: int = 200,
         sort_ts: str = "as_of",
         portfolio_namespace: str | None = None,
@@ -274,7 +315,7 @@ class ProjectionRepository:
             filters["component_id"] = component_id
         return await self._list(
             session, "account_risk_current", after_id=after_id, after_as_of=after_as_of,
-            limit=limit, sort_ts=sort_ts, filters=filters,
+            snapshot_as_of=snapshot_as_of, limit=limit, sort_ts=sort_ts, filters=filters,
         )
 
     async def list_provider_cost_daily(
@@ -283,6 +324,7 @@ class ProjectionRepository:
         *,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
+        snapshot_as_of: datetime | None = None,
         limit: int = 200,
         sort_ts: str = "as_of",
         provider: str | None = None,
@@ -297,7 +339,7 @@ class ProjectionRepository:
             filters["cost_kind"] = cost_kind
         return await self._list(
             session, "provider_cost_daily", after_id=after_id, after_as_of=after_as_of,
-            limit=limit, sort_ts=sort_ts, filters=filters,
+            snapshot_as_of=snapshot_as_of, limit=limit, sort_ts=sort_ts, filters=filters,
         )
 
     async def list_chain_summary(
@@ -306,6 +348,7 @@ class ProjectionRepository:
         *,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
+        snapshot_as_of: datetime | None = None,
         limit: int = 200,
         sort_ts: str = "as_of",
         chain_key: str | None = None,
@@ -315,7 +358,7 @@ class ProjectionRepository:
             filters["chain_key"] = chain_key
         return await self._list(
             session, "latest_chain_summary", after_id=after_id, after_as_of=after_as_of,
-            limit=limit, sort_ts=sort_ts, filters=filters,
+            snapshot_as_of=snapshot_as_of, limit=limit, sort_ts=sort_ts, filters=filters,
         )
 
     async def _list(
@@ -325,6 +368,7 @@ class ProjectionRepository:
         *,
         after_id: int | None,
         after_as_of: datetime | None,
+        snapshot_as_of: datetime | None,
         limit: int,
         sort_ts: str,
         filters: dict[str, Any],
@@ -338,9 +382,14 @@ class ProjectionRepository:
         )
         clauses: list[str] = []
         params: dict[str, Any] = {"limit": limit + 1}
+        if snapshot_as_of is not None:
+            clauses.append("created_at <= :snapshot_as_of")
+            params["snapshot_as_of"] = snapshot_as_of
         for field, value in filters.items():
             clauses.append(f"{field} = :{field}")
             params[field] = value
+        if (after_as_of is None) != (after_id is None):
+            raise ValueError("after_as_of and after_id must be provided together")
         if after_as_of is not None:
             if after_id is None:
                 raise ValueError("after_id required when after_as_of is set")
@@ -361,7 +410,7 @@ class ProjectionRepository:
         next_cursor: dict[str, Any] | None = None
         if page:
             last = page[-1]
-            next_cursor = {"as_of": last["as_of"], "id": last["id"]}
+            next_cursor = {"sort_time": last["as_of"], "id": last["id"]}
         return {"rows": page, "next_cursor": next_cursor, "has_more": has_more}
 
     # ---------------- helpers ----------------

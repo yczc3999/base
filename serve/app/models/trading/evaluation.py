@@ -59,7 +59,44 @@ class ScoreObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "submission_id", "score_target_id", "label_version_id", "metric_id",
             name="uq_score_observations_submission_target_label_metric",
         ),
-        CheckConstraint("baseline_quote > 0", name="ck_score_observations_baseline_positive"),
+        UniqueConstraint("observation_key", name="uq_score_observations_key"),
+        CheckConstraint(
+            "baseline_quote IS NULL OR (baseline_quote > 0 AND baseline_quote <= 1)",
+            name="ck_score_observations_baseline_range",
+        ),
+        CheckConstraint(
+            "baseline_quote_binding_ids IS NULL OR "
+            "(jsonb_typeof(baseline_quote_binding_ids) = 'array' "
+            "AND jsonb_array_length(baseline_quote_binding_ids) > 0)",
+            name="ck_score_observations_binding_ids_array",
+        ),
+        CheckConstraint(
+            "baseline_value IS NULL OR jsonb_typeof(baseline_value) = 'object'",
+            name="ck_score_observations_baseline_value_object",
+        ),
+        CheckConstraint(
+            "baseline_value_hash IS NULL OR baseline_value_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_score_observations_baseline_value_hash_hex",
+        ),
+        CheckConstraint(
+            "split IN ('train','validation','forward_holdout')",
+            name="ck_score_observations_split_known",
+        ),
+        CheckConstraint(
+            "status IN ('INCLUDED','EXCLUDED')",
+            name="ck_score_observations_status_known",
+        ),
+        CheckConstraint(
+            "(status='INCLUDED' AND exclusion_reason IS NULL "
+            " AND baseline_quote_binding_ids IS NOT NULL AND baseline_value IS NOT NULL "
+            " AND baseline_value_hash IS NOT NULL AND baseline_checkpoint_received_at IS NOT NULL "
+            " AND score_value IS NOT NULL) OR "
+            "(status='EXCLUDED' AND exclusion_reason IS NOT NULL "
+            " AND baseline_quote IS NULL AND baseline_quote_binding_ids IS NULL "
+            " AND baseline_value IS NULL AND baseline_value_hash IS NULL "
+            " AND baseline_checkpoint_received_at IS NULL AND score_value IS NULL)",
+            name="ck_score_observations_disposition_shape",
+        ),
         CheckConstraint(
             "baseline_policy_hash ~ '^[0-9a-f]{64}$'",
             name="ck_score_observations_baseline_hash_hex",
@@ -93,12 +130,18 @@ class ScoreObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         ForeignKey("trading.resolution_labels.id", name="fk_score_observations_label"),
         nullable=False,
     )
-    baseline_quote: Mapped[Decimal] = mapped_column(probability_type(), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="INCLUDED")
+    exclusion_reason: Mapped[str | None] = mapped_column(String(128))
+    baseline_quote_binding_ids: Mapped[list | None] = mapped_column(JSONB)
+    baseline_value: Mapped[dict | None] = mapped_column(JSONB)
+    baseline_value_hash: Mapped[str | None] = mapped_column(sha256_type())
+    baseline_checkpoint_received_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())
+    baseline_quote: Mapped[Decimal | None] = mapped_column(probability_type())
     baseline_policy_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     split: Mapped[str] = mapped_column(String(16), nullable=False)
     algorithm_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     metric_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    score_value: Mapped[Decimal] = mapped_column(probability_type(), nullable=False)
+    score_value: Mapped[Decimal | None] = mapped_column(probability_type())
 
 
 class Experiment(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
@@ -197,8 +240,6 @@ class ExperimentVariant(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         ForeignKey("trading.release_manifests.id", name="fk_experiment_variants_release"),
         nullable=False,
     )
-
-
 class ChallengerVariant(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     """challenger 变更清单（ACTIVE|SUPERSEDED；append-only）。"""
 
@@ -267,6 +308,14 @@ class MetricRun(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="ck_metric_runs_label_versions_object",
         ),
         CheckConstraint(
+            "jsonb_typeof(observation_ids) = 'array' AND jsonb_array_length(observation_ids) > 0",
+            name="ck_metric_runs_observation_ids_array",
+        ),
+        CheckConstraint(
+            "observation_set_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_metric_runs_observation_set_hash_hex",
+        ),
+        CheckConstraint(
             "jsonb_typeof(time_blocks) = 'object'",
             name="ck_metric_runs_time_blocks_object",
         ),
@@ -277,6 +326,15 @@ class MetricRun(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         CheckConstraint(
             "jsonb_typeof(ci) = 'object'",
             name="ck_metric_runs_ci_object",
+        ),
+        CheckConstraint(
+            "split IN ('train','validation','forward_holdout')",
+            name="ck_metric_runs_split_known",
+        ),
+        CheckConstraint(
+            "n_market >= 0 AND n_episode >= 0 AND n_resolution_cluster > 0 "
+            "AND n_eff > 0 AND n_eff <= n_resolution_cluster",
+            name="ck_metric_runs_counts_valid",
         ),
         Index("ix_metric_runs_strategy", "strategy_version_id"),
         Index("ix_metric_runs_release", "release_manifest_id"),
@@ -295,6 +353,13 @@ class MetricRun(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         ForeignKey("trading.release_manifests.id", name="fk_metric_runs_release"),
         nullable=False,
     )
+    cohort_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.evaluation_cohorts.id", name="fk_metric_runs_cohort"),
+        nullable=False,
+    )
+    observation_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    observation_set_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     label_versions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     split: Mapped[str] = mapped_column(String(16), nullable=False)
     time_blocks: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -385,6 +450,17 @@ class PromotionDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "NOT (promotion_type = 'capital' AND status = 'APPROVED')",
             name="ck_promotion_decisions_capital_never_approved",
         ),
+        CheckConstraint("from_ref <> to_ref", name="ck_promotion_decisions_distinct_refs"),
+        CheckConstraint(
+            "(status = 'APPROVED') = (future_effective_at IS NOT NULL)",
+            name="ck_promotion_decisions_future_pair",
+        ),
+        CheckConstraint(
+            "(status = 'APPROVED' AND reason_code IS NULL) OR "
+            "(status IN ('REJECTED','DEFERRED') AND reason_code IS NOT NULL)",
+            name="ck_promotion_decisions_reason_pair",
+        ),
+        CheckConstraint("capital_amount = 0", name="ck_promotion_decisions_wp04_zero_capital"),
         CheckConstraint(
             "from_ref ~ '^[0-9a-f]{64}$'",
             name="ck_promotion_decisions_from_hex",

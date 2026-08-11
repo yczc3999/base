@@ -135,9 +135,22 @@ async def test_list_passthrough_and_cursor_shape():
     fake = FakeRepo()
     logic = ProjectionLogic(fake)
     fake_uow = types.SimpleNamespace(session=None)
+    filter_hash = canonical_hash(
+        {
+            "projection": "health_current",
+            "sort_ts": "as_of",
+            "filters": {"metric_name": "executions"},
+        }
+    )
     result = await logic.list(
         fake_uow, "health_current",
-        after_id=42, after_as_of=FIXED, limit=50,
+        cursor={
+            "sort_time": FIXED,
+            "id": 42,
+            "filter_hash": filter_hash,
+            "as_of": FIXED,
+        },
+        limit=50,
         filters={"metric_name": "executions"},
     )
     assert result == {"rows": [], "next_cursor": None, "has_more": False}
@@ -147,6 +160,7 @@ async def test_list_passthrough_and_cursor_shape():
             {
                 "after_id": 42,
                 "after_as_of": FIXED,
+                "snapshot_as_of": FIXED,
                 "limit": 50,
                 "sort_ts": "as_of",
                 "metric_name": "executions",

@@ -14,11 +14,9 @@ the measured windows, mirroring the WP-03 smoke harness).
 Contracts（任务 §8 / docs/performance-cache-database-design.md §2、§9）:
 - Gate 1: keyset list over ≥100,000 account_risk_current rows → p95≤500ms, p99≤1s,
   per-page response ≤200KiB;
-- Gate 2: single complete decision deterministic replay (create→reveal→market_relative→
-  G7A→G7B→terminalize→shadow_fill) → p95≤5s, p99≤15s.  This uses DecisionLogic +
-  ShadowExecutionLogic, the same deterministic decision chain the replay integration test
-  proves hash-stable; it is the minimal complete-decision replay for the WP-04 window
-  (ReplayLogic/EvaluationLogic 属并行 Checkpoint C，本 harness 不依赖其未定 API)。
+- Gate 2: scientific replay of one frozen canonical score set through the real
+  ``ReplayLogic`` (exact quote/label cutoff → score recomputation → five-layer artifact
+  hash) → p95≤5s, p99≤15s; the replay path cannot invoke network/search/execution.
 - Gate 3: DB pool wait p95≤20ms; projection rebuild lost/duplicate=0; rebuild twice →
   projection row hash 全等;
 - Gate 4: fixed metric workload → throughput, WAL, RSS, CPU/connection peaks, 10s window;
@@ -29,6 +27,7 @@ Contracts（任务 §8 / docs/performance-cache-database-design.md §2、§9）:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import platform
@@ -54,6 +53,9 @@ from app.db.uow import UnitOfWork  # noqa: E402
 from app.logics.trading.decision import DecisionLogic  # noqa: E402
 from app.logics.trading.execution import ShadowExecutionLogic  # noqa: E402
 from app.logics.trading.projection import ProjectionLogic  # noqa: E402
+from app.logics.trading.replay import ReplayLogic  # noqa: E402
+from app.repositories.trading.audit import AuditRepository  # noqa: E402
+from app.repositories.trading.evaluation import EvaluationRepository  # noqa: E402
 from app.repositories.trading.cohort import CohortRepository  # noqa: E402
 from app.repositories.trading.decision import DecisionRepository  # noqa: E402
 from app.repositories.trading.execution import ExecutionRepository  # noqa: E402
@@ -73,6 +75,9 @@ from tests.trading.integration.test_v2_decision_shadow_workflow import (  # noqa
     _build_blind_committed_episode,
     _quote_map,
     _seed,
+)
+from tests.trading.replay.test_v2_p3_learning_replay import (  # noqa: E402
+    _insert_empty_metric_run,
 )
 from datetime import datetime, timezone  # noqa: E402
 
@@ -115,6 +120,26 @@ def _git_sha() -> str:
         ).strip()
     except Exception:
         return "unknown"
+
+
+def _git_worktree_evidence() -> dict[str, Any]:
+    """Record whether timings came from HEAD or a dirty remediation worktree."""
+    try:
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            cwd=str(SERVE_DIR),
+        )
+        return {
+            "git_worktree_clean": not bool(status),
+            "git_status_sha256": hashlib.sha256(status).hexdigest(),
+            "git_status_entries": len(status.splitlines()),
+        }
+    except Exception:
+        return {
+            "git_worktree_clean": None,
+            "git_status_sha256": "unknown",
+            "git_status_entries": None,
+        }
 
 
 def _pct(values: list[float], p: int) -> float:
@@ -241,8 +266,7 @@ async def _keyset_page(
     *,
     env: dict,
     logic: ProjectionLogic,
-    after_id: int | None,
-    after_as_of: Any | None,
+    cursor: dict[str, Any] | None,
     pool_wait_ms: list[float],
     peak_holder: dict[str, int] | None = None,
     engine: Any = None,
@@ -257,9 +281,31 @@ async def _keyset_page(
             )
         page = await logic.list(
             uow, "risk_current",
-            after_id=after_id, after_as_of=after_as_of, limit=KEYSET_PAGE_LIMIT,
+            cursor=cursor, limit=KEYSET_PAGE_LIMIT,
         )
     return page["rows"], page["next_cursor"], page["has_more"]
+
+
+async def _run_scientific_replay_once(
+    *, env: dict, manifest_hash: str, seed: int, sequence: int,
+    pool_wait_ms: list[float],
+) -> float:
+    """Replay one frozen score set and recompute its five-layer artifact."""
+    logic = ReplayLogic(AuditRepository(), EvaluationRepository())
+    started = time.perf_counter()
+    async with UnitOfWork(env["sessions"]) as uow:
+        wait_started = time.perf_counter()
+        await uow.session.connection()
+        pool_wait_ms.append((time.perf_counter() - wait_started) * 1000)
+        result = await logic.replay_original(
+            uow,
+            run_key=f"perf-scientific-replay-{sequence}",
+            manifest_hash=manifest_hash,
+            seed=seed,
+        )
+        assert result.ok, result.reason
+        assert result.output_artifact_hash == manifest_hash
+    return time.perf_counter() - started
 
 
 async def _run() -> dict[str, Any]:
@@ -351,6 +397,17 @@ async def _run() -> dict[str, Any]:
             env=env, ctx=ctx, episode=episode, spec_id=spec_id, sequence=0,
             benchmark_started=0.0, engine=async_engine, pool_wait_ms=[],
         )
+        _, replay_manifest = await _insert_empty_metric_run(
+            env,
+            {
+                "obj": ctx["objective"],
+                "strat": ctx["strategy"],
+                "rel": ctx["release"],
+                "cohort": ctx["cohort"],
+            },
+            run_key="perf-frozen-metric",
+            seed=42,
+        )
 
         logic = ProjectionLogic(ProjectionRepository())
         pool_wait_ms: list[float] = []
@@ -426,13 +483,12 @@ async def _run() -> dict[str, Any]:
         cursor = None
         g1_started = time.perf_counter()
         # warm one page（不计入指标）
-        await _keyset_page(env=env, logic=logic, after_id=None, after_as_of=None,
+        await _keyset_page(env=env, logic=logic, cursor=None,
                            pool_wait_ms=[])
         while True:
             started = time.perf_counter()
             rows, cursor, has_more = await _keyset_page(
-                env=env, logic=logic, after_id=cursor["id"] if cursor else None,
-                after_as_of=cursor["as_of"] if cursor else None,
+                env=env, logic=logic, cursor=cursor,
                 pool_wait_ms=pool_wait_g1,
             )
             page_latency_ms.append((time.perf_counter() - started) * 1000)
@@ -448,9 +504,8 @@ async def _run() -> dict[str, Any]:
         replay_pool_wait: list[float] = []
         replay_started = time.perf_counter()
         for seq in range(1, REPLAY_RUNS + 1):
-            replay_ms.append(await _run_replay_once(
-                env=env, ctx=ctx, episode=episode, spec_id=spec_id, sequence=seq,
-                benchmark_started=replay_started, engine=async_engine,
+            replay_ms.append(await _run_scientific_replay_once(
+                env=env, manifest_hash=replay_manifest, seed=42, sequence=seq,
                 pool_wait_ms=replay_pool_wait,
             ))
         replay_elapsed = time.perf_counter() - replay_started
@@ -466,8 +521,7 @@ async def _run() -> dict[str, Any]:
             done = 0
             while time.perf_counter() - metric_started < METRIC_WINDOW_SECONDS:
                 rows, cur, has_more = await _keyset_page(
-                    env=env, logic=logic, after_id=cur["id"] if cur else None,
-                    after_as_of=cur["as_of"] if cur else None,
+                    env=env, logic=logic, cursor=cur,
                     pool_wait_ms=metric_pool_wait,
                     peak_holder=metric_peak_holder, engine=async_engine,
                 )
@@ -545,6 +599,7 @@ async def _run() -> dict[str, Any]:
         results["seed"] = SEED_LABEL
         results["environment"] = {
             "git_commit": _git_sha(),
+            **_git_worktree_evidence(),
             "node": platform.node(),
             "platform": platform.platform(),
             "machine": platform.machine(),
@@ -574,9 +629,9 @@ async def _run() -> dict[str, Any]:
         }
         results["gate2_replay"] = {
             "definition": (
-                "single complete decision deterministic replay: create→reveal→"
-                "market_relative→G7A→G7B→terminalize(ACTION)→shadow_fill "
-                "(DecisionLogic+ShadowExecutionLogic)"
+                "scientific replay of one frozen canonical score set: exact quote/label "
+                "cutoff validation → score recomputation → five-layer artifact hash "
+                "(ReplayLogic; network/search/execution=false)"
             ),
             "runs": len(replay_ms),
             "wall_seconds": round(replay_elapsed, 3),

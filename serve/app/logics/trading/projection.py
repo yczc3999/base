@@ -204,7 +204,6 @@ class ProjectionLogic:
         as_of = max((metric["max_ts"] for metric in metrics), default=_EPOCH)
         watermark = max((metric["max_id"] for metric in metrics), default=0)
         version = await self._next_version(session, "ops_health_current")
-        await self._repo.clear_table(session, "ops_health_current")
         rows: list[dict[str, Any]] = []
         for metric in metrics:
             if total == 0:
@@ -223,7 +222,9 @@ class ProjectionLogic:
             }
             row_data["projection_hash"] = compute_row_hash(row_data)
             rows.append(row_data)
-        return await self._repo.upsert_health_current(session, rows)
+        return await self._repo.replace_health_current(
+            session, rows, watermark=watermark
+        )
 
     # ---------------- pipeline_funnel_hourly ----------------
 
@@ -483,6 +484,7 @@ class ProjectionLogic:
         uow: UnitOfWork,
         projection: str,
         *,
+        cursor: dict[str, Any] | None = None,
         after_id: int | None = None,
         after_as_of: datetime | None = None,
         limit: int = 200,
@@ -506,12 +508,38 @@ class ProjectionLogic:
             raise ValueError(
                 f"unsupported sorts for {projection}: {sorted(unknown_sorts)!r}"
             )
+        filter_hash = canonical_hash(
+            {"projection": projection, "sort_ts": sort_ts, "filters": filters}
+        )
+        if cursor is not None and (after_id is not None or after_as_of is not None):
+            raise ValueError("cursor cannot be combined with legacy after fields")
+        if cursor is not None:
+            required = {"sort_time", "id", "filter_hash", "as_of"}
+            if set(cursor) != required:
+                raise ValueError("projection_cursor_shape_invalid")
+            if cursor["filter_hash"] != filter_hash:
+                raise ValueError("projection_cursor_filter_mismatch")
+            after_as_of = cursor["sort_time"]
+            after_id = cursor["id"]
+            snapshot_as_of = cursor["as_of"]
+        else:
+            if after_id is not None or after_as_of is not None:
+                raise ValueError("projection_cursor_required_for_continuation")
+            snapshot_as_of = datetime.now(timezone.utc)
         method = getattr(self._repo, f"list_{projection}")
-        return await method(
+        page = await method(
             uow.session,
             after_id=after_id,
             after_as_of=after_as_of,
+            snapshot_as_of=snapshot_as_of,
             limit=limit,
             sort_ts=sort_ts,
             **filters,
         )
+        if page["next_cursor"] is not None:
+            page["next_cursor"] = {
+                **page["next_cursor"],
+                "filter_hash": filter_hash,
+                "as_of": snapshot_as_of,
+            }
+        return page

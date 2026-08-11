@@ -87,6 +87,7 @@ class ResolutionLabel(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "(supersedes_id IS NULL) = (version_no = 1)",
             name="ck_resolution_labels_first_version",
         ),
+        UniqueConstraint("supersedes_id", name="uq_resolution_labels_supersedes"),
         Index("ix_resolution_labels_contract", "contract_spec_id"),
         Index("ix_resolution_labels_label_key", "label_key"),
         {"schema": TRADING_SCHEMA},
@@ -213,6 +214,23 @@ class ScoreTarget(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "canonical_side IS NULL OR canonical_side IN ('YES','NO')",
             name="ck_score_targets_side_known",
         ),
+        CheckConstraint(
+            "target_weight > 0 AND target_weight <= 1",
+            name="ck_score_targets_weight_range",
+        ),
+        CheckConstraint(
+            "length(btrim(horizon)) > 0",
+            name="ck_score_targets_horizon_nonempty",
+        ),
+        CheckConstraint(
+            "(target_type = 'bernoulli' AND payout_type = 'binary' "
+            " AND payout_function_id IS NOT NULL) OR "
+            "(target_type = 'multiclass' AND payout_type = 'multiclass' "
+            " AND payout_function_id IS NULL) OR "
+            "(target_type = 'mean_only' AND payout_type = 'scalar' "
+            " AND payout_function_id IS NOT NULL)",
+            name="ck_score_targets_payout_type_pair",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -223,13 +241,20 @@ class ScoreTarget(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         ForeignKey("trading.contract_specs.id", name="fk_score_targets_spec"),
         nullable=False,
     )
+    resolution_cluster_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.resolution_clusters.id", name="fk_score_targets_cluster"),
+        nullable=False,
+    )
+    horizon: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_weight: Mapped[Decimal] = mapped_column(probability_type(), nullable=False)
     payout_function_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("trading.payout_functions.id", name="fk_score_targets_payout"),
     )
     canonical_side: Mapped[str | None] = mapped_column(String(8))
     members: Mapped[list | None] = mapped_column(JSONB)
-    payout_type: Mapped[str | None] = mapped_column(String(32))
+    payout_type: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class ScoreTargetMembership(TradingBase, BigIntIdentityMixin, CreatedAtMixin):

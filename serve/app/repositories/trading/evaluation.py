@@ -9,7 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -32,7 +33,13 @@ class EvaluationRepository:
         submission_id: int,
         trade_decision_id: int | None,
         label_version_id: int,
+        status: str,
+        exclusion_reason: str | None,
         baseline_quote: Any,
+        baseline_quote_binding_ids: list[int] | None,
+        baseline_value: dict | None,
+        baseline_value_hash: str | None,
+        baseline_checkpoint_received_at: datetime | None,
         baseline_policy_hash: str,
         split: str,
         algorithm_hash: str,
@@ -43,13 +50,29 @@ class EvaluationRepository:
             text(
                 "INSERT INTO trading.score_observations "
                 "(observation_key, score_target_id, submission_id, trade_decision_id, "
-                " label_version_id, baseline_quote, baseline_policy_hash, split, "
+                " label_version_id, status, exclusion_reason, baseline_quote, "
+                " baseline_quote_binding_ids, baseline_value, "
+                " baseline_value_hash, baseline_checkpoint_received_at, baseline_policy_hash, split, "
                 " algorithm_hash, metric_id, score_value) VALUES "
-                "(:k, :t, :s, :d, :lv, :bq, :bph, :sp, :ah, :mi, :sv) RETURNING id"
+                "(:k, :t, :s, :d, :lv, :status, :reason, :bq, :bqbs, :bv, :bvh, "
+                " :bcrt, :bph, :sp, :ah, :mi, :sv) "
+                "RETURNING id"
+            ).bindparams(
+                # EXCLUDED observations intentionally persist SQL NULL evidence;
+                # PostgreSQL JSON ``null`` is a value and would violate the
+                # disposition shape/check constraints.
+                bindparam("bqbs", type_=JSONB(none_as_null=True)),
+                bindparam("bv", type_=JSONB(none_as_null=True)),
             ),
             {
                 "k": observation_key, "t": score_target_id, "s": submission_id, "d": trade_decision_id,
-                "lv": label_version_id, "bq": baseline_quote, "bph": baseline_policy_hash,
+                "lv": label_version_id, "status": status, "reason": exclusion_reason,
+                "bq": baseline_quote,
+                "bqbs": baseline_quote_binding_ids,
+                "bv": baseline_value,
+                "bvh": baseline_value_hash,
+                "bcrt": baseline_checkpoint_received_at,
+                "bph": baseline_policy_hash,
                 "sp": split, "ah": algorithm_hash, "mi": metric_id, "sv": score_value,
             },
         )
@@ -139,6 +162,36 @@ class EvaluationRepository:
         )
         return result.scalar_one()
 
+    async def advance_experiment_status(
+        self,
+        session: AsyncSession,
+        experiment_id: int,
+        *,
+        from_status: str,
+        to_status: str,
+    ) -> bool:
+        result = await session.execute(
+            text(
+                "UPDATE trading.experiments SET status=:to "
+                "WHERE id=:id AND status=:from_status"
+            ),
+            {"id": experiment_id, "from_status": from_status, "to": to_status},
+        )
+        return result.rowcount == 1
+
+    async def supersede_challenger_variant(
+        self, session: AsyncSession, *, experiment_id: int, variant_key: str
+    ) -> bool:
+        result = await session.execute(
+            text(
+                "UPDATE trading.challenger_variants SET status='SUPERSEDED' "
+                "WHERE experiment_id=:experiment AND variant_key=:variant "
+                "  AND status='ACTIVE'"
+            ),
+            {"experiment": experiment_id, "variant": variant_key},
+        )
+        return result.rowcount == 1
+
     # ---------------- metric runs ----------------
 
     async def insert_metric_run(
@@ -146,6 +199,9 @@ class EvaluationRepository:
         session: AsyncSession,
         *,
         run_key: str,
+        cohort_id: int,
+        observation_ids: list[int],
+        observation_set_hash: str,
         cohort_query_hash: str,
         strategy_version_id: int,
         release_manifest_id: int,
@@ -166,15 +222,17 @@ class EvaluationRepository:
         result = await session.execute(
             text(
                 "INSERT INTO trading.metric_runs "
-                "(run_key, cohort_query_hash, strategy_version_id, release_manifest_id, "
+                "(run_key, cohort_id, observation_ids, observation_set_hash, cohort_query_hash, "
+                " strategy_version_id, release_manifest_id, "
                 " label_versions, split, time_blocks, code_hash, config_hash, seed, "
                 " n_market, n_episode, n_resolution_cluster, n_eff, results, ci, artifact_hash) "
                 "VALUES "
-                "(:k, :cqh, :sv, :rm, :lv, :sp, :tb, :ch, :cgh, :seed, "
+                "(:k, :cohort, :oids, :osh, :cqh, :sv, :rm, :lv, :sp, :tb, :ch, :cgh, :seed, "
                 " :nm, :ne, :nrc, :neff, :res, :ci, :ah) RETURNING id"
-            ),
+            ).bindparams(bindparam("oids", type_=JSONB())),
             {
-                "k": run_key, "cqh": cohort_query_hash, "sv": strategy_version_id,
+                "k": run_key, "cohort": cohort_id, "oids": observation_ids,
+                "osh": observation_set_hash, "cqh": cohort_query_hash, "sv": strategy_version_id,
                 "rm": release_manifest_id, "lv": label_versions, "sp": split, "tb": time_blocks,
                 "ch": code_hash, "cgh": config_hash, "seed": seed,
                 "nm": n_market, "ne": n_episode, "nrc": n_resolution_cluster, "neff": n_eff,

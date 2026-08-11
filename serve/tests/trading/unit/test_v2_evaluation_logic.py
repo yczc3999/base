@@ -20,8 +20,8 @@ from app.domain.trading.hashing import canonical_hash
 from app.domain.trading.scoring import delta_loss, proper_loss_guard
 from app.logics.trading.evaluation import (
     EvaluationLogic,
-    _promotion_policy_hash,
 )
+from app.domain.trading.evaluation_policy import evaluation_policy, evaluation_policy_hash
 from app.logics.trading.replay import ReplayLogic
 from app.logics.trading.settlement import SettlementLogic
 from app.schemas.trading.evaluation import (
@@ -29,6 +29,7 @@ from app.schemas.trading.evaluation import (
     PromotionDecisionInput,
     ScoreObservationInput,
 )
+from app.schemas.trading.settlement import LabelRevisionInput
 
 D = Decimal
 
@@ -175,6 +176,18 @@ class FakeEvaluationRepository:
         self.ablation_runs.append(row)
         return row["id"]
 
+    async def advance_experiment_status(
+        self, session, experiment_id, *, from_status, to_status
+    ):
+        rows, keys = session.rows_by_table.get("experiments", ([], []))
+        for index, values in enumerate(rows):
+            row = dict(zip(keys, values))
+            if row.get("id") == experiment_id and row.get("status") == from_status:
+                row["status"] = to_status
+                rows[index] = tuple(row[key] for key in keys)
+                return True
+        return False
+
 
 class FakeAuditRepository:
     def __init__(self):
@@ -182,11 +195,27 @@ class FakeAuditRepository:
         self._next = 1
 
     async def insert_replay_run(self, session, **kw):
+        for row in self.replay_runs:
+            if row["run_key"] == kw["run_key"]:
+                if {k: row[k] for k in kw} != kw:
+                    raise RuntimeError("replay_idempotency_conflict")
+                return row["id"], False
         row = dict(kw)
         row["id"] = self._next
         self._next += 1
         self.replay_runs.append(row)
-        return row["id"]
+        return row["id"], True
+
+    async def metric_run_by_artifact_hash(self, session, artifact_hash):
+        rows, keys = session.rows_by_table.get("metric_runs", ([], []))
+        for values in rows:
+            row = dict(zip(keys, values))
+            if row.get("artifact_hash") == artifact_hash:
+                return row
+        return None
+
+    async def get_replay_run(self, session, run_key):
+        return next((r for r in self.replay_runs if r["run_key"] == run_key), None)
 
     async def list_replay_runs(self, session, manifest_hash):
         return [r for r in self.replay_runs if r["manifest_hash"] == manifest_hash]
@@ -238,7 +267,7 @@ def _seed_blind_submission(session: FakeSession, *, q=None, committed_at=None):
         "forecast_submissions",
         [(1, q or {"w0": "0.7", "w1": "0.3"}, [{"w0": "0.7", "w1": "0.3"}],
           "BLIND_COMMITTED", committed_at or datetime(2026, 8, 1, tzinfo=timezone.utc),
-          "a" * 64, 7)],
+          "c" * 64, 7)],
         ["id", "q", "u", "status", "committed_at", "algorithm_hash", "episode_id"],
     )
 
@@ -262,19 +291,35 @@ def _metric_observation_keys():
         "baseline_policy_hash", "split", "algorithm_hash", "metric_id", "score_value",
         "q", "committed_at", "submission_status", "episode_id", "label_state",
         "resolution_state", "target_type", "canonical_side", "members",
-        "contract_spec_id", "market_id",
+        "contract_spec_id", "token_cashflow", "cluster_id", "horizon", "time_block",
+        "market_id",
     ]
 
 
 def _score_input(**overrides) -> ScoreObservationInput:
+    baseline_value = {"20": D("0.575")}
     base = dict(
         observation_key="o1", score_target_id=1, submission_id=1,
-        label_version_id=1, baseline_quote=D("0.65"), baseline_policy_hash="b" * 64,
+        label_version_id=1, baseline_quote=D("0.575"),
+        baseline_quote_binding_ids=[1], baseline_value=baseline_value,
+        baseline_value_hash=canonical_hash({"20": "0.575"}),
+        baseline_checkpoint_received_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        baseline_policy_hash=evaluation_policy_hash("baseline_convention"),
         split="train", algorithm_hash="c" * 64, metric_id="bernoulli_brier",
         score_value=D("0.09"),
     )
     base.update(overrides)
     return ScoreObservationInput(**base)
+
+
+def _seed_baseline_binding(session: FakeSession):
+    at = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    session.set(
+        "pm_quote_bindings",
+        [(1, 20, D("0.575"), at, at, at, at + timedelta(hours=1), "VALID")],
+        ["id", "internal_token_id", "mid", "checkpoint_received_at", "as_of",
+         "received_at", "stale_at", "validity"],
+    )
 
 
 # ---------------- pure functions ----------------
@@ -288,6 +333,32 @@ def test_proper_loss_guard_only_final_admissible():
     assert proper_loss_guard("final_admissible") is True
     for state in ("pending", "provisional", "disputed", "final_excluded"):
         assert proper_loss_guard(state) is False
+
+
+def test_final_admissible_conflict_detects_missing_token_and_h_mapping():
+    logic = SettlementLogic(FakeSettlementRepository())
+    input_ = LabelRevisionInput(
+        contract_spec_id=10,
+        label_key="label",
+        state="final_admissible",
+        resolution_state="YES",
+        resolution_source="gamma",
+        evidence_artifact_id=1,
+        raw_outcome={"resolution": "YES"},
+        token_cashflow={"20": "1"},
+        policy_code_hash=evaluation_policy_hash("label_policy"),
+        auditor_identity="auditor",
+    )
+    conflicts = logic._detect_conflicts(
+        evaluation_policy("label_policy"),
+        input_,
+        ["YES", "NO"],
+        {20: {"YES": "1", "NO": "0"}, 21: {"YES": "0", "NO": "1"}},
+        {"w0": "NO"},
+        "gamma",
+    )
+    assert "token_mapping" in conflicts
+    assert "rule" in conflicts
 
 
 # ---------------- score_observation ----------------
@@ -335,6 +406,7 @@ async def test_score_observation_computes_bernoulli_brier_golden():
         [(D("0.65"), datetime(2026, 8, 1, tzinfo=timezone.utc), "VALID")],
         ["best_ask", "received_at", "validity"],
     )
+    _seed_baseline_binding(session)
     eval_repo = FakeEvaluationRepository()
     logic = EvaluationLogic(eval_repo, sett)
     result = await logic.score_observation(uow, input_=_score_input(score_value=D("0.09")))
@@ -356,6 +428,7 @@ async def test_score_observation_rejects_caller_substituted_value():
         [(D("0.65"), datetime(2026, 8, 1, tzinfo=timezone.utc), "VALID")],
         ["best_ask", "received_at", "validity"],
     )
+    _seed_baseline_binding(session)
     logic = EvaluationLogic(FakeEvaluationRepository(), sett)
     # caller 篡改 score_value → 权威拒绝（禁调用方替换）。
     result = await logic.score_observation(uow, input_=_score_input(score_value=D("0.99")))
@@ -438,8 +511,8 @@ async def test_promotion_rejected_on_holdout_tamper():
          "n_resolution_cluster", "n_eff", "results", "ci", "artifact_hash",
          "status", "completed_at"],
     )
-    # holdout cluster 引用 final_admissible label → tampered。
-    session.set("resolution_clusters", [(1,)], ["id"])
+    # Run-scoped assignment already had an outcome-known label at assignment.
+    session.set("resolution_labels", [(1,)], ["id"])
     eval_repo = FakeEvaluationRepository()
     logic = EvaluationLogic(eval_repo, sett)
     result = await logic.promote(
@@ -447,7 +520,7 @@ async def test_promotion_rejected_on_holdout_tamper():
         input_=PromotionDecisionInput(
             promotion_key="promo-strat", metric_run_id=1, promotion_type="strategy",
             from_ref="a" * 64, to_ref="b" * 64,
-            evidence_manifest_hash=_promotion_policy_hash(),
+            evidence_manifest_hash="e" * 64,
             status="APPROVED",
             future_effective_at=datetime.now(timezone.utc) + timedelta(days=1),
         ),
@@ -461,23 +534,37 @@ async def test_promotion_rejected_on_holdout_tamper():
 # ---------------- replay ----------------
 
 @pytest.mark.asyncio
-async def test_replay_original_twice_hash_equal():
+async def test_replay_original_twice_hash_equal(monkeypatch):
     session = FakeSession()
     uow = FakeUoW(session)
-    manifest = canonical_hash({"kind": "metric", "cohort": "c1"})
+    manifest = canonical_hash({"run_key": "metric-1", "results": {}, "ci": {}})
     session.set(
         "metric_runs",
-        [(1, "a" * 64, "b" * 64)],
-        ["id", "input_artifact_hash", "code_hash"],
+        [(1, "metric-1", "b" * 64, 7, manifest, "COMPLETED",
+          datetime(2026, 8, 1, tzinfo=timezone.utc))],
+        ["id", "run_key", "code_hash", "seed", "artifact_hash", "status", "completed_at"],
     )
     audit = FakeAuditRepository()
     logic = ReplayLogic(audit, FakeEvaluationRepository())
+    async def recompute(_uow, source):
+        return {
+            "ok": True,
+            "artifact_hash": manifest,
+            "artifact": {"run_key": "metric-1", "results": {}, "ci": {}},
+            "observation_set_hash": canonical_hash([]),
+            "observations": [],
+        }
+    monkeypatch.setattr(logic, "_recompute_metric", recompute)
     first = await logic.replay_original(uow, run_key="replay-1", manifest_hash=manifest, seed=7)
     second = await logic.replay_original(uow, run_key="replay-2", manifest_hash=manifest, seed=7)
     assert first.ok and second.ok
     assert first.output_artifact_hash == second.output_artifact_hash
     assert first.output_artifact_hash is not None
     assert len(first.output_artifact_hash) == 64
+    retry = await logic.replay_original(
+        uow, run_key="replay-1", manifest_hash=manifest, seed=7
+    )
+    assert retry.ok and retry.idempotent
 
 
 # ---------------- error review selection ----------------
@@ -485,10 +572,12 @@ async def test_replay_original_twice_hash_equal():
 def _seed_metric_run(session: FakeSession, *, run_key="run-1"):
     session.set(
         "metric_runs",
-        [(1, run_key, "a" * 64, 1, 1, {"v": [1, 2, 3]}, "forward_holdout", {},
+        [(1, run_key, 1, [1, 2, 3], "f" * 64,
+          "a" * 64, 1, 1, {"v": [1, 2, 3]}, "forward_holdout", {},
           "c" * 64, "d" * 64, 42, 3, 3, 1, D("1"), {}, {}, "e" * 64,
           "COMPLETED", None)],
-        ["id", "run_key", "cohort_query_hash", "strategy_version_id",
+        ["id", "run_key", "cohort_id", "observation_ids", "observation_set_hash",
+         "cohort_query_hash", "strategy_version_id",
          "release_manifest_id", "label_versions", "split", "time_blocks",
          "code_hash", "config_hash", "seed", "n_market", "n_episode",
          "n_resolution_cluster", "n_eff", "results", "ci", "artifact_hash",
@@ -567,22 +656,36 @@ async def test_five_layer_report_full_and_selected_separate():
             (1, "obs-a", 1, 1, 5, 1, D("0.65"), "b" * 64, "train", "c" * 64,
              "bernoulli_brier", D("0.09"), {"w0": "0.7", "w1": "0.3"},
              datetime(2026, 8, 1, tzinfo=timezone.utc), "BLIND_COMMITTED", 7,
-             "final_admissible", "YES", "bernoulli", "YES", None, 1, 50),
+             "final_admissible", "YES", "bernoulli", "YES", None, 1,
+             {"20": "1"}, 100, "resolution", "resolution:t0", 50),
             (2, "obs-b", 1, 1, 6, 2, D("0.65"), "b" * 64, "train", "c" * 64,
              "bernoulli_brier", D("0.25"), {"w0": "0.7", "w1": "0.3"},
              datetime(2026, 8, 1, tzinfo=timezone.utc), "BLIND_COMMITTED", 7,
-             "final_admissible", "NO", "bernoulli", "YES", None, 1, 50),
+             "final_admissible", "NO", "bernoulli", "YES", None, 1,
+             {"20": "0"}, 100, "resolution", "resolution:t0", 50),
             (3, "obs-c", 1, 1, None, 3, D("0.65"), "b" * 64, "train", "c" * 64,
              "bernoulli_brier", D("0.49"), {"w0": "0.7", "w1": "0.3"},
              datetime(2026, 8, 1, tzinfo=timezone.utc), "BLIND_COMMITTED", 7,
-             "final_admissible", "YES", "bernoulli", "YES", None, 2, 51),
+             "final_admissible", "YES", "bernoulli", "YES", None, 2,
+             {"20": "1"}, 200, "resolution", "resolution:t0", 51),
         ],
         obs_keys,
     )
     eval_repo = FakeEvaluationRepository()
     logic = EvaluationLogic(eval_repo, FakeSettlementRepository())
+    observation_material = {
+        "cohort_id": 1,
+        "split": "train",
+        "ordered_observation_ids": [1, 2, 3],
+        "label_versions": {"v": [1, 2, 3]},
+        "time_blocks": {"t0": "2026-08-01"},
+        "strategy_version_id": 1,
+        "release_manifest_id": 1,
+    }
     input_ = MetricRunInput(
-        run_key="metric-1", cohort_query_hash="a" * 64, strategy_version_id=1,
+        run_key="metric-1", cohort_id=1, observation_ids=[1, 2, 3],
+        observation_set_hash=canonical_hash(observation_material),
+        cohort_query_hash="a" * 64, strategy_version_id=1,
         release_manifest_id=1, label_versions={"v": [1, 2, 3]}, split="train",
         time_blocks={"t0": "2026-08-01"}, code_hash="c" * 64, config_hash="d" * 64,
         seed=42, n_market=2, n_episode=3, n_resolution_cluster=1, n_eff=D("1"),
@@ -595,7 +698,83 @@ async def test_five_layer_report_full_and_selected_separate():
     assert set(results.keys()) == {"prediction", "selection", "edge",
                                    "portfolio", "execution"}
     prediction = results["prediction"]
-    assert set(prediction.keys()) == {"full_forecast_set", "selected_action_set"}
+    assert {"full_forecast_set", "selected_action_set", "evaluable",
+            "hard_guardrail_pass"} <= set(prediction)
     assert prediction["full_forecast_set"]["count"] == 3
     assert prediction["selected_action_set"]["count"] == 2
     assert run["status"] == "COMPLETED"
+
+
+def test_run_sizes_uses_authoritative_target_market_union():
+    logic = EvaluationLogic(FakeEvaluationRepository(), FakeSettlementRepository())
+    rows = [
+        {"market_ids": [50, 51], "episode_id": 7, "cluster_id": 100},
+        {"market_ids": [51], "episode_id": 8, "cluster_id": 100},
+    ]
+    n_market, n_episode, n_cluster, _ = logic._run_sizes(None, None, rows)
+    assert (n_market, n_episode, n_cluster) == (2, 2, 1)
+
+
+def test_prediction_paired_delta_recomputes_raw_losses_for_all_target_types():
+    # Positive raw losses can still be improvements over the exact frozen
+    # baseline; their sign must never be used as a delta proxy.
+    bernoulli = {
+        "metric_id": "bernoulli_brier", "score_value": D("0.09"),
+        "target_type": "bernoulli", "resolution_state": "YES",
+        "canonical_side": "YES", "baseline_quote": D("0.5"),
+        "baseline_value": {"20": "0.5"},
+    }
+    assert EvaluationLogic._paired_delta(bernoulli) == D("-0.16")
+
+    multiclass = {
+        "metric_id": "multiclass_brier", "score_value": D("0.08"),
+        "target_type": "multiclass", "resolution_state": "A",
+        "members": ["A", "B"], "target_token_ids": [20, 21],
+        "baseline_value": {"20": "0.5", "21": "0.5"},
+    }
+    assert EvaluationLogic._paired_delta(multiclass) == D("-0.42")
+
+    mean_only = {
+        "metric_id": "mean_squared_payout_loss", "score_value": D("0.01"),
+        "target_type": "mean_only", "baseline_quote": D("0.5"),
+        "baseline_value": {"20": "0.5"},
+        "raw_outcome": {"actual_mean": "0.8"},
+    }
+    assert EvaluationLogic._paired_delta(mean_only) == D("-0.08")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_uses_posted_ledger_nets_reversal_and_keeps_excluded_economics():
+    session = FakeSession()
+    session.set(
+        "ledger_transactions",
+        [
+            (1, 5, "shadow-champion", "FILL", datetime(2026, 8, 1, tzinfo=timezone.utc),
+             "CASH", "usd", D("-0.4")),
+            (1, 5, "shadow-champion", "FILL", datetime(2026, 8, 1, tzinfo=timezone.utc),
+             "TOKEN", "tok:10:20", D("1")),
+            (2, 5, "shadow-champion", "REVERSAL", datetime(2026, 8, 2, tzinfo=timezone.utc),
+             "CASH", "usd", D("0.4")),
+            (2, 5, "shadow-champion", "REVERSAL", datetime(2026, 8, 2, tzinfo=timezone.utc),
+             "TOKEN", "tok:10:20", D("-1")),
+            (3, 5, "shadow-champion", "FILL", datetime(2026, 8, 3, tzinfo=timezone.utc),
+             "CASH", "usd", D("-0.3")),
+            (3, 5, "shadow-champion", "FILL", datetime(2026, 8, 3, tzinfo=timezone.utc),
+             "TOKEN", "tok:10:20", D("1")),
+        ],
+        ["transaction_id", "trade_decision_id", "portfolio_namespace", "kind",
+         "posted_at", "asset_type", "asset_key", "amount"],
+    )
+    session.set("operating_cost_entries", [(1, 5, D("0.1"))],
+                ["id", "trade_decision_id", "amount"])
+    session.set("action_candidates", [(5, D("1"))],
+                ["trade_decision_id", "capital_days"])
+    logic = EvaluationLogic(FakeEvaluationRepository(), FakeSettlementRepository())
+    summary, economic = await logic._portfolio_layer(
+        FakeUoW(session),
+        [{"id": 1, "status": "EXCLUDED", "trade_decision_id": 5,
+          "contract_spec_id": 10, "token_cashflow": {"20": "1"}}],
+    )
+    assert summary["not_evaluable"] is False
+    assert summary["system_net"] == D("0.6")
+    assert economic["decision_system_net"] == {5: D("0.6")}

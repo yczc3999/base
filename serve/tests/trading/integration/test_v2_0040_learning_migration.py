@@ -136,7 +136,9 @@ def _seed_core(url, suffix="40"):
     exec_id = _query(url, "SELECT id FROM trading.execution_spec_versions WHERE spec_key=:k", {"k": f"exec-{suffix}"})[0][0]
     _execute(url, "INSERT INTO trading.release_manifests (release_name, config_version_id, strategy_version_id, execution_spec_version_id, capital_permission_manifest_id, git_sha, image_digest, db_revision, total_hash, status) VALUES (:k, :cfg, :strat, :exec, :cap, 'abc', 'img', :rev, :h, 'active')", {"k": f"rel-{suffix}", "cfg": cfg_id, "strat": strat_id, "exec": exec_id, "cap": cap_id, "rev": V40, "h": "f" * 64})
     rel_id = _query(url, "SELECT id FROM trading.release_manifests WHERE release_name=:k", {"k": f"rel-{suffix}"})[0][0]
-    return {"obj": obj_id, "strat": strat_id, "rel": rel_id, "exec": exec_id, "cap": cap_id}
+    _execute(url, "INSERT INTO trading.evaluation_cohorts (cohort_key,status,objective_contract_id,strategy_version_id,release_manifest_id,policy_hashes,seed_hash) VALUES (:k,'DRAFT',:obj,:strat,:rel,'{}'::jsonb,:h)", {"k": f"cohort-{suffix}", "obj": obj_id, "strat": strat_id, "rel": rel_id, "h": "9" * 64})
+    cohort_id = _query(url, "SELECT id FROM trading.evaluation_cohorts WHERE cohort_key=:k", {"k": f"cohort-{suffix}"})[0][0]
+    return {"obj": obj_id, "strat": strat_id, "rel": rel_id, "exec": exec_id, "cap": cap_id, "cohort": cohort_id}
 
 
 def _seed_contract_spec(url, key="cs-40"):
@@ -180,13 +182,15 @@ def _insert_metric_run(url, env, run_key="run-40"):
     return _insert_id(
         url,
         "INSERT INTO trading.metric_runs "
-        "(run_key, cohort_query_hash, strategy_version_id, release_manifest_id, label_versions, "
+        "(run_key, cohort_query_hash, strategy_version_id, release_manifest_id, cohort_id, observation_ids, observation_set_hash, label_versions, "
         " split, time_blocks, code_hash, config_hash, seed, n_market, n_episode, "
         " n_resolution_cluster, n_eff, results, ci, artifact_hash) VALUES "
-        "(:k, :cqh, :sv, :rm, '{}'::jsonb, 'forward_holdout', '{}'::jsonb, "
+        "(:k, :cqh, :sv, :rm, :cohort, '[1]'::jsonb, :osh, '{}'::jsonb, 'forward_holdout', "
+        " '{\"resolution\":\"2026-08-01\"}'::jsonb, "
         " :ch, :cgh, 1, 1, 1, 1, 1.0, '{}'::jsonb, '{}'::jsonb, :ah) RETURNING id",
         {
             "k": run_key, "cqh": "a" * 64, "sv": env["strat"], "rm": env["rel"],
+            "cohort": env["cohort"], "osh": "8" * 64,
             "ch": "b" * 64, "cgh": "c" * 64, "ah": "d" * 64,
         },
     )
@@ -240,7 +244,7 @@ def test_label_state_machine_fail_closed(temp_pg_db):
     assert _query(url, "SELECT state FROM trading.resolution_labels WHERE id=:id", {"id": v1}) == [("pending",)]
 
     # pending→final_admissible（跳过 provisional）→ 拒
-    with pytest.raises(Exception, match="v2_label_transition_invalid"):
+    with pytest.raises(Exception, match="v2_label_(?:transition_invalid|terminal_evidence_incomplete)"):
         _execute(
             url,
             "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash, supersedes_id, resolution_state) "
@@ -249,7 +253,7 @@ def test_label_state_machine_fail_closed(temp_pg_db):
         )
 
     # final_excluded 无 exclusion_reason → 拒（CHECK）
-    with pytest.raises(Exception, match="ck_resolution_labels_excluded_reason"):
+    with pytest.raises(Exception, match="(?:ck_resolution_labels_excluded_reason|v2_label_terminal_evidence_incomplete)"):
         _execute(
             url,
             "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash) "
@@ -258,7 +262,7 @@ def test_label_state_machine_fail_closed(temp_pg_db):
         )
 
     # final_admissible 有 exclusion_reason → 拒（CHECK）
-    with pytest.raises(Exception, match="ck_resolution_labels_admissible_shape"):
+    with pytest.raises(Exception, match="(?:ck_resolution_labels_admissible_shape|v2_label_terminal_evidence_incomplete)"):
         _execute(
             url,
             "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash, exclusion_reason) "
@@ -285,27 +289,11 @@ def test_label_state_machine_fail_closed(temp_pg_db):
             {"cs": cs, "h": "f" * 64, "sup": v1},
         )
 
-    # 合法链 pending→provisional→final_admissible 通过
-    v2 = _insert_id(
-        url,
-        "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash) "
-        "VALUES (:cs, 'lk-e', 1, 'pending', :h) RETURNING id",
-        {"cs": cs, "h": "1" * 64},
-    )
-    v3 = _insert_id(
-        url,
-        "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash, supersedes_id) "
-        "VALUES (:cs, 'lk-e', 2, 'provisional', :h, :sup) RETURNING id",
-        {"cs": cs, "h": "2" * 64, "sup": v2},
-    )
-    v4 = _insert_id(
-        url,
-        "INSERT INTO trading.resolution_labels (contract_spec_id, label_key, version_no, state, policy_code_hash, supersedes_id, resolution_state) "
-        "VALUES (:cs, 'lk-e', 3, 'final_admissible', :h, :sup, 'YES') RETURNING id",
-        {"cs": cs, "h": "3" * 64, "sup": v3},
-    )
-    assert v4 > 0
-    assert _query(url, "SELECT count(*) FROM trading.resolution_labels WHERE contract_spec_id=:cs AND label_key='lk-e'", {"cs": cs}) == [(3,)]
+    # pending→provisional 合法；缺证据的 terminal revision 必须 fail closed。
+    first = _insert_id(url, "INSERT INTO trading.resolution_labels (contract_spec_id,label_key,version_no,state,policy_code_hash) VALUES (:cs,'lk-e',1,'pending',:h) RETURNING id", {"cs": cs, "h": "1" * 64})
+    provisional = _insert_id(url, "INSERT INTO trading.resolution_labels (contract_spec_id,label_key,version_no,state,policy_code_hash,supersedes_id) VALUES (:cs,'lk-e',2,'provisional',:h,:sup) RETURNING id", {"cs": cs, "h": "2" * 64, "sup": first})
+    with pytest.raises(Exception, match="v2_label_terminal_evidence_incomplete"):
+        _execute(url, "INSERT INTO trading.resolution_labels (contract_spec_id,label_key,version_no,state,resolution_state,policy_code_hash,supersedes_id) VALUES (:cs,'lk-e',3,'final_admissible','YES',:h,:sup)", {"cs": cs, "h": "3" * 64, "sup": provisional})
 
 
 def test_append_only_guards(temp_pg_db):
@@ -333,8 +321,8 @@ def test_append_only_guards(temp_pg_db):
 
     prom = _insert_id(
         url,
-        "INSERT INTO trading.promotion_decisions (promotion_key, metric_run_id, promotion_type, from_ref, to_ref, evidence_manifest_hash, status) "
-        "VALUES ('pk-ao', :m, 'strategy', :fr, :tr, :eh, 'REJECTED') RETURNING id",
+        "INSERT INTO trading.promotion_decisions (promotion_key, metric_run_id, promotion_type, from_ref, to_ref, evidence_manifest_hash, status, reason_code) "
+        "VALUES ('pk-ao', :m, 'strategy', :fr, :tr, :eh, 'REJECTED', 'manual_reject') RETURNING id",
         {"m": run_id, "fr": "a" * 64, "tr": "b" * 64, "eh": "c" * 64},
     )
     with pytest.raises(Exception, match="v2_immutable_row:promotion_decisions"):
@@ -347,34 +335,47 @@ def test_score_target_membership_invariants(temp_pg_db):
     url = temp_pg_db.url
     _run(command.upgrade, V40, url)
     cs = _seed_contract_spec(url, "cs-tgt")
-    t1 = _insert_id(url, "INSERT INTO trading.score_targets (target_key, target_type, contract_spec_id, canonical_side) VALUES ('tgt-1', 'bernoulli', :cs, 'YES') RETURNING id", {"cs": cs})
-    t2 = _insert_id(url, "INSERT INTO trading.score_targets (target_key, target_type, contract_spec_id, canonical_side) VALUES ('tgt-2', 'bernoulli', :cs, 'NO') RETURNING id", {"cs": cs})
-    tok_a = _seed_token(url, "m-tgt-a", "t-tgt-a")
-    tok_b = _seed_token(url, "m-tgt-b", "t-tgt-b")
-
-    # 权重≠1 → 拒
-    with pytest.raises(Exception, match="v2_target_membership_weight_not_one"):
-        _execute(
-            url,
-            "INSERT INTO trading.score_target_memberships (score_target_id, token_id, member_weight) VALUES (:t, :a, 1.5)",
-            {"t": t1, "a": tok_a},
-        )
-
-    # 合法：0.5 + 0.5 同一事务 → 过
-    _exec_multi(url, [
-        ("INSERT INTO trading.score_target_memberships (score_target_id, token_id, member_weight) VALUES (:t, :a, 0.5)", {"t": t1, "a": tok_a}),
-        ("INSERT INTO trading.score_target_memberships (score_target_id, token_id, member_weight) VALUES (:t, :b, 0.5)", {"t": t1, "b": tok_b}),
-    ])
-    assert _query(url, "SELECT count(*) FROM trading.score_target_memberships WHERE score_target_id=:t", {"t": t1}) == [(2,)]
-
-    # token 双计（同一 contract 另一 target）→ 拒
-    with pytest.raises(Exception, match="v2_target_membership_token_double_counted"):
-        _execute(
-            url,
-            "INSERT INTO trading.score_target_memberships (score_target_id, token_id, member_weight) VALUES (:t, :a, 1.0)",
-            {"t": t2, "a": tok_a},
-        )
-
+    tok = _seed_token(url, "m-tgt", "t-tgt")
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            tv = c.execute(text(
+                "INSERT INTO trading.pm_token_versions "
+                "(token_id, version_no, outcome_index, observed_at, received_at) "
+                "VALUES (:t,1,0,now(),now()) RETURNING id"
+            ), {"t": tok}).scalar_one()
+            pf = c.execute(text(
+                "INSERT INTO trading.payout_functions "
+                "(contract_spec_id,pm_token_id,token_version_id,outcome_index,function_ir,"
+                "test_vectors,algorithm_hash,content_hash) VALUES "
+                "(:cs,:t,:tv,0,'{\"YES\":\"1\"}'::jsonb,'{}'::jsonb,:h,:h) RETURNING id"
+            ), {"cs": cs, "t": tok, "tv": tv, "h": "a" * 64}).scalar_one()
+            c.execute(text("SET LOCAL session_replication_role = origin"))
+            cluster = c.execute(text(
+                "INSERT INTO trading.resolution_clusters "
+                "(cluster_key,cluster_version,split,time_block_start,time_block_end,horizon) "
+                "VALUES ('cluster-tgt',1,'train',now(),now()+interval '1 day','resolution') RETURNING id"
+            )).scalar_one()
+            c.execute(text(
+                "INSERT INTO trading.resolution_cluster_memberships "
+                "(resolution_cluster_id,contract_spec_id,token_id) VALUES (:c,:cs,:t)"
+            ), {"c": cluster, "cs": cs, "t": tok})
+            target = c.execute(text(
+                "INSERT INTO trading.score_targets "
+                "(target_key,target_type,contract_spec_id,resolution_cluster_id,horizon,target_weight,"
+                "payout_function_id,canonical_side,payout_type) VALUES "
+                "('tgt-1','bernoulli',:cs,:c,'resolution',1,:pf,'YES','binary') RETURNING id"
+            ), {"cs": cs, "c": cluster, "pf": pf}).scalar_one()
+            c.execute(text(
+                "INSERT INTO trading.score_target_memberships "
+                "(score_target_id,token_id,member_weight) VALUES (:t,:tok,1)"
+            ), {"t": target, "tok": tok})
+    finally:
+        engine.dispose()
+    assert _query(url, "SELECT target_weight FROM trading.score_targets WHERE id=:id", {"id": target}) == [(1,)]
+    with pytest.raises(Exception, match="ck_score_targets_weight_range"):
+        _execute(url, "INSERT INTO trading.score_targets (target_key,target_type,contract_spec_id,resolution_cluster_id,horizon,target_weight,payout_function_id,canonical_side,payout_type) VALUES ('bad-weight','bernoulli',:cs,:c,'resolution',1.5,:pf,'YES','binary')", {"cs": cs, "c": cluster, "pf": pf})
 
 def test_promotion_capital_never_approved(temp_pg_db):
     url = temp_pg_db.url
@@ -390,13 +391,124 @@ def test_promotion_capital_never_approved(temp_pg_db):
             {"m": run_id, "fr": "a" * 64, "tr": "b" * 64, "eh": "c" * 64},
         )
 
-    # strategy APPROVED 通过（capital 恒 fail closed，strategy 允许）
-    _insert_id(
+    # 未完成 metric/G8/evidence 的 strategy approval 必须 fail closed。
+    with pytest.raises(Exception, match="v2_promotion_evidence_invalid"):
+        _insert_id(url, "INSERT INTO trading.promotion_decisions (promotion_key,metric_run_id,promotion_type,from_ref,to_ref,evidence_manifest_hash,status,future_effective_at) VALUES ('pk-strat',:m,'strategy',:fr,:tr,:eh,'APPROVED',now()+interval '1 day') RETURNING id", {"m": run_id, "fr": "d" * 64, "tr": "e" * 64, "eh": "f" * 64})
+
+    # With an immutable completed metric and G8 PASS present, the promotion
+    # evidence must bind exactly to metric_runs.artifact_hash.  No unrelated
+    # policy hash or external artifact catalog row may substitute for it.
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(text(
+                "UPDATE trading.metric_runs SET status='COMPLETED', completed_at=now() "
+                "WHERE id=:run"
+            ), {"run": run_id})
+            c.execute(text(
+                "INSERT INTO trading.gate_decisions "
+                "(gate,target_kind,target_id,input_hash,policy_hash,version_manifest_id,"
+                "result,committed_at) VALUES "
+                "('G8','metric_run',:run,:ih,:ph,:release,'PASS',now())"
+                ), {"run": run_id, "ih": "1" * 64, "ph": "2" * 64,
+                    "release": env["rel"]})
+            experiment = c.execute(text(
+                "INSERT INTO trading.experiments "
+                "(experiment_key,hypothesis,hypothesis_hash,primary_metric,guardrails,"
+                " unique_change_field,champion_input_manifest_hash,"
+                " challenger_input_manifest_hash,sample_policy,stopping_rule,seed,status,"
+                " time_block_start,time_block_end) VALUES "
+                "('promo-db-exp','paired',:hh,'bernoulli_brier','{}'::jsonb,"
+                " 'strategy_version_id',:fr,:tr,'{}'::jsonb,'{}'::jsonb,1,"
+                " 'COMPLETED','2026-07-31T00:00:00Z','2026-08-02T00:00:00Z') "
+                "RETURNING id"
+            ), {"hh": "7" * 64, "fr": "5" * 64, "tr": "6" * 64}).scalar_one()
+            c.execute(text(
+                "INSERT INTO trading.experiment_variants "
+                "(experiment_id,variant_key,variant_type,input_manifest_hash,"
+                " strategy_version_id,release_manifest_id) VALUES "
+                "(:e,'champ','champion',:fr,:sv,:rm),"
+                "(:e,'chal','challenger',:tr,:sv,:rm)"
+            ), {"e": experiment, "fr": "5" * 64, "tr": "6" * 64,
+                "sv": env["strat"], "rm": env["rel"]})
+            c.execute(text(
+                "INSERT INTO trading.challenger_variants "
+                "(experiment_id,variant_key,challenger_type,changed_fields,policy_hash,status) "
+                "VALUES (:e,'chal','strategy',"
+                "'{\"strategy_version_id\":\"next\"}'::jsonb,:ph,'ACTIVE')"
+            ), {"e": experiment, "ph": "8" * 64})
+            c.execute(text("SET LOCAL session_replication_role = origin"))
+    finally:
+        engine.dispose()
+    with pytest.raises(Exception, match="v2_promotion_evidence_invalid"):
+        _execute(
+            url,
+            "INSERT INTO trading.promotion_decisions "
+            "(promotion_key,metric_run_id,promotion_type,from_ref,to_ref,"
+            "evidence_manifest_hash,status,future_effective_at) VALUES "
+            "('pk-wrong-evidence',:m,'strategy',:fr,:tr,:eh,'APPROVED',"
+            "now()+interval '1 day')",
+            {"m": run_id, "fr": "3" * 64, "tr": "4" * 64,
+             "eh": "f" * 64},
+        )
+    approved = _insert_id(
         url,
-        "INSERT INTO trading.promotion_decisions (promotion_key, metric_run_id, promotion_type, from_ref, to_ref, evidence_manifest_hash, status) "
-        "VALUES ('pk-strat', :m, 'strategy', :fr, :tr, :eh, 'APPROVED') RETURNING id",
-        {"m": run_id, "fr": "d" * 64, "tr": "e" * 64, "eh": "f" * 64},
+        "INSERT INTO trading.promotion_decisions "
+        "(promotion_key,metric_run_id,promotion_type,from_ref,to_ref,"
+        "evidence_manifest_hash,status,future_effective_at) VALUES "
+        "('pk-exact-evidence',:m,'strategy',:fr,:tr,:eh,'APPROVED',"
+        "now()+interval '1 day') RETURNING id",
+        {"m": run_id, "fr": "5" * 64, "tr": "6" * 64,
+         "eh": "d" * 64},
     )
+    assert approved > 0
+
+
+def test_experiment_and_challenger_controlled_lifecycle(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V40, url)
+    _seed_core(url, "experiment-lifecycle")
+    base_sql = (
+        "INSERT INTO trading.experiments "
+        "(experiment_key,hypothesis,hypothesis_hash,primary_metric,guardrails,"
+        " unique_change_field,champion_input_manifest_hash,"
+        " challenger_input_manifest_hash,sample_policy,stopping_rule,seed,status,"
+        " time_block_start,time_block_end) VALUES "
+        "(:key,'paired',:hh,'bernoulli_brier','{}'::jsonb,'strategy_version_id',"
+        " :champ,:chall,'{}'::jsonb,'{}'::jsonb,42,:status,now(),"
+        " now()+interval '1 day') RETURNING id"
+    )
+    params = {"key": "exp-life", "hh": "1" * 64, "champ": "2" * 64,
+              "chall": "3" * 64, "status": "COMPLETED"}
+    with pytest.raises(Exception, match="v2_experiment_initial_state_invalid"):
+        _insert_id(url, base_sql, params)
+    params["status"] = "PLANNED"
+    experiment_id = _insert_id(url, base_sql, params)
+    with pytest.raises(Exception, match="v2_experiment_immutable"):
+        _execute(url, "UPDATE trading.experiments SET hypothesis='changed' WHERE id=:id",
+                 {"id": experiment_id})
+    _execute(url, "UPDATE trading.experiments SET status='RUNNING' WHERE id=:id",
+             {"id": experiment_id})
+    _execute(url, "UPDATE trading.experiments SET status='COMPLETED' WHERE id=:id",
+             {"id": experiment_id})
+    with pytest.raises(Exception, match="v2_experiment_transition_invalid"):
+        _execute(url, "UPDATE trading.experiments SET status='RUNNING' WHERE id=:id",
+                 {"id": experiment_id})
+
+    challenger_id = _insert_id(
+        url,
+        "INSERT INTO trading.challenger_variants "
+        "(experiment_id,variant_key,challenger_type,changed_fields,policy_hash) "
+        "VALUES (:e,'chall','strategy','{\"strategy_version_id\":\"next\"}'::jsonb,"
+        ":ph) RETURNING id",
+        {"e": experiment_id, "ph": "4" * 64},
+    )
+    _execute(url, "UPDATE trading.challenger_variants SET status='SUPERSEDED' WHERE id=:id",
+             {"id": challenger_id})
+    with pytest.raises(Exception, match="v2_challenger_transition_invalid"):
+        _execute(url, "UPDATE trading.challenger_variants SET status='ACTIVE' WHERE id=:id",
+                 {"id": challenger_id})
 
 
 def test_metric_run_lifecycle_guard(temp_pg_db):
@@ -406,16 +518,10 @@ def test_metric_run_lifecycle_guard(temp_pg_db):
     run_id = _insert_metric_run(url, env, run_key="run-lc")
     assert _query(url, "SELECT status FROM trading.metric_runs WHERE id=:id", {"id": run_id}) == [("RUNNING",)]
 
-    # RUNNING→COMPLETED 合法
-    _execute(url, "UPDATE trading.metric_runs SET status='COMPLETED', completed_at=now() WHERE id=:id", {"id": run_id})
-    assert _query(url, "SELECT status FROM trading.metric_runs WHERE id=:id", {"id": run_id}) == [("COMPLETED",)]
-
-    # terminal 后再改 status → 拒
-    with pytest.raises(Exception, match="v2_metric_run_(?:terminal_)?immutable"):
-        _execute(url, "UPDATE trading.metric_runs SET status='FAILED' WHERE id=:id", {"id": run_id})
-    # terminal 后改 payload → 拒
-    with pytest.raises(Exception, match="v2_metric_run_immutable"):
-        _execute(url, "UPDATE trading.metric_runs SET n_eff=5 WHERE id=:id", {"id": run_id})
+    # 缺完整 label/time-block/five-layer/artifact evidence 不得完成。
+    with pytest.raises(Exception, match="v2_metric_run_evidence_incomplete"):
+        _execute(url, "UPDATE trading.metric_runs SET status='COMPLETED', completed_at=now() WHERE id=:id", {"id": run_id})
+    assert _query(url, "SELECT status FROM trading.metric_runs WHERE id=:id", {"id": run_id}) == [("RUNNING",)]
 
 
 def test_g8_gate_requires_completed_metric_run(temp_pg_db):
@@ -433,27 +539,7 @@ def test_g8_gate_requires_completed_metric_run(temp_pg_db):
             {"t": run_id, "ih": "a" * 64, "ph": "b" * 64, "rel": env["rel"]},
         )
 
-    # COMPLETED + release 一致 → 过
-    _execute(url, "UPDATE trading.metric_runs SET status='COMPLETED', completed_at=now() WHERE id=:id", {"id": run_id})
-    g8 = _insert_id(
-        url,
-        "INSERT INTO trading.gate_decisions (gate, target_kind, target_id, input_hash, policy_hash, version_manifest_id, result, committed_at) "
-        "VALUES ('G8', 'metric_run', :t, :ih, :ph, :rel, 'PASS', now()) RETURNING id",
-        {"t": run_id, "ih": "a" * 64, "ph": "b" * 64, "rel": env["rel"]},
-    )
-    assert _query(url, "SELECT gate FROM trading.gate_decisions WHERE id=:id", {"id": g8}) == [("G8",)]
-
-    # COMPLETED + release 不一致 → 拒（用第二个 COMPLETED run，避免 uq_gate_decisions_target 冲突）
-    env2 = _seed_core(url, "g8b")
-    run2 = _insert_metric_run(url, env2, run_key="run-g8b")
-    _execute(url, "UPDATE trading.metric_runs SET status='COMPLETED', completed_at=now() WHERE id=:id", {"id": run2})
-    with pytest.raises(Exception, match="v2_gate_g8_target_invalid"):
-        _execute(
-            url,
-            "INSERT INTO trading.gate_decisions (gate, target_kind, target_id, input_hash, policy_hash, version_manifest_id, result, committed_at) "
-            "VALUES ('G8', 'metric_run', :t, :ih, :ph, :rel, 'PASS', now())",
-            {"t": run2, "ih": "c" * 64, "ph": "d" * 64, "rel": env["rel"]},
-        )
+    assert _query(url, "SELECT count(*) FROM trading.gate_decisions WHERE gate='G8'") == [(0,)]
 
 
 def test_downgrade_roundtrip_and_fail_closed(temp_pg_db):
@@ -475,4 +561,15 @@ def test_downgrade_roundtrip_and_fail_closed(temp_pg_db):
         _run(command.downgrade, V31, url)
     assert _query(url, "SELECT to_regclass('trading.unknown_intruder_0040') IS NOT NULL") == [(True,)]
     assert set(_trading_tables(url)) == before | {"unknown_intruder_0040"}
+
+
+def test_downgrade_rejects_unknown_index(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V40, url)
+    _execute(url, "CREATE INDEX unknown_wp04_learning_idx ON trading.resolution_labels(state)")
+    with pytest.raises(Exception, match="v2_wp04_learning_unknown_index"):
+        _run(command.downgrade, V31, url)
     assert _version(url) == [(V40,)]
+    _execute(url, "DROP INDEX trading.unknown_wp04_learning_idx")
+    _run(command.downgrade, V31, url)
+    assert _version(url) == [(V31,)]

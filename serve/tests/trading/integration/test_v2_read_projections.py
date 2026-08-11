@@ -275,11 +275,28 @@ async def test_rebuild_twice_hash_identical(proj_env):
     info = await _build_and_rebuild(env, extra_positions=25)
     first = await _projection_snapshot(env)
     # 第二次 rebuild（重复/乱序 event effect=0：重建是 delete+insert，聚合与顺序无关）。
-    await info["logic"].rebuild_all(lambda: UnitOfWork(env["sessions"]))
+    duplicate = await info["logic"].rebuild_all(lambda: UnitOfWork(env["sessions"]))
     second = await _projection_snapshot(env)
     assert first == second
+    assert duplicate == {table: 0 for table in PROJECTION_TABLES}
     for table in PROJECTION_TABLES:
         assert first[table]["count"] > 0, f"{table} empty"
+
+
+@pytest.mark.asyncio
+async def test_out_of_order_projection_generation_is_noop(proj_env):
+    env = proj_env
+    await _build_and_rebuild(env, extra_positions=5)
+    repo = ProjectionRepository()
+    async with UnitOfWork(env["sessions"]) as uow:
+        watermark = await repo.high_watermark(uow.session, "account_risk_current")
+        before = await repo.count_rows(uow.session, "account_risk_current")
+        effect = await repo.replace_risk_current(
+            uow.session, [], watermark=watermark - 1
+        )
+        after = await repo.count_rows(uow.session, "account_risk_current")
+    assert effect == 0
+    assert after == before
 
 
 @pytest.mark.asyncio
@@ -309,8 +326,7 @@ async def test_keyset_pagination_no_dup_no_miss(proj_env):
         async with UnitOfWork(env["sessions"]) as uow:
             page = await logic.list(
                 uow, "risk_current",
-                after_id=next_cursor["id"] if next_cursor else None,
-                after_as_of=next_cursor["as_of"] if next_cursor else None,
+                cursor=next_cursor,
                 limit=10,
             )
         rows = page["rows"]
@@ -324,6 +340,34 @@ async def test_keyset_pagination_no_dup_no_miss(proj_env):
     # 25 个 shadow-int-* + 决策链产生的 1 个 shadow-proj-read 位置 = 26 行。
     assert pages >= 3, "expected multiple keyset pages"
     assert len(seen_ids) == 26, f"expected 26 risk rows, got {len(seen_ids)}"
+
+
+@pytest.mark.asyncio
+async def test_keyset_cursor_is_bound_to_filter_and_snapshot(proj_env):
+    env = proj_env
+    info = await _build_and_rebuild(env, extra_positions=25)
+    logic = info["logic"]
+    async with UnitOfWork(env["sessions"]) as uow:
+        first = await logic.list(uow, "risk_current", limit=5)
+    cursor = first["next_cursor"]
+    assert set(cursor) == {"sort_time", "id", "filter_hash", "as_of"}
+    async with UnitOfWork(env["sessions"]) as uow:
+        with pytest.raises(ValueError, match="cursor_filter_mismatch"):
+            await logic.list(
+                uow,
+                "risk_current",
+                cursor=cursor,
+                filters={"portfolio_namespace": "shadow-int-0001"},
+                limit=5,
+            )
+        with pytest.raises(ValueError, match="cursor_required"):
+            await logic.list(
+                uow,
+                "risk_current",
+                after_id=cursor["id"],
+                after_as_of=cursor["sort_time"],
+                limit=5,
+            )
 
 
 @pytest.mark.asyncio

@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-import json
+import inspect
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -24,8 +24,15 @@ from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.hashing import canonical_hash, deterministic_sample
+from app.logics.trading.evaluation import (
+    EvaluationLogic,
+    _jsonable,
+    metric_evidence_manifest,
+)
 from app.repositories.trading.audit import AuditRepository
 from app.repositories.trading.evaluation import EvaluationRepository
+from app.repositories.trading.settlement import SettlementRepository
+from app.schemas.trading.evaluation import MetricRunInput
 
 REPLAY_KINDS = ("original", "new_code", "variant")
 
@@ -60,6 +67,7 @@ class ReplayResult:
     replay_run_id: int | None = None
     output_artifact_hash: str | None = None
     replay_kind: str | None = None
+    idempotent: bool = False
     reason: str | None = None
 
 
@@ -95,34 +103,44 @@ class ReplayLogic:
         source = await self._source_for_manifest(uow, manifest_hash)
         if source is None:
             return ReplayResult(False, reason="replay_source_missing")
-        code_hash = source["code_hash"]
-        input_artifact_hash = source["input_artifact_hash"]
-        output_artifact_hash = canonical_hash(
-            {
-                "kind": "replay",
-                "mode": "original",
-                "manifest": manifest_hash,
-                "code": code_hash,
-                "seed": seed,
-                "input": input_artifact_hash,
-            }
-        )
-        replay_run_id = await self._audit.insert_replay_run(
-            uow.session,
-            run_key=run_key,
-            replay_kind="original",
-            manifest_hash=manifest_hash,
-            code_hash=code_hash,
-            seed=seed,
-            input_artifact_hash=input_artifact_hash,
-            output_artifact_hash=output_artifact_hash,
-            result=json.dumps({"mode": "original", "manifest": manifest_hash}),
-        )
+        if seed != int(source["seed"]):
+            return ReplayResult(False, reason="replay_seed_mismatch")
+        replay = await self._recompute_metric(uow, source)
+        if not replay["ok"]:
+            return ReplayResult(False, reason=replay["reason"])
+        output_artifact_hash = replay["artifact_hash"]
+        result = {
+            "mode": "original",
+            "manifest_hash": manifest_hash,
+            "source_metric_run_id": int(source["id"]),
+            "source_cutoff": source["completed_at"].isoformat(),
+            "observation_set_hash": replay["observation_set_hash"],
+            "observation_count": len(replay["observations"]),
+            "capabilities": {"network": False, "search": False, "execution": False},
+            "artifact": replay["artifact"],
+            "exact_match": True,
+        }
+        try:
+            inserted = await self._audit.insert_replay_run(
+                uow.session,
+                run_key=run_key,
+                replay_kind="original",
+                manifest_hash=manifest_hash,
+                code_hash=source["code_hash"],
+                seed=seed,
+                input_artifact_hash=source["artifact_hash"],
+                output_artifact_hash=output_artifact_hash,
+                result=result,
+            )
+        except RuntimeError as exc:
+            return ReplayResult(False, reason=str(exc))
+        replay_run_id, created = inserted if isinstance(inserted, tuple) else (inserted, True)
         return ReplayResult(
             True,
             replay_run_id=replay_run_id,
             output_artifact_hash=output_artifact_hash,
             replay_kind="original",
+            idempotent=not created,
         )
 
     async def replay_new_code(
@@ -138,34 +156,53 @@ class ReplayLogic:
         source = await self._source_for_manifest(uow, manifest_hash)
         if source is None:
             return ReplayResult(False, reason="replay_source_missing")
+        if seed != int(source["seed"]):
+            return ReplayResult(False, reason="replay_seed_mismatch")
+        replay = await self._recompute_metric(uow, source)
+        if not replay["ok"]:
+            return ReplayResult(False, reason=replay["reason"])
         kind = "variant" if variant else "new_code"
         output_artifact_hash = canonical_hash(
             {
-                "kind": "replay",
                 "mode": kind,
-                "manifest": manifest_hash,
-                "code": code_hash,
+                "source_artifact_hash": replay["artifact_hash"],
+                "code_hash": code_hash,
                 "seed": seed,
                 "variant": variant,
-                "input": source["input_artifact_hash"],
+                "artifact": replay["artifact"],
             }
         )
-        replay_run_id = await self._audit.insert_replay_run(
-            uow.session,
-            run_key=run_key,
-            replay_kind=kind,
-            manifest_hash=manifest_hash,
-            code_hash=code_hash,
-            seed=seed,
-            input_artifact_hash=source["input_artifact_hash"],
-            output_artifact_hash=output_artifact_hash,
-            result=json.dumps({"mode": kind, "manifest": manifest_hash, "variant": variant}),
-        )
+        result = {
+            "mode": kind,
+            "manifest_hash": manifest_hash,
+            "source_metric_run_id": int(source["id"]),
+            "source_cutoff": source["completed_at"].isoformat(),
+            "observation_set_hash": replay["observation_set_hash"],
+            "capabilities": {"network": False, "search": False, "execution": False},
+            "variant": variant,
+            "artifact": replay["artifact"],
+        }
+        try:
+            inserted = await self._audit.insert_replay_run(
+                uow.session,
+                run_key=run_key,
+                replay_kind=kind,
+                manifest_hash=manifest_hash,
+                code_hash=code_hash,
+                seed=seed,
+                input_artifact_hash=source["artifact_hash"],
+                output_artifact_hash=output_artifact_hash,
+                result=result,
+            )
+        except RuntimeError as exc:
+            return ReplayResult(False, reason=str(exc))
+        replay_run_id, created = inserted if isinstance(inserted, tuple) else (inserted, True)
         return ReplayResult(
             True,
             replay_run_id=replay_run_id,
             output_artifact_hash=output_artifact_hash,
             replay_kind=kind,
+            idempotent=not created,
         )
 
     async def ablation(
@@ -188,7 +225,7 @@ class ReplayLogic:
             ablation_key=ablation_key,
             metric_run_id=metric_run_id,
             bundle_hash=bundle_hash,
-            ablation_fields=json.dumps(fields),
+            ablation_fields=fields,
             result_hash=result_hash,
         )
         return AblationResult(True, ablation_id=ablation_id, result_hash=result_hash)
@@ -289,25 +326,292 @@ class ReplayLogic:
     async def _source_for_manifest(
         self, uow: UnitOfWork, manifest_hash: str
     ) -> dict | None:
-        """原样回放的输入 artifact 来源：优先 metric_runs，其次已有 replay_runs。"""
+        """Resolve only a frozen COMPLETED metric artifact.
+
+        A previous replay output is deliberately never accepted as source: doing so
+        would let a derived hash prove itself without touching the frozen facts.
+        """
+        return await self._audit.metric_run_by_artifact_hash(
+            uow.session, manifest_hash
+        )
+
+    async def _recompute_metric(self, uow: UnitOfWork, source: dict) -> dict:
+        """Rebuild scores and the five-layer metric artifact at its frozen cutoff."""
+        cutoff = source.get("completed_at")
+        if cutoff is None:
+            return {"ok": False, "reason": "replay_source_cutoff_missing"}
+        try:
+            observations = await self._observations_for_replay(uow, source, cutoff)
+        except RuntimeError as exc:
+            return {"ok": False, "reason": str(exc)}
+        decision_ids = sorted(
+            {
+                int(row["trade_decision_id"])
+                for row in observations
+                if row.get("trade_decision_id") is not None
+            }
+        )
+        if await self._has_future_decision_suffix(uow, decision_ids, cutoff):
+            return {"ok": False, "reason": "replay_future_fact_taint"}
+        evaluator = EvaluationLogic(self._evaluation, SettlementRepository())
+        for row in observations:
+            if row.get("status") == "EXCLUDED":
+                continue
+            target = await evaluator._load_target(uow, int(row["score_target_id"]))
+            if target is None:
+                return {"ok": False, "reason": "replay_target_missing"}
+            _, payouts, h_c = await evaluator._load_contract_material(
+                uow, int(target["contract_spec_id"])
+            )
+            label = {
+                "resolution_state": row["resolution_state"],
+                "raw_outcome": row.get("raw_outcome"),
+                "token_cashflow": row.get("token_cashflow"),
+            }
+            submission = {"q": row["q"]}
+            try:
+                score = evaluator._compute_metric(
+                    target,
+                    submission,
+                    label,
+                    payouts,
+                    h_c,
+                    metric_id=row["metric_id"],
+                    baseline=(
+                        Decimal(str(row["baseline_quote"]))
+                        if row.get("baseline_quote") is not None
+                        else Decimal("0.5")
+                    ),
+                )
+            except (KeyError, ValueError) as exc:
+                return {"ok": False, "reason": f"replay_score_invalid:{exc}"}
+            if Decimal(str(row["score_value"])) != score:
+                return {
+                    "ok": False,
+                    "reason": f"replay_score_mismatch:{row['observation_key']}",
+                }
+            row["score_value"] = score
+
+        metric_input = MetricRunInput(
+            run_key=source["run_key"],
+            cohort_id=source["cohort_id"],
+            observation_ids=source["observation_ids"],
+            observation_set_hash=source["observation_set_hash"],
+            cohort_query_hash=source["cohort_query_hash"],
+            strategy_version_id=source["strategy_version_id"],
+            release_manifest_id=source["release_manifest_id"],
+            label_versions=source["label_versions"] or {},
+            split=source["split"],
+            time_blocks=source["time_blocks"] or {},
+            code_hash=source["code_hash"],
+            config_hash=source["config_hash"],
+            seed=source["seed"],
+            n_market=source["n_market"],
+            n_episode=source["n_episode"],
+            n_resolution_cluster=source["n_resolution_cluster"],
+            n_eff=source["n_eff"],
+            results=source["results"] or {},
+            ci=source["ci"] or {},
+            artifact_hash=source["artifact_hash"],
+        )
+        computed = evaluator._compute_five_layers(uow, metric_input, observations)
+        if inspect.isawaitable(computed):
+            computed = await computed
+        results, ci = computed
+        sizes = evaluator._run_sizes(uow, metric_input, observations)
+        if inspect.isawaitable(sizes):
+            sizes = await sizes
+        expected_sizes = (
+            int(source["n_market"]),
+            int(source["n_episode"]),
+            int(source["n_resolution_cluster"]),
+            Decimal(str(source["n_eff"])),
+        )
+        actual_sizes = (sizes[0], sizes[1], sizes[2], Decimal(str(sizes[3])))
+        if actual_sizes != expected_sizes:
+            return {"ok": False, "reason": "replay_metric_size_mismatch"}
+        artifact = metric_evidence_manifest(
+            metric_input,
+            observation_ids=[int(value) for value in source["observation_ids"]],
+            observation_set_hash=source["observation_set_hash"],
+            n_market=sizes[0],
+            n_episode=sizes[1],
+            n_resolution_cluster=sizes[2],
+            n_eff=Decimal(str(sizes[3])),
+            results=results,
+            ci=ci,
+        )
+        artifact_hash = canonical_hash(artifact)
+        if canonical_hash(source["results"] or {}) != canonical_hash(artifact["results"]):
+            return {"ok": False, "reason": "replay_five_layer_results_mismatch"}
+        if canonical_hash(source["ci"] or {}) != canonical_hash(artifact["ci"]):
+            return {"ok": False, "reason": "replay_five_layer_ci_mismatch"}
+        if artifact_hash != source["artifact_hash"]:
+            return {"ok": False, "reason": "replay_source_artifact_hash_mismatch"}
+        return {
+            "ok": True,
+            "artifact": artifact,
+            "artifact_hash": artifact_hash,
+            "observations": observations,
+            "observation_set_hash": source["observation_set_hash"],
+        }
+
+    async def _observations_for_replay(
+        self, uow: UnitOfWork, source: dict, cutoff: Any
+    ) -> list[dict]:
+        """Load the exact historical prefix; exact quote bindings prevent refills."""
+        label_ids = self._flatten_label_versions(source.get("label_versions") or {})
+        observation_ids = [int(value) for value in source.get("observation_ids") or []]
+        if not observation_ids or observation_ids != sorted(set(observation_ids)):
+            raise RuntimeError("replay_observation_ids_invalid")
+        set_material = {
+            "cohort_id": int(source["cohort_id"]),
+            "split": source["split"],
+            "ordered_observation_ids": observation_ids,
+            "label_versions": source.get("label_versions") or {},
+            "time_blocks": source.get("time_blocks") or {},
+            "strategy_version_id": int(source["strategy_version_id"]),
+            "release_manifest_id": int(source["release_manifest_id"]),
+        }
+        if canonical_hash(set_material) != source.get("observation_set_hash"):
+            raise RuntimeError("replay_observation_set_hash_mismatch")
         result = await uow.session.execute(
             text(
-                "SELECT id, artifact_hash AS input_artifact_hash, code_hash "
-                "FROM trading.metric_runs WHERE run_key=:k LIMIT 1"
+                "SELECT so.*, s.q, s.committed_at, s.status AS submission_status, "
+                "       s.episode_id, rl.state AS label_state, rl.resolution_state, "
+                "       rl.raw_outcome, rl.token_cashflow, st.contract_spec_id, "
+                "       st.target_type, st.canonical_side, st.members, st.horizon, "
+                "       st.resolution_cluster_id AS cluster_id, "
+                "       (c.horizon || ':' || c.time_block_start::text || ':' || "
+                "        c.time_block_end::text) AS time_block, "
+                "       COALESCE(tm.market_ids, ARRAY[]::bigint[]) AS market_ids, "
+                "       COALESCE(tm.token_ids, ARRAY[]::bigint[]) AS target_token_ids "
+                "FROM trading.score_observations so "
+                "JOIN trading.forecast_submissions s ON s.id=so.submission_id "
+                "JOIN trading.forecast_episodes fe ON fe.id=s.episode_id "
+                "JOIN trading.decision_opportunities dop "
+                "  ON dop.id=fe.decision_opportunity_id "
+                "JOIN trading.evaluation_cohorts ec ON ec.id=dop.cohort_id "
+                "JOIN trading.resolution_labels rl ON rl.id=so.label_version_id "
+                "JOIN trading.score_targets st ON st.id=so.score_target_id "
+                "JOIN trading.resolution_clusters c ON c.id=st.resolution_cluster_id "
+                "LEFT JOIN LATERAL ("
+                "  SELECT array_agg(DISTINCT pt.market_id ORDER BY pt.market_id) AS market_ids, "
+                "         array_agg(stm.token_id ORDER BY pt.outcome_index, stm.token_id) "
+                "           AS token_ids "
+                "  FROM trading.score_target_memberships stm "
+                "  JOIN trading.pm_tokens pt ON pt.id=stm.token_id "
+                "  WHERE stm.score_target_id=so.score_target_id AND pt.market_id IS NOT NULL"
+                ") tm ON true "
+                "WHERE so.id=ANY(:observation_ids) "
+                "  AND so.split=:split AND so.label_version_id = ANY(:labels) "
+                "  AND dop.cohort_id=:cohort_id "
+                "  AND fe.strategy_version_id=:strategy_version_id "
+                "  AND ec.strategy_version_id=:strategy_version_id "
+                "  AND ec.release_manifest_id=:release_manifest_id "
+                "  AND so.created_at <= :cutoff AND s.committed_at <= :cutoff "
+                "  AND rl.created_at <= :cutoff AND st.created_at <= :cutoff "
+                "  AND c.created_at <= :cutoff "
+                "ORDER BY so.id"
             ),
-            {"k": manifest_hash},
+            {
+                "observation_ids": observation_ids,
+                "split": source["split"],
+                "labels": label_ids or [-1],
+                "cohort_id": source["cohort_id"],
+                "strategy_version_id": source["strategy_version_id"],
+                "release_manifest_id": source["release_manifest_id"],
+                "cutoff": cutoff,
+            },
         )
         rows = _rows(result)
-        if rows:
-            return rows[0]
-        replay = await self._audit.list_replay_runs(uow.session, manifest_hash)
-        if replay:
-            row = replay[-1]
-            return {
-                "input_artifact_hash": row["output_artifact_hash"],
-                "code_hash": row["code_hash"],
-            }
-        return None
+        if [int(row["id"]) for row in rows] != observation_ids:
+            raise RuntimeError("replay_observation_set_incomplete")
+        if any(row["label_state"] != "final_admissible" for row in rows):
+            return []
+        for row in rows:
+            # EXCLUDED rows remain in the frozen denominator/coverage set but, by
+            # contract, carry no quote binding and never enter proper-loss.
+            if row.get("status") == "EXCLUDED":
+                continue
+            if not await self._quote_binding_matches(uow, row, cutoff):
+                raise RuntimeError(
+                    f"replay_quote_binding_mismatch:{row['observation_key']}"
+                )
+        return rows
+
+    async def _quote_binding_matches(
+        self, uow: UnitOfWork, row: dict, cutoff: Any
+    ) -> bool:
+        binding_ids = row.get("baseline_quote_binding_ids")
+        if not isinstance(binding_ids, list) or not binding_ids:
+            return False
+        result = await uow.session.execute(
+            text(
+                "SELECT qb.id, pt.id AS token_id, qb.best_bid, qb.best_ask, "
+                "       qb.checkpoint_received_at "
+                "FROM trading.pm_quote_bindings qb "
+                "JOIN trading.pm_tokens pt ON pt.token_id=qb.token_id "
+                "WHERE qb.id=ANY(:ids) AND qb.created_at<=:cutoff "
+                "  AND qb.received_at<=:committed_at AND qb.stale_at>:committed_at "
+                "ORDER BY pt.id, qb.id"
+            ),
+            {
+                "ids": [int(value) for value in binding_ids],
+                "cutoff": cutoff,
+                "committed_at": row["committed_at"],
+            },
+        )
+        bindings = _rows(result)
+        if len(bindings) != len(binding_ids):
+            return False
+        value = {}
+        for binding in bindings:
+            mid = (
+                Decimal(str(binding["best_bid"]))
+                + Decimal(str(binding["best_ask"]))
+            ) / Decimal("2")
+            value[str(binding["token_id"])] = format(mid.normalize(), "f")
+        if canonical_hash(value) != row.get("baseline_value_hash"):
+            return False
+        if canonical_hash(value) != canonical_hash(row.get("baseline_value") or {}):
+            return False
+        max_checkpoint = max(binding["checkpoint_received_at"] for binding in bindings)
+        if max_checkpoint != row.get("baseline_checkpoint_received_at"):
+            return False
+        if row.get("baseline_quote") is not None:
+            if len(value) != 1:
+                return False
+            if Decimal(next(iter(value.values()))) != Decimal(str(row["baseline_quote"])):
+                return False
+        return True
+
+    async def _has_future_decision_suffix(
+        self, uow: UnitOfWork, decision_ids: list[int], cutoff: Any
+    ) -> bool:
+        if not decision_ids:
+            return False
+        result = await uow.session.execute(
+            text(
+                "SELECT EXISTS ("
+                "  SELECT 1 FROM trading.action_candidates "
+                "  WHERE trade_decision_id=ANY(:decisions) AND created_at>:cutoff"
+                ") OR EXISTS ("
+                "  SELECT 1 FROM trading.executions e "
+                "  JOIN trading.economic_action_intents i "
+                "    ON i.id=e.economic_action_intent_id "
+                "  WHERE i.trade_decision_id=ANY(:decisions) AND e.created_at>:cutoff"
+                ") OR EXISTS ("
+                "  SELECT 1 FROM trading.ledger_transactions "
+                "  WHERE trade_decision_id=ANY(:decisions) AND created_at>:cutoff"
+                ") OR EXISTS ("
+                "  SELECT 1 FROM trading.operating_cost_entries "
+                "  WHERE trade_decision_id=ANY(:decisions) AND created_at>:cutoff"
+                ")"
+            ),
+            {"decisions": decision_ids, "cutoff": cutoff},
+        )
+        return bool(result.scalar_one())
 
     async def _metric_run_by_id(
         self, uow: UnitOfWork, metric_run_id: int
@@ -323,15 +627,23 @@ class ReplayLogic:
         self, uow: UnitOfWork, run: dict
     ) -> list[dict]:
         label_ids = self._flatten_label_versions(run.get("label_versions") or {})
+        observation_ids = [int(value) for value in run.get("observation_ids") or []]
+        if not observation_ids or observation_ids != sorted(set(observation_ids)):
+            return []
         result = await uow.session.execute(
             text(
                 "SELECT observation_key, score_target_id, submission_id, trade_decision_id, "
                 "       label_version_id, score_value "
                 "FROM trading.score_observations "
-                "WHERE split=:split AND label_version_id = ANY(:lv) "
+                "WHERE id=ANY(:observation_ids) AND status='INCLUDED' "
+                "  AND split=:split AND label_version_id = ANY(:lv) "
                 "ORDER BY id"
             ),
-            {"split": run["split"], "lv": label_ids or [-1]},
+            {
+                "observation_ids": observation_ids,
+                "split": run["split"],
+                "lv": label_ids or [-1],
+            },
         )
         return _rows(result)
 

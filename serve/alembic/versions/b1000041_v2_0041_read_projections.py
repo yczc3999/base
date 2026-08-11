@@ -193,10 +193,20 @@ def _assert_downgrade_safe() -> None:
     allowed = ", ".join(
         f"'{name}'" for name in (*_PRE_0041_RELATIONS, *(t.name for t in _PROJECTION_TABLES))
     )
+    owned = ", ".join(f"'{t.name}'" for t in _PROJECTION_TABLES)
+    known_indexes = ", ".join(
+        f"'{statement.split(' ON ')[0].replace('CREATE INDEX ', '').strip()}'"
+        for table in _PROJECTION_TABLES for statement in table.index_sql
+    )
+    known_triggers = ", ".join(
+        f"'trg_{table.name}_immutable'" for table in _PROJECTION_TABLES
+    )
     op.execute(
         f"""
 DO $v2_wp04_projection_preflight$
 DECLARE unknown_objects text;
+        unknown_indexes text;
+        unknown_triggers text;
 BEGIN
     SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
       INTO unknown_objects
@@ -221,6 +231,28 @@ BEGIN
     IF unknown_objects IS NOT NULL THEN
         RAISE EXCEPTION 'v2_wp04_projection_unknown_object:%', unknown_objects
         USING ERRCODE='55000';
+    END IF;
+    SELECT string_agg(idx.relname, ', ' ORDER BY idx.relname)
+      INTO unknown_indexes
+      FROM pg_index i
+      JOIN pg_class idx ON idx.oid=i.indexrelid
+      JOIN pg_class tbl ON tbl.oid=i.indrelid
+      JOIN pg_namespace n ON n.oid=tbl.relnamespace
+     WHERE n.nspname='trading' AND tbl.relname IN ({owned})
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid=idx.oid)
+       AND idx.relname NOT IN ({known_indexes});
+    IF unknown_indexes IS NOT NULL THEN
+        RAISE EXCEPTION 'v2_wp04_projection_unknown_index:%', unknown_indexes USING ERRCODE='55000';
+    END IF;
+    SELECT string_agg(t.tgname, ', ' ORDER BY t.tgname)
+      INTO unknown_triggers
+      FROM pg_trigger t
+      JOIN pg_class tbl ON tbl.oid=t.tgrelid
+      JOIN pg_namespace n ON n.oid=tbl.relnamespace
+     WHERE n.nspname='trading' AND tbl.relname IN ({owned})
+       AND NOT t.tgisinternal AND t.tgname NOT IN ({known_triggers});
+    IF unknown_triggers IS NOT NULL THEN
+        RAISE EXCEPTION 'v2_wp04_projection_unknown_trigger:%', unknown_triggers USING ERRCODE='55000';
     END IF;
 END $v2_wp04_projection_preflight$
 """

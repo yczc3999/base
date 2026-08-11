@@ -7,6 +7,7 @@ Logic 决定状态机与证据核验；本包只做严格解析/规范化。
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,7 +63,10 @@ class ScoreTargetInput(BaseModel):
     target_key: str = Field(min_length=1)
     target_type: str = Field(pattern="^(bernoulli|multiclass|mean_only)$")
     contract_spec_id: int = Field(gt=0)
+    resolution_cluster_id: int = Field(gt=0)
+    horizon: str = Field(min_length=1)
+    target_weight: Decimal = Field(gt=0, le=1)
     payout_function_id: int | None = Field(default=None, gt=0)
     canonical_side: str | None = Field(default=None, pattern="^(YES|NO)$")
     members: list[str] | None = None
-    payout_type: str | None = None
+    payout_type: str = Field(pattern="^(binary|multiclass|scalar)$")

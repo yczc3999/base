@@ -47,14 +47,32 @@ class SettlementHandler:
             if event.payload is None:
                 return HandlerResult(False, reason="settlement_event_incomplete")
             payload = event.payload
+            mapping_payload = payload.get("contract_token_ids")
+            mapping = None
+            if mapping_payload is not None:
+                if not isinstance(mapping_payload, dict):
+                    return HandlerResult(False, reason="cluster_token_mapping_invalid")
+                mapping = {
+                    int(spec_id): [int(value) for value in token_ids]
+                    for spec_id, token_ids in mapping_payload.items()
+                }
             result = await self._logic.create_cluster(
                 uow,
                 split=str(payload["split"]),
                 time_block_start=datetime.fromisoformat(payload["time_block_start"]),
                 time_block_end=datetime.fromisoformat(payload["time_block_end"]),
                 horizon=str(payload["horizon"]),
-                contract_spec_ids=[int(v) for v in payload["contract_spec_ids"]],
-                token_ids=[int(v) for v in payload["token_ids"]],
+                contract_spec_ids=(
+                    [int(v) for v in payload["contract_spec_ids"]]
+                    if mapping is None and "contract_spec_ids" in payload
+                    else None
+                ),
+                token_ids=(
+                    [int(v) for v in payload["token_ids"]]
+                    if mapping is None and "token_ids" in payload
+                    else None
+                ),
+                contract_token_ids=mapping,
             )
             return HandlerResult(result.ok, result, result.reason)
         if kind == "check_split_integrity":

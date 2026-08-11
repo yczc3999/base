@@ -164,6 +164,9 @@ class SettlementRepository:
         target_key: str,
         target_type: str,
         contract_spec_id: int,
+        resolution_cluster_id: int,
+        horizon: str,
+        target_weight: Any,
         payout_function_id: int | None,
         canonical_side: str | None,
         members: list | None,
@@ -172,12 +175,15 @@ class SettlementRepository:
         result = await session.execute(
             text(
                 "INSERT INTO trading.score_targets "
-                "(target_key, target_type, contract_spec_id, payout_function_id, "
-                " canonical_side, members, payout_type) VALUES "
-                "(:k, :tt, :cs, :pf, :csd, :m, :pt) "
+                "(target_key, target_type, contract_spec_id, resolution_cluster_id, "
+                " horizon, target_weight, payout_function_id, canonical_side, members, "
+                " payout_type) VALUES "
+                "(:k, :tt, :cs, :rc, :h, :tw, :pf, :csd, :m, :pt) "
                 "ON CONFLICT (target_key) DO NOTHING RETURNING id"
             ).bindparams(bindparam("m", type_=JSONB())),
-            {"k": target_key, "tt": target_type, "cs": contract_spec_id, "pf": payout_function_id,
+            {"k": target_key, "tt": target_type, "cs": contract_spec_id,
+             "rc": resolution_cluster_id, "h": horizon, "tw": target_weight,
+             "pf": payout_function_id,
              "csd": canonical_side, "m": members, "pt": payout_type},
         )
         inserted = result.scalar_one_or_none()

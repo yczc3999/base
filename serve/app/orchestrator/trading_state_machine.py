@@ -5,29 +5,20 @@ WP-04：追加 G8 评审（metric_run 目标的 promotion gate，不在 episode 
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.hashing import canonical_hash
+from app.domain.trading.evaluation_policy import evaluation_policy_hash
 from app.domain.trading.gates import assert_frozen_gate_binding
 from app.repositories.trading.workflow import WorkflowRepository
 
-_SPEC_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "tests" / "trading" / "fixtures" / "p3_learning" / "p_evaluation_spec_v1.json"
-)
-
-
 def _p3_promotion_policy_hash() -> str:
-    """P3 spec 冻结的 promotion_policy canonical hash（与 p3_helpers.spec_policy_hashes 同源）。"""
-    with open(_SPEC_PATH, encoding="utf-8") as f:
-        spec = json.load(f)
-    return canonical_hash(spec["promotion_policy"])
+    """Canonical hash of the deployment-owned frozen promotion policy."""
+    return evaluation_policy_hash("promotion_policy")
 
 ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
 _INDEX = {gate: index for index, gate in enumerate(ORDER)}
@@ -499,7 +490,8 @@ class TradingStateMachine:
 
         result_row = await uow.session.execute(
             text(
-                "SELECT id, status, release_manifest_id FROM trading.metric_runs WHERE id=:mid"
+                "SELECT id, status, release_manifest_id, artifact_hash "
+                "FROM trading.metric_runs WHERE id=:mid"
             ),
             {"mid": metric_run_id},
         )
@@ -508,6 +500,8 @@ class TradingStateMachine:
             raise IllegalTransitionError("g8_metric_run_not_completed")
         if target[2] != version_manifest_id:
             raise IllegalTransitionError("g8_release_binding_mismatch")
+        if target[3] != evidence_manifest_hash:
+            raise IllegalTransitionError("g8_evidence_manifest_mismatch")
 
         input_hash = canonical_hash(
             {

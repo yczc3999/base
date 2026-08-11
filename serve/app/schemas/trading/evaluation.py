@@ -27,12 +27,17 @@ class ScoreObservationInput(BaseModel):
     submission_id: int = Field(gt=0)
     trade_decision_id: int | None = Field(default=None, gt=0)
     label_version_id: int = Field(gt=0)
-    baseline_quote: Decimal = Field(gt=0)
+    baseline_quote: Decimal | None = Field(default=None, gt=0, le=1)
+    baseline_quote_binding_ids: list[int] | None = None
+    baseline_value: dict[str, Decimal] | None = None
+    baseline_value_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    baseline_checkpoint_received_at: datetime | None = None
     baseline_policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     split: str = Field(pattern="^(train|validation|forward_holdout)$")
     algorithm_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     metric_id: str = Field(min_length=1)
-    score_value: Decimal = Field(ge=0)
+    # Paired ΔLoss is signed (candidate - baseline); improvement is negative.
+    score_value: Decimal | None = None
 
 
 class ExperimentInput(BaseModel):
@@ -62,6 +67,9 @@ class MetricRunInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run_key: str = Field(min_length=1)
+    cohort_id: int = Field(gt=0)
+    observation_ids: list[int] = Field(min_length=1)
+    observation_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     cohort_query_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     strategy_version_id: int = Field(gt=0)
     release_manifest_id: int = Field(gt=0)

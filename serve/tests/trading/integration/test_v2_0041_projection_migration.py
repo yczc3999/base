@@ -214,10 +214,16 @@ def test_downgrade_roundtrip_and_fail_closed(temp_pg_db):
         _run(command.downgrade, V40, url)
     assert _query(url, "SELECT to_regclass('trading.unknown_intruder_0041') IS NOT NULL") == [(True,)]
     assert set(_trading_tables(url)) == before | {"unknown_intruder_0041"}
-    assert _version(url) == [(V41,)]
 
-    # 清除 intruder 后可正常 downgrade（零残留）。
-    _execute(url, "DROP TABLE trading.unknown_intruder_0041")
+
+def test_downgrade_rejects_unknown_index(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V41, url)
+    _execute(url, "CREATE INDEX unknown_wp04_projection_idx ON trading.ops_health_current(status)")
+    with pytest.raises(Exception, match="v2_wp04_projection_unknown_index"):
+        _run(command.downgrade, V40, url)
+    assert _version(url) == [(V41,)]
+    _execute(url, "DROP INDEX trading.unknown_wp04_projection_idx")
     _run(command.downgrade, V40, url)
     assert _version(url) == [(V40,)]
     assert set(PROJECTION_TABLES).isdisjoint(set(_trading_tables(url)))

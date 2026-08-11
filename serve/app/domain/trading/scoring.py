@@ -45,6 +45,11 @@ def _clamp_prob(p: Decimal, epsilon: Decimal) -> Decimal:
     return p
 
 
+def _validate_probability(p: Decimal, path: str) -> None:
+    if p < 0 or p > 1:
+        raise ValueError(f"{path}_out_of_range")
+
+
 def _ln(value: Decimal) -> Decimal:
     """Decimal 自然对数（3.12 移除 decimal.ln；atanh 级数，确定性）。
 
@@ -97,6 +102,7 @@ def round_score(value: Decimal | str, places: int = _SCORE_PLACES) -> Decimal:
 def bernoulli_brier(prob: Decimal, outcome: int) -> Decimal:
     """Bernoulli Brier：``(p - y)^2``，y∈{0,1}。"""
     p = _to_decimal(prob, "scoring_brier_prob")
+    _validate_probability(p, "scoring_brier_prob")
     y = _to_decimal(outcome, "scoring_brier_outcome")
     if y not in (Decimal(0), Decimal(1)):
         raise ValueError("scoring_brier_outcome_not_binary")
@@ -114,6 +120,7 @@ def bernoulli_log_loss(
     概率先 ``clamp(epsilon, 1-epsilon)``；epsilon 来自冻结 spec。
     """
     p = _to_decimal(prob, "scoring_logloss_prob")
+    _validate_probability(p, "scoring_logloss_prob")
     y = _to_decimal(outcome, "scoring_logloss_outcome")
     if y not in (Decimal(0), Decimal(1)):
         raise ValueError("scoring_logloss_outcome_not_binary")
@@ -187,6 +194,7 @@ def delta_loss(candidate: Decimal, baseline: Decimal) -> Decimal:
 def logit(p: Decimal, epsilon: Decimal = BERNOULLI_EPSILON) -> Decimal:
     """logit：``ln(p/(1-p))``，p 先 clamp epsilon。中间量不额外舍入。"""
     p = _to_decimal(p, "scoring_logit_p")
+    _validate_probability(p, "scoring_logit_p")
     eps = _to_decimal(epsilon, "scoring_logit_epsilon")
     if eps <= 0 or eps >= Decimal("0.5"):
         raise ValueError("scoring_logit_epsilon_out_of_range")
@@ -312,13 +320,13 @@ def cluster_bootstrap(
     seed: int,
     n_resamples: int = 1000,
     time_blocks: int = 1,
+    cluster_time_blocks: list[str] | tuple[str, ...] | None = None,
 ) -> dict:
     """resolution-cluster bootstrap：以 cluster 为抽样单元（不按裸 market），固定 seed。
 
     - 每个 cluster 贡献 ``mean(cluster losses)``（cluster 内等权）；
     - 每个 resample 对 ``n_clusters`` 个 cluster 有放回抽样，统计量 = 抽样 cluster 均值再平均；
-    - ``time_blocks`` 是记录的分层维度（等块下块内重抽样即 cluster iid 抽样，统计量等价），
-      输出原样记录；
+    - 按 ``cluster_time_blocks`` 分层、在每个 time block 内保持原 cluster 数有放回抽样；
     - CI 取 2.5%–97.5% 分位数（``sorted[int(quantile·(n-1))]`` 索引法，确定性）。
 
     返回 ``{point, ci_low, ci_high, n_eff, n_clusters, time_blocks}``。
@@ -338,26 +346,43 @@ def cluster_bootstrap(
         cluster_means.append(sum(values) / Decimal(len(values)))
         cluster_sizes.append(len(values))
     n_clusters = len(cluster_means)
+    if cluster_time_blocks is None:
+        if time_blocks != 1:
+            raise ValueError("scoring_bootstrap_time_block_labels_required")
+        block_labels = ["0"] * n_clusters
+    else:
+        block_labels = [str(value) for value in cluster_time_blocks]
+        if len(block_labels) != n_clusters:
+            raise ValueError("scoring_bootstrap_time_block_length_mismatch")
+        if len(set(block_labels)) != time_blocks:
+            raise ValueError("scoring_bootstrap_time_block_count_mismatch")
+    strata: dict[str, list[int]] = {}
+    for index, block in enumerate(block_labels):
+        strata.setdefault(block, []).append(index)
     point = round_score(sum(cluster_means) / Decimal(n_clusters))
 
     resample_means: list[Decimal] = []
     state = int(seed) & 0xFFFFFFFF
     for _ in range(n_resamples):
         stat = Decimal(0)
-        for _ in range(n_clusters):
-            state = _lcg_next(state)
-            stat += cluster_means[state % n_clusters]
+        for block in sorted(strata):
+            indexes = strata[block]
+            for _ in range(len(indexes)):
+                state = _lcg_next(state)
+                stat += cluster_means[indexes[state % len(indexes)]]
         resample_means.append(stat / Decimal(n_clusters))
     resample_means.sort()
     ci_low = round_score(_quantile_indexed(resample_means, Decimal("0.025")))
     ci_high = round_score(_quantile_indexed(resample_means, Decimal("0.975")))
 
-    total = sum(cluster_sizes)
+    # The estimand gives every resolution cluster one total contribution.  Raw
+    # episode/target cardinality inside a cluster must not inflate or deflate power.
+    equal_cluster_sizes = [1] * n_clusters
     return {
         "point": point,
         "ci_low": ci_low,
         "ci_high": ci_high,
-        "n_eff": n_eff(cluster_sizes, total),
+        "n_eff": n_eff(equal_cluster_sizes, n_clusters),
         "n_clusters": n_clusters,
         "time_blocks": time_blocks,
     }

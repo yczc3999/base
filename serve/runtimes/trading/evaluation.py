@@ -16,6 +16,7 @@ from app.logics.trading.evaluation import EvaluationLogic
 from app.logics.trading.settlement import SettlementLogic
 from app.repositories.trading.evaluation import EvaluationRepository
 from app.repositories.trading.settlement import SettlementRepository
+from app.services.artifact_store import ArtifactStore
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,13 @@ logger = logging.getLogger(__name__)
 class EvaluationRuntime:
     """settlement / evaluation 编排（每步一次 UoW；P3 独立 pool）。"""
 
-    def __init__(self, sessions_factory: Any) -> None:
+    def __init__(
+        self, sessions_factory: Any, artifact_store: ArtifactStore | None = None
+    ) -> None:
         self._sessions = sessions_factory
-        self._settlement_logic = SettlementLogic(SettlementRepository())
+        self._settlement_logic = SettlementLogic(
+            SettlementRepository(), artifact_store=artifact_store
+        )
         self._evaluation_logic = EvaluationLogic(
             EvaluationRepository(), SettlementRepository()
         )
