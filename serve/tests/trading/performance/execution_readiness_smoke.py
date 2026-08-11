@@ -39,7 +39,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -192,6 +192,21 @@ class _FakeAckClient:
 
     def list_trades(self, **kwargs: Any) -> list[Any]:
         return []
+
+
+class _PoolPeakProbe:
+    """Record the real high-water mark instead of sampling an idle pool at the end."""
+
+    def __init__(self) -> None:
+        self.current = 0
+        self.peak = 0
+
+    def checkout(self, *_args: Any) -> None:
+        self.current += 1
+        self.peak = max(self.peak, self.current)
+
+    def checkin(self, *_args: Any) -> None:
+        self.current = max(0, self.current - 1)
 
 
 class _FakeUserWsReceiver:
@@ -547,6 +562,12 @@ async def _run() -> dict[str, Any]:
         async_url, pool_size=RECON_POOL_SIZE, max_overflow=RECON_MAX_OVERFLOW,
         pool_timeout=10, pool_pre_ping=False,
     )
+    exec_pool_probe = _PoolPeakProbe()
+    recon_pool_probe = _PoolPeakProbe()
+    event.listen(exec_engine.sync_engine, "checkout", exec_pool_probe.checkout)
+    event.listen(exec_engine.sync_engine, "checkin", exec_pool_probe.checkin)
+    event.listen(recon_engine.sync_engine, "checkout", recon_pool_probe.checkout)
+    event.listen(recon_engine.sync_engine, "checkin", recon_pool_probe.checkin)
     exec_sessions = async_sessionmaker(exec_engine, expire_on_commit=False)
     recon_sessions = async_sessionmaker(recon_engine, expire_on_commit=False)
 
@@ -1072,7 +1093,11 @@ async def _run() -> dict[str, Any]:
         g6 = {
             "pool_wait_ms": _percentiles(pool_all),
             "transaction_ms": _percentiles(tx_all),
-            "peak_checked_out": max(exec_engine.pool.checkedout(), recon_engine.pool.checkedout()),
+            "peak_checked_out": max(exec_pool_probe.peak, recon_pool_probe.peak),
+            "peak_checked_out_by_pool": {
+                "execution": exec_pool_probe.peak,
+                "reconciliation": recon_pool_probe.peak,
+            },
             "max_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "fake_transport_calls": (
                 fake_client.post_order_calls
@@ -1089,6 +1114,8 @@ async def _run() -> dict[str, Any]:
         results["gate6_pool_and_resources"] = g6
         assert g6["pool_wait_ms"]["p95"] <= GATE6_POOL_WAIT_P95_MS, "gate6_pool_wait_p95"
         assert g6["transaction_ms"]["p99"] <= GATE6_TX_P99_MS, "gate6_tx_p99"
+        assert 0 < exec_pool_probe.peak <= EXEC_POOL_SIZE + EXEC_MAX_OVERFLOW
+        assert 0 < recon_pool_probe.peak <= RECON_POOL_SIZE + RECON_MAX_OVERFLOW
 
         results.update({
             "hard_assertions": "PASS",
