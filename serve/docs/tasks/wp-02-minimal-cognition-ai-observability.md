@@ -1,9 +1,10 @@
 # WP-02 — Minimal Cognition、AI Observability 与 Blind Forecast
 
-> 状态：**READY**<br>
+> 状态：**ACCEPTED**<br>
 > 执行模型：DeepSeek V4 Flash<br>
 > 前置：`WP-01C` 已 ACCEPTED，Alembic head=`b1000013`<br>
 > 唯一交付：`serve/docs/manifests/wp-02-minimal-cognition-ai-observability.md`<br>
+> 接受提交：`e9f4c205dd639736f1c4270a923df10ff77e3f58`<br>
 > 最后更新：2026-08-11 EDT
 
 ## 0. 快车道执行规则
@@ -296,3 +297,14 @@ git diff --check
 必须包含：精确 changed files、14 张新表/既有表强化、四角色/五 driver fixture、G4–G6 与 AI
 lifecycle 证据、taint/cache/retry/fallback/crash 证据、五类 semantic Q/U/projection hash、replay hash、
 性能 JSON、全部命令真实结果、blocker/non-goal/rollback，以及删除哈希行口径的 manifest SHA-256。
+
+## 10. 审查结论（2026-08-11）
+
+原始交付因 accepted-output Artifact/lineage、全局 attempt identity、runtime UoW、事务外 Provider、
+exact cache 与成本证据不完整而未直接接受；这些缺口已在提交
+`e9f4c205dd639736f1c4270a923df10ff77e3f58` 内关闭。
+
+- WP-02 定向：218 passed，0 skip/failure；全仓真 PostgreSQL：1390 passed，0 skip/failure。
+- 性能复验：AI 197.782/s、blind commit 59.711/s，持续 60 秒，lost/duplicate/mismatch=0。
+- Alembic 唯一 head=`b1000021`；offline SQL 无 secret hit；临时测试库残留 0。
+- 结论：**ACCEPTED**，依赖链可进入 WP-03。

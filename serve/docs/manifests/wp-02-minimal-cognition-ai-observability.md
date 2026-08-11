@@ -1,8 +1,9 @@
 # COMPLETION MANIFEST — WP-02 · Minimal Cognition、AI Observability 与 Blind Forecast
 
 - Work package: `WP-02`
-- 状态: **DONE（待审）**
+- 状态: **ACCEPTED**
 - 完成日期: 2026-08-11 EDT
+- 审查修复提交: `e9f4c205dd639736f1c4270a923df10ff77e3f58`
 - 任务合同: `serve/docs/tasks/wp-02-minimal-cognition-ai-observability.md`
 - Alembic: `b1000020 → b1000021 (head)`
 - 实现: DeepSeek V4 Flash
@@ -84,8 +85,21 @@ serve/tests/trading/performance/cognition_smoke.py
    （CONTRACT/PRIOR/EVIDENCE）禁止 quote/odds/crowd/label/future-fact 字段（taint 检测 + 逻辑拒绝）。
 8. **模型绑定**：只按冻结 `model_role_binding_id` 构造 Driver；registry allowlist 拒绝
    Anthropic/OpenAI；Anthropic 永久排除，OpenAI 不进首版注册表。
+9. **审查后证据闭环**：attempt identity 使用非分区 global claim；episode/binding/
+   variant 必须精确匹配。Provider 请求前先持久化 request/prompt/schema Artifact，有响应的
+   任意终态都保留 raw/parsed/normalized/tool/validator/lineage。`ACCEPTED` 由 PostgreSQL
+   交叉验证 6 份 Artifact、5 个 validator、tool receipt 与 output binding，下游只从
+   该 normalized Artifact 取值，不再接受调用者任意注入的 AI 结果。
+10. **调用效率与成本**：exact cache key 覆盖 provider/route/model/prompt/schema/code/
+    network/tools/domains/sampling/seed/effort/max tokens；cache hit 仍生成完整独立 attempt。
+    Provider 网络期间不持有 DB transaction；CAS 为有界 4096-entry LRU + single-flight，
+    Artifact/catalog/lineage/validator/tool 批写。成本按冻结 pricing snapshot 估算，缺价时
+    显式 `UNPRICED`，不伪造为 0 成本已对账。
 
 ## 3. 命令与真实结果
+
+最终审查基于代码提交 `e9f4c205dd639736f1c4270a923df10ff77e3f58`；原 DONE 报告中的
+1375/477.9s 与从 `0/0` 起算的 WAL 证据已被本节结果替代。
 
 ```bash
 cd /code/pollymarket/v2/serve
@@ -93,53 +107,35 @@ cd /code/pollymarket/v2/serve
 python3 -m compileall -q app tests alembic
 # exit 0
 
-.venv/bin/pytest -q tests/trading/unit/test_v2_probability.py \
-  tests/trading/unit/test_v2_evidence_logic.py \
-  tests/trading/unit/test_v2_forecast_logic.py \
-  tests/trading/unit/test_v2_ai_runner.py \
-  tests/trading/unit/test_v2_model_gateway.py \
-  tests/trading/unit/test_v2_cognition_state_machine.py
-# 101 passed in 0.43s
-
-.venv/bin/pytest -q tests/trading/contract/test_v2_*_contract.py
-# 84 passed in 3.72s
-
-V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' .venv/bin/pytest -q \
-  tests/trading/integration/test_v2_0020_cognition_migration.py \
-  tests/trading/integration/test_v2_0021_ai_migration.py \
-  tests/trading/integration/test_v2_ai_invocation.py \
-  tests/trading/integration/test_v2_blind_forecast_workflow.py \
-  tests/trading/replay/test_v2_p1b_cognition_replay.py
-# 18 passed in 11.69s
-
-# WP-02 全定向（unit+contract+integration+replay）
+# WP-02 unit + contract + 真 PostgreSQL integration/replay
 V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' .venv/bin/pytest -q \
   tests/trading/unit/test_v2_probability.py tests/trading/unit/test_v2_evidence_logic.py \
   tests/trading/unit/test_v2_forecast_logic.py tests/trading/unit/test_v2_ai_runner.py \
   tests/trading/unit/test_v2_model_gateway.py tests/trading/unit/test_v2_cognition_state_machine.py \
   tests/trading/contract tests/trading/integration/test_v2_0020_cognition_migration.py \
   tests/trading/integration/test_v2_0021_ai_migration.py tests/trading/integration/test_v2_ai_invocation.py \
-  tests/trading/integration/test_v2_blind_forecast_workflow.py tests/trading/replay/test_v2_p1b_cognition_replay.py
-# 203 passed in 16.47s（0 skip）
+  tests/trading/integration/test_v2_blind_forecast_workflow.py \
+  tests/trading/replay/test_v2_p1b_cognition_replay.py
+# 218 passed in 17.76s（0 skip，0 failure）
+
+V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' .venv/bin/pytest -q
+# 1390 passed, 8 warnings in 92.58s（0 skip，0 failure）
 
 V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' \
   .venv/bin/python -m tests.trading.performance.cognition_smoke
 # hard_assertions=PASS；输出 /tmp/pm_v2_perf_smoke_2.json
 
-V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' .venv/bin/pytest -q tests/trading
-# 383 passed in 109.11s
-
-V2_TEST_ADMIN_DATABASE_URL='postgresql+psycopg:///postgres' .venv/bin/pytest -q
-# 1375 passed, 8 warnings in 96.89s（0 skip，0 failure）
-
 .venv/bin/alembic heads
 # b1000021 (head)
 
-.venv/bin/alembic upgrade b1000021 --sql > /tmp/wp02.sql
-# 3888 lines；secret hits=0
+.venv/bin/alembic upgrade b1000021 --sql > /tmp/wp02-reviewed.sql
+# 4142 lines；secret hits=0
 
 git diff --check
 # exit 0
+
+psql -Atqc "SELECT datname FROM pg_database WHERE datname LIKE 'v2_test_%' OR datname LIKE 'v2_perf_%'" postgres
+# 0 rows
 ```
 
 ## 4. 可复现证据
@@ -169,16 +165,19 @@ git diff --check
 
 | 项 | 结果 | 门槛 |
 |---|---:|---:|
-| AI terminalizations | 28,705 @ 477.9/s（60.06s） | ≥100/s 持续≥60s |
-| 每条 2 tool + 5 validator | 57,410 / 143,525（=rows×2/×5） | 精确匹配 |
+| AI terminalizations | 11,881 @ 197.782/s（60.071s） | ≥100/s 持续≥60s |
+| 每条 2 tool + 5 validator | 23,762 / 59,405（=rows×2/×5） | 精确匹配 |
 | AI lost/duplicate | 0 / 0 | 0 |
-| AI pool wait p95 | 0.072ms | ≤20ms |
-| Blind commits | 3,386 @ 56.4/s（60.02s） | ≥20/s 持续≥60s |
-| 持续窗口（10s） | [56.8, 55.8, 56.1, 56.0, 57.0, 56.8] | 全部 ≥20/s |
+| AI pool wait p95 | 0.115ms | ≤20ms |
+| Blind commits | 3,584 @ 59.711/s（60.022s） | ≥20/s 持续≥60s |
+| 持续窗口（10s） | [63.0, 60.0, 60.1, 58.8, 57.4, 59.0] | 全部 ≥20/s |
 | lost/duplicate/projection mismatch | 0 / 0 / 0 | 0 |
-| Commit pool wait p95 | 0.12ms | ≤20ms |
+| projection/outbox rows | 7,168 / 3,584 | 精确 2× / 1× commit |
+| Commit pool wait p95 | 0.117ms | ≤20ms |
+| 本次 workload WAL | 202,161,432 bytes | 记录真实 delta |
 
-临时测试/性能数据库残留：`0`。
+环境证据：PostgreSQL 18.4、16 logical CPUs、seed=`deterministic/wp-02-cognition-performance-v1`、
+测试提交=`e9f4c205dd639736f1c4270a923df10ff77e3f58`。临时测试/性能数据库残留：`0`。
 
 ## 5. Blocker / 非目标
 
@@ -196,7 +195,7 @@ git diff --check
 口径：删除本文件中“恰好 64 位十六进制”的哈希行后计算。
 
 ```text
-09e09c2d0897d26ba621d7a2d2f6ec87ef037cb567f529e69d72d9d453e00454
+5bc49cf3db17b3e42b46f136b1a5bc3569694cb89ee5cee40cfc96707f29d316
 ```
 
 ```bash

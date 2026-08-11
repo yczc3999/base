@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 / WP-01A / WP-01B / WP-01C：✅ COMPLETE**；`WP-02` 已交付（⚠ DONE，待审）。
+> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02：✅ COMPLETE**；`WP-03` 任务已就绪。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -38,8 +38,8 @@
 | WP-01A | 01A-02 Trading foundation：ORM/0002/UoW/Outbox | ✅ DONE，审查通过 | `wp-01a-02-trading-foundation.md` | `b5aeeffbd87a16373d91557a24d4501d91453e79572a372578123c3921305aa8` | 2026-08-10 |
 | WP-01B | 0010/0011 Gamma/CLOB schema/Driver、universe/book ingest | ✅ DONE，审查通过 | `wp-01b-public-market-data.md` | `06b01cdd60ead9657756f01c2b890064211c8e98bfaaae992543792bf9b8c4a2` | 2026-08-10 |
 | WP-01C | 0012/0013 contract/component/cohort/screening | ✅ DONE，审查通过 | `wp-01c-contract-component-cohort-screening.md` | `4a17a08acffa3380f0fa37ac6b7ba592c48dbe80df91e07e30c24ef0c5e7c9c4` | 2026-08-11 |
-| WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ⚠ DONE，待审 | `wp-02-minimal-cognition-ai-observability.md` | `09e09c2d0897d26ba621d7a2d2f6ec87ef037cb567f529e69d72d9d453e00454` | 2026-08-11 |
-| WP-03 | 0030/0031 decision/portfolio/shadow execution/ledger | ⏳ pending | — | — | — |
+| WP-02 | 0020/0021 AI invocation/model gateway/evidence/forecast | ✅ DONE，审查通过 | `wp-02-minimal-cognition-ai-observability.md` | `5bc49cf3db17b3e42b46f136b1a5bc3569694cb89ee5cee40cfc96707f29d316` | 2026-08-11 |
+| WP-03 | 0030/0031 decision/portfolio/shadow execution/ledger | ⏳ READY | — | — | — |
 | WP-04 | 0040/0041 label/evaluation/replay/promotion/read projections | ⏳ pending | — | — | — |
 | WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ⏳ pending | — | — | — |
 | WP-06 | 0052 Polygon/relayer/settlement | ⏳ pending | — | — | — |
