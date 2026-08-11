@@ -37,6 +37,7 @@ from app.models.trading.mixins import (
 from app.models.trading.types import (
     base_unit_type,
     external_id_type,
+    probability_type,
     sha256_type,
     utc_timestamp_type,
 )
@@ -51,9 +52,17 @@ class Execution(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __tablename__ = "executions"
     __table_args__ = (
         UniqueConstraint("execution_key", name="uq_executions_key"),
+        UniqueConstraint(
+            "economic_action_intent_id", "action_set_leg_id",
+            name="uq_executions_intent_leg",
+        ),
         CheckConstraint(
             "status IN ('PENDING','PARTIAL','FILLED','REJECTED','FAILED')",
             name="ck_executions_status_known",
+        ),
+        CheckConstraint(
+            "fill_role IN ('open','close','reduce')",
+            name="ck_executions_fill_role_known",
         ),
         CheckConstraint(
             "(status IN ('PENDING','REJECTED','FAILED')) = (filled_quantity = 0)",
@@ -107,11 +116,11 @@ class Execution(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     fill_role: Mapped[str] = mapped_column(String(16), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
     filled_quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False, server_default="0")
-    vwap: Mapped[Decimal | None] = mapped_column(base_unit_type())
+    vwap: Mapped[Decimal | None] = mapped_column(probability_type())
     fee: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False, server_default="0")
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="PENDING")
     unfilled_reason: Mapped[str | None] = mapped_column(String(128))
-    quote_checkpoint_id: Mapped[int | None] = mapped_column(BigInteger)
+    quote_checkpoint_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # 组合 namespace（不同 shadow variant 不互相合并 PnL/风险）
     portfolio_namespace: Mapped[str] = mapped_column(external_id_type(), nullable=False)
 
@@ -159,7 +168,16 @@ class PositionLot(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __tablename__ = "position_lots"
     __table_args__ = (
         UniqueConstraint("execution_id", name="uq_position_lots_execution"),
-        CheckConstraint("quantity > 0", name="ck_position_lots_quantity_positive"),
+        CheckConstraint("quantity <> 0", name="ck_position_lots_quantity_nonzero"),
+        CheckConstraint(
+            "(fill_role = 'open' AND quantity > 0) OR "
+            "(fill_role IN ('close','reduce') AND quantity < 0)",
+            name="ck_position_lots_role_sign",
+        ),
+        CheckConstraint(
+            "fill_role IN ('open','close','reduce')",
+            name="ck_position_lots_fill_role_known",
+        ),
         CheckConstraint(
             "entry_vwap IS NULL OR entry_vwap > 0",
             name="ck_position_lots_vwap_positive",
@@ -185,5 +203,5 @@ class PositionLot(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         nullable=False,
     )
     quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
-    entry_vwap: Mapped[Decimal | None] = mapped_column(base_unit_type())
+    entry_vwap: Mapped[Decimal | None] = mapped_column(probability_type())
     fill_role: Mapped[str] = mapped_column(String(16), nullable=False)

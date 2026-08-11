@@ -19,6 +19,16 @@ def base_unit_type() -> Numeric:
     return Numeric(38, 0)
 
 
+def decimal_measure_type() -> Numeric:
+    """Deterministic fractional measure (prices, PnL/EV and ratios)."""
+    return Numeric(38, 12)
+
+
+def probability_type() -> Numeric:
+    """Probability/weight stored without the integer-base-unit truncation."""
+    return Numeric(38, 12)
+
+
 def sha256_type() -> String:
     """独立 ``VARCHAR(64) COLLATE "C"``（content/sha256 hash）。"""
     return String(64, collation="C")

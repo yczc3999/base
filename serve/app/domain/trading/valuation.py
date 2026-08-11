@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from app.domain.trading.probability import expected_payout, normalize_q, push_forward_mu
-from app.domain.trading.rounding import round_cash, round_price, round_quantity
+from app.domain.trading.rounding import floor_quantity, round_cash, round_price, round_quantity
 
 ZERO = Decimal("0")
 
@@ -94,11 +94,16 @@ def depth_walk(
         raise ValueError("valuation_target_quantity_nonpositive")
     if not levels:
         return DepthFill(ZERO, ZERO, target, ZERO, False, "empty_book")
-    ordered = sorted(
-        ((round_price(_dec(price)), round_quantity(_dec(size))) for price, size in levels),
-        key=lambda item: item[0],
-        reverse=(side == "sell"),
-    )
+    ordered = []
+    for raw_price, raw_size in levels:
+        price = round_price(_dec(raw_price))
+        size = floor_quantity(_dec(raw_size))
+        if price <= 0 or price > 1:
+            raise ValueError("valuation_price_out_of_range")
+        if size <= 0:
+            raise ValueError("valuation_level_size_nonpositive")
+        ordered.append((price, size))
+    ordered.sort(key=lambda item: item[0], reverse=(side == "sell"))
     remaining = target
     total_qty = ZERO
     total_cash = ZERO
@@ -150,6 +155,7 @@ def world_delta_w(
     cost: CostComponents,
     token_quantity: Decimal | str,
     token_vwap: Decimal | str,
+    side: str = "buy",
 ) -> dict[str, Decimal]:
     """每个 world-state 的 ΔW：settlement(ω) - cost。
 
@@ -158,8 +164,14 @@ def world_delta_w(
     quantity = _dec(token_quantity)
     vwap = _dec(token_vwap)
     entry = round_cash(quantity * vwap)
+    if side not in ("buy", "sell"):
+        raise ValueError(f"valuation_side_unknown:{side}")
+    # A sale receives cash now and surrenders the future payout.  Represent the
+    # received entry cash as a negative cost so the same reconciliation identity
+    # remains valid.
+    entry_cost = entry if side == "buy" else -entry
     adjusted_cost = CostComponents(
-        executable_entry_cashflow=cost.executable_entry_cashflow + entry,
+        executable_entry_cashflow=cost.executable_entry_cashflow + entry_cost,
         explicit_fee=cost.explicit_fee,
         execution_adjustment=cost.execution_adjustment,
         funding_or_discount_adjustment=cost.funding_or_discount_adjustment,
@@ -172,7 +184,7 @@ def world_delta_w(
         if resolution is None:
             raise ValueError(f"valuation_hc_not_total:{state}")
         payout = _dec(payout_ir[resolution])
-        settlement = round_cash(quantity * payout)
+        settlement = round_cash(quantity * payout * (1 if side == "buy" else -1))
         out[state] = full_cost_delta(settlement_cashflow=settlement, cost=adjusted_cost).delta_w
     return out
 
@@ -180,6 +192,8 @@ def world_delta_w(
 def robust_ev(
     u_members: list[dict[str, Decimal]],
     world_delta: dict[str, Decimal],
+    *,
+    point_q: dict[str, Decimal] | None = None,
 ) -> tuple[Decimal, Decimal]:
     """``robust_EV = min_{P∈U} E_P[ΔW]``；返回 (robust, point_ev)。
 
@@ -195,7 +209,16 @@ def robust_ev(
                 raise ValueError(f"valuation_world_delta_missing:{state}")
             total += prob * world_delta[state]
         evs.append(round_cash(total))
-    return min(evs), evs[0]
+    if point_q is None:
+        point = evs[0]
+    else:
+        point = ZERO
+        for state, prob in point_q.items():
+            if state not in world_delta:
+                raise ValueError(f"valuation_world_delta_missing:{state}")
+            point += prob * world_delta[state]
+        point = round_cash(point)
+    return min(evs), point
 
 
 def roi(ev: Decimal | str, capital_employed: Decimal | str) -> Decimal:

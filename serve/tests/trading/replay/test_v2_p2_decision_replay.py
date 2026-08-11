@@ -95,6 +95,9 @@ from tests.trading.integration.test_v2_decision_shadow_workflow import (
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 HEAD = "b1000031"
+# Stable timestamp inside the migration's current-day stream partition and after P2 freeze.
+FIXED = datetime(2026, 8, 11, 3, 4, 5, tzinfo=timezone.utc)
+CUTOFF = FIXED + timedelta(days=2)
 
 
 @pytest_asyncio.fixture
@@ -249,7 +252,7 @@ async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, lis
         submission_key="sub-p2",
         Q=QDistributionInput(values={"w0": "0.6", "w1": "0.4"}),
         U=[QDistributionInput(values={"w0": "0.6", "w1": "0.4"}),
-           QDistributionInput(values={"w0": "0.5", "w1": "0.5"})],
+           QDistributionInput(values={"w0": "0.55", "w1": "0.45"})],
         forecast_input_manifest_id=1,
     )
     lease = ForecastLeaseInput(
@@ -272,7 +275,7 @@ async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, lis
 
 async def _run_chain(env: dict) -> dict:
     """完整 decision → shadow execution 链一次运行，返回可对比 snapshot。"""
-    ctx = await _seed(env)
+    ctx = await _seed(env, book_received_at=FIXED + timedelta(hours=11, minutes=59))
     episode, spec_ids = await _build_blind_committed_episode(env, ctx)
     logic = DecisionLogic(env["decision"], env["wf"])
     spec_id = spec_ids[0]
@@ -293,10 +296,18 @@ async def _run_chain(env: dict) -> dict:
     assert revealed.ok, revealed.reason
 
     async with UnitOfWork(env["sessions"]) as uow:
+        await uow.session.execute(text(
+            "INSERT INTO trading.operating_cost_entries "
+            "(cost_key,cost_kind,amount,release_manifest_id,episode_id,trade_decision_id,allocation_policy) "
+            "VALUES (:k,'INFRASTRUCTURE',0,:r,:e,:d,CAST(:p AS jsonb))"
+        ), {"k": f"cost-{created.trade_decision_id}", "r": ctx["release"], "e": episode,
+            "d": created.trade_decision_id,
+            "p": json.dumps({"kind": "fixed_marginal", "evidence": "observed_zero"})})
+
+    async with UnitOfWork(env["sessions"]) as uow:
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
-            input_=MarketRelativeInput(decision_mode="BLIND_ONLY",
-                                       q_blind={"w0": "0.6", "w1": "0.4"}))
+            input_=MarketRelativeInput(decision_mode="BLIND_ONLY"))
     assert mr.ok, mr.reason
 
     async with UnitOfWork(env["sessions"]) as uow:
@@ -306,24 +317,15 @@ async def _run_chain(env: dict) -> dict:
                 ActionCandidateInput(
                     contract_spec_id=spec_id, token_id=ctx["yes_token"],
                     action_type="BUY_TOKEN", target_quantity=Decimal("100"),
-                    depth_levels=[[Decimal("0.52"), 100], [Decimal("0.53"), 200]],
-                    side="buy", taker_fee_bps=Decimal("0"),
-                    horizon_days=Decimal("1"), bankroll=Decimal("100000"),
                 )
             ],
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+            policy_hash=None, version_manifest_id=None)
     assert g7a.ok, g7a.reason
 
     async with UnitOfWork(env["sessions"]) as uow:
         g7b = await logic.run_g7b(
             uow, trade_decision_id=created.trade_decision_id,
-            portfolio=PortfolioGateInput(bankroll=Decimal("100000"),
-                                         market_exposure=Decimal("100"),
-                                         component_exposure=Decimal("100"),
-                                         global_exposure=Decimal("100")),
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+            portfolio=PortfolioGateInput(), policy_hash=None, version_manifest_id=None)
     assert g7b.ok, g7b.reason
 
     async with UnitOfWork(env["sessions"]) as uow:
@@ -331,6 +333,7 @@ async def _run_chain(env: dict) -> dict:
             uow, trade_decision_id=created.trade_decision_id,
             action_set=ActionSetInput(
                 disposition="ACTION",
+                selected_action_type="BUY_TOKEN",
                 legs={"open": {spec_id: {ctx["yes_token"]: Decimal("100")}}},
             ),
             underwriting=UnderwritingInput(
@@ -351,18 +354,9 @@ async def _run_chain(env: dict) -> dict:
             text("SELECT id FROM trading.action_sets WHERE trade_decision_id=:d"),
             {"d": created.trade_decision_id})).scalars().all()
         legs = await env["decision"].action_set_legs(uow.session, action_sets[0])
-        intent_hash = canonical_hash(
-            {"action_set_id": action_sets[0], "decision_id": created.trade_decision_id}
-        )
-        intent_id = await env["decision"].insert_action_intent(
-            uow.session,
-            intent_key=f"intent-{created.trade_decision_id}",
-            intent_hash=intent_hash,
-            trade_decision_id=created.trade_decision_id,
-            action_set_id=action_sets[0],
-            ttl_at=datetime.now(timezone.utc) + timedelta(days=30),
-            preflight={"action_set_hash": decision_row["output_hash"]},
-        )
+        intent_id = (await uow.session.execute(text(
+            "SELECT id FROM trading.economic_action_intents WHERE trade_decision_id=:d"
+        ), {"d": created.trade_decision_id})).scalar_one()
         fill_result = await execution_logic.shadow_fill(
             uow,
             fill=ShadowFillInput(
@@ -480,7 +474,8 @@ def _restart(url: str) -> None:
                 "trading.release_manifests, trading.evidence_coverage_policies, "
                 "trading.evidence_revisions, trading.evidence_bundles, "
                 "trading.evidence_bundle_items, trading.forecast_input_manifests, "
-                "trading.transactional_outbox RESTART IDENTITY CASCADE"
+                "trading.transactional_outbox, trading.idempotency_claims "
+                "RESTART IDENTITY CASCADE"
             ))
     finally:
         engine.dispose()

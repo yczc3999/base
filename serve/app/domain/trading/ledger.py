@@ -71,6 +71,68 @@ def build_buy_postings(
     ]
 
 
+def build_sell_postings(
+    *,
+    venue: str,
+    portfolio_namespace: str,
+    cash_asset_key: str,
+    token_asset_key: str,
+    cash_received: Decimal | str,
+    token_quantity: Decimal | str,
+) -> list[Posting]:
+    """SELL/REDUCE/CLOSE：portfolio 收现金、交付 token，venue 为精确对手方。"""
+    cash = round_cash(_dec(cash_received))
+    tokens = round_quantity(_dec(token_quantity))
+    if cash <= 0 or tokens <= 0:
+        raise ValueError("ledger_sell_nonpositive")
+    return [
+        Posting(ASSET_CASH, cash_asset_key, cash, portfolio_namespace),
+        Posting(ASSET_CASH, cash_asset_key, -cash, venue),
+        Posting(ASSET_TOKEN, token_asset_key, -tokens, portfolio_namespace),
+        Posting(ASSET_TOKEN, token_asset_key, tokens, venue),
+    ]
+
+
+def build_fill_postings(
+    *,
+    side: str,
+    venue: str,
+    portfolio_namespace: str,
+    cash_asset_key: str,
+    token_asset_key: str,
+    gross_cash: Decimal | str,
+    fee: Decimal | str,
+    token_quantity: Decimal | str,
+) -> list[Posting]:
+    """从实际 fill 构造 BUY 或 SELL 的两资产、四 posting 双分录。"""
+    gross = round_cash(_dec(gross_cash))
+    fee_amount = round_cash(_dec(fee))
+    if fee_amount < 0:
+        raise ValueError("ledger_fee_negative")
+    if side == "buy":
+        return build_buy_postings(
+            venue=venue,
+            portfolio_namespace=portfolio_namespace,
+            cash_asset_key=cash_asset_key,
+            token_asset_key=token_asset_key,
+            cash_spent=gross + fee_amount,
+            token_quantity=token_quantity,
+        )
+    if side == "sell":
+        proceeds = gross - fee_amount
+        if proceeds <= 0:
+            raise ValueError("ledger_sell_fee_exceeds_proceeds")
+        return build_sell_postings(
+            venue=venue,
+            portfolio_namespace=portfolio_namespace,
+            cash_asset_key=cash_asset_key,
+            token_asset_key=token_asset_key,
+            cash_received=proceeds,
+            token_quantity=token_quantity,
+        )
+    raise ValueError(f"ledger_side_unknown:{side}")
+
+
 def postings_balanced(postings: list[Posting]) -> bool:
     """每个 (asset_type, asset_key) 的 signed 合计=0 且 ≥2 postings。"""
     sums: dict[tuple[str, str], Decimal] = {}
@@ -99,9 +161,13 @@ def build_reversal(postings: list[Posting]) -> list[Posting]:
     ]
 
 
-def net_cash_flow(postings: list[Posting], *, cash_asset_key: str) -> Decimal:
+def net_cash_flow(
+    postings: list[Posting], *, cash_asset_key: str, counterparty: str | None = None
+) -> Decimal:
     """某 cash 资产的净流量（portfolio 视角：付出现金为负）。"""
     return round_cash(
-        sum((p.amount for p in postings if p.asset_type == ASSET_CASH and p.asset_key == cash_asset_key),
+        sum((p.amount for p in postings
+             if p.asset_type == ASSET_CASH and p.asset_key == cash_asset_key
+             and (counterparty is None or p.counterparty == counterparty)),
             ZERO)
     )

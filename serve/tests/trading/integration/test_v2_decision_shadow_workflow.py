@@ -154,7 +154,7 @@ def _run(cmd, revision, db_url):
         engine.dispose()
 
 
-async def _seed(env: dict) -> dict:
+async def _seed(env: dict, *, book_received_at: datetime | None = None) -> dict:
     """建 control/cohort/market/component，并以真实 DB 冻结 P2 release。"""
     async with UnitOfWork(env["sessions"]) as uow:
         s = uow.session
@@ -162,7 +162,11 @@ async def _seed(env: dict) -> dict:
             "INSERT INTO trading.strategy_objective_contracts (contract_key,version_no,content,schema_version,content_hash,status) "
             "VALUES ('obj-p2',1,CAST(:content AS jsonb),1,:hash,'active') RETURNING id"),
             {"content": json.dumps(FULL_OBJECTIVE), "hash": OBJECTIVE_HASH})).scalar_one()
-        strategy_content = {"strategy": "p2/v1"}
+        strategy_content = {
+            "strategy": "p2/v1",
+            "optional_shrinkage": {"enabled": True, "algorithm_id": "linear-shrinkage/v1",
+                                   "w_blind": "0.5", "learned_default_w": False},
+        }
         strategy_hash = canonical_hash(strategy_content)
         strategy = (await s.execute(text(
             "INSERT INTO trading.strategy_versions (strategy_key,version_no,content,schema_version,content_hash,status) "
@@ -239,7 +243,7 @@ async def _seed(env: dict) -> dict:
             {"started": FIXED, "lease": FIXED + timedelta(minutes=1), "completed": FIXED,
              "hash": frame_sha, "artifact": frame_artifact})).scalar_one()
         # book checkpoints（quote binding 的精确 FK 目标；token_id 是 TEXT 标识）
-        now = datetime.now(timezone.utc)
+        now = book_received_at or datetime.now(timezone.utc)
         checkpoint_yes = (await s.execute(text(
             "INSERT INTO trading.pm_book_checkpoints "
             "(token_id, connection_epoch_id, source_kind, book_hash, best_bid, best_ask, "
@@ -254,6 +258,14 @@ async def _seed(env: dict) -> dict:
             "VALUES (:tok, NULL, 'rest_full', :bh, 0.48, 0.50, :art, true, 'VALID', :recv) RETURNING id"
         ), {"tok": "token-p2-no", "bh": "2" * 64, "art": frame_artifact,
             "recv": now})).scalar_one()
+        # execution must re-read the exact bound checkpoint depth; caller payload depth is not evidence.
+        await s.execute(text(
+            "INSERT INTO trading.pm_book_levels "
+            "(checkpoint_id,received_at,side,price,size,ordinal) VALUES "
+            "(:yes,:recv,'ask',0.52,100,0),(:yes,:recv,'ask',0.53,200,1),"
+            "(:yes,:recv,'bid',0.50,100,0),(:yes,:recv,'bid',0.49,200,1),"
+            "(:no,:recv,'ask',0.50,100,0),(:no,:recv,'bid',0.48,100,0)"
+        ), {"yes": checkpoint_yes, "no": checkpoint_no, "recv": now})
     return {
         "cohort": cohort, "objective": obj, "strategy": strategy,
         "release": p2["release_manifest_id"],
@@ -387,7 +399,7 @@ async def _build_blind_committed_episode(env: dict, ctx: dict) -> tuple[int, lis
         submission_key="sub-p2",
         Q=QDistributionInput(values={"w0": "0.6", "w1": "0.4"}),
         U=[QDistributionInput(values={"w0": "0.6", "w1": "0.4"}),
-           QDistributionInput(values={"w0": "0.5", "w1": "0.5"})],
+           QDistributionInput(values={"w0": "0.55", "w1": "0.45"})],
         forecast_input_manifest_id=1,
     )
     lease = ForecastLeaseInput(
@@ -415,14 +427,14 @@ def _quote_map(ctx: dict, *, stale: bool = False) -> dict:
             "checkpoint_received_at": ctx["checkpoint_recv_yes"],
             "best_bid": Decimal("0.50"), "best_ask": Decimal("0.52"),
             "as_of": ctx["checkpoint_recv_yes"], "received_at": ctx["checkpoint_recv_yes"],
-            "stale_at": ctx["checkpoint_recv_yes"] + timedelta(hours=1),
+            "stale_at": ctx["checkpoint_recv_yes"] + timedelta(minutes=5),
         },
         "token-p2-no": {
             "checkpoint_id": ctx["checkpoint_no"],
             "checkpoint_received_at": ctx["checkpoint_recv_no"],
             "best_bid": Decimal("0.48"), "best_ask": Decimal("0.50"),
             "as_of": ctx["checkpoint_recv_no"], "received_at": ctx["checkpoint_recv_no"],
-            "stale_at": ctx["checkpoint_recv_no"] + timedelta(hours=1),
+            "stale_at": ctx["checkpoint_recv_no"] + timedelta(minutes=5),
         },
     }
 
@@ -444,7 +456,7 @@ async def test_full_decision_shadow_chain(decision_env):
     # create decision（P2 release 冻结）
     async with UnitOfWork(env["sessions"]) as uow:
         ck = (await uow.session.execute(text("SELECT received_at FROM trading.pm_book_checkpoints WHERE token_id='token-p2-yes'"))).scalar_one()
-    trigger_at = ck + timedelta(minutes=5)
+    trigger_at = ck + timedelta(minutes=1)
     async with UnitOfWork(env["sessions"]) as uow:
         created = await logic.create_decision(uow, episode_id=episode,
                                               trigger_at=trigger_at, experiment_variant="champion")
@@ -462,12 +474,21 @@ async def test_full_decision_shadow_chain(decision_env):
     assert len(qb) == 2
     assert qb[0]["trade_decision_id"] == created.trade_decision_id
 
+    # Explicit observed/frozen zero is evidence; absence is not silently treated as zero.
+    async with UnitOfWork(env["sessions"]) as uow:
+        await uow.session.execute(text(
+            "INSERT INTO trading.operating_cost_entries "
+            "(cost_key,cost_kind,amount,release_manifest_id,episode_id,trade_decision_id,allocation_policy) "
+            "VALUES (:k,'INFRASTRUCTURE',0,:r,:e,:d,CAST(:p AS jsonb))"
+        ), {"k": f"cost-{created.trade_decision_id}", "r": ctx["release"], "e": episode,
+            "d": created.trade_decision_id,
+            "p": json.dumps({"kind": "fixed_marginal", "evidence": "observed_zero"})})
+
     # market-relative BLIND_ONLY
     async with UnitOfWork(env["sessions"]) as uow:
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
-            input_=MarketRelativeInput(decision_mode="BLIND_ONLY",
-                                       q_blind={"w0": "0.6", "w1": "0.4"}))
+            input_=MarketRelativeInput(decision_mode="BLIND_ONLY"))
     assert mr.ok, mr.reason
 
     # G7A
@@ -479,13 +500,9 @@ async def test_full_decision_shadow_chain(decision_env):
                 ActionCandidateInput(
                     contract_spec_id=spec_id, token_id=ctx["yes_token"],
                     action_type="BUY_TOKEN", target_quantity=Decimal("100"),
-                    depth_levels=[[Decimal("0.52"), 100], [Decimal("0.53"), 200]],
-                    side="buy", taker_fee_bps=Decimal("0"),
-                    horizon_days=Decimal("1"), bankroll=Decimal("100000"),
                 )
             ],
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+            policy_hash=None, version_manifest_id=None)
     assert g7a.ok, g7a.reason
     async with UnitOfWork(env["sessions"]) as uow:
         candidates = await env["decision"].candidates_for_decision(
@@ -497,12 +514,7 @@ async def test_full_decision_shadow_chain(decision_env):
     async with UnitOfWork(env["sessions"]) as uow:
         g7b = await logic.run_g7b(
             uow, trade_decision_id=created.trade_decision_id,
-            portfolio=PortfolioGateInput(bankroll=Decimal("100000"),
-                                         market_exposure=Decimal("100"),
-                                         component_exposure=Decimal("100"),
-                                         global_exposure=Decimal("100")),
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+            portfolio=PortfolioGateInput(), policy_hash=None, version_manifest_id=None)
     assert g7b.ok, g7b.reason
 
     # terminal ACTION
@@ -511,6 +523,7 @@ async def test_full_decision_shadow_chain(decision_env):
             uow, trade_decision_id=created.trade_decision_id,
             action_set=ActionSetInput(
                 disposition="ACTION",
+                selected_action_type="BUY_TOKEN",
                 legs={"open": {spec_id: {ctx["yes_token"]: Decimal("100")}}},
             ),
             underwriting=UnderwritingInput(
@@ -535,19 +548,9 @@ async def test_full_decision_shadow_chain(decision_env):
             {"d": created.trade_decision_id})).scalars().all()
         legs = await env["decision"].action_set_legs(uow.session, action_sets[0])
         assert len(legs) == 1
-        # intent
-        intent_hash = canonical_hash(
-            {"action_set_id": action_sets[0], "decision_id": created.trade_decision_id}
-        )
-        intent_id = await env["decision"].insert_action_intent(
-            uow.session,
-            intent_key=f"intent-{created.trade_decision_id}",
-            intent_hash=intent_hash,
-            trade_decision_id=created.trade_decision_id,
-            action_set_id=action_sets[0],
-            ttl_at=datetime.now(timezone.utc) + timedelta(days=30),
-            preflight={"action_set_hash": decision_row["output_hash"]},
-        )
+        intent_id = (await uow.session.execute(text(
+            "SELECT id FROM trading.economic_action_intents WHERE trade_decision_id=:d"
+        ), {"d": created.trade_decision_id})).scalar_one()
         execution_logic = ShadowExecutionLogic(env["execution"], env["ledger"])
         fill_result = await execution_logic.shadow_fill(
             uow,
@@ -591,6 +594,30 @@ async def test_full_decision_shadow_chain(decision_env):
             contract_spec_id=spec_id, token_id=ctx["yes_token"])
     assert position["quantity"] == 100
 
+    # Exact worker retry returns the immutable terminal result and has economic effect=0.
+    before_retry = {
+        name: await _count(env, name)
+        for name in ("executions", "positions", "position_lots", "ledger_transactions",
+                     "ledger_postings", "transactional_outbox")
+    }
+    async with UnitOfWork(env["sessions"]) as uow:
+        retried = await execution_logic.shadow_fill(
+            uow,
+            fill=ShadowFillInput(
+                execution_key=f"exec-{created.trade_decision_id}",
+                economic_action_intent_id=intent_id,
+                action_set_leg_id=legs[0]["id"],
+                contract_spec_id=spec_id, token_id=ctx["yes_token"],
+                fill_role="open", quantity=Decimal("100"), side="buy",
+                portfolio_namespace="shadow-champion",
+            ),
+            portfolio_namespace="shadow-champion", cash_asset_key="usd",
+        )
+    assert retried.replayed and retried.execution_id == fill_result.execution_id
+    assert {
+        name: await _count(env, name) for name in before_retry
+    } == before_retry
+
     # quote-only refresh 不增加 AI/forecast
     assert await _count(env, "ai_invocations") == 0
     assert await _count(env, "forecast_episodes") == 1
@@ -603,13 +630,13 @@ async def test_reveal_stale_quote_fail_closed(decision_env):
     episode, _ = await _build_blind_committed_episode(env, ctx)
     logic = DecisionLogic(env["decision"], env["wf"])
     async with UnitOfWork(env["sessions"]) as uow:
+        ck = (await uow.session.execute(text("SELECT received_at FROM trading.pm_book_checkpoints WHERE token_id='token-p2-yes'"))).scalar_one()
+    async with UnitOfWork(env["sessions"]) as uow:
         created = await logic.create_decision(uow, episode_id=episode,
-                                              trigger_at=FIXED + timedelta(minutes=5),
+                                              trigger_at=ck + timedelta(minutes=1),
                                               experiment_variant="champion")
     quotes = _quote_map(ctx)
     quotes["token-p2-yes"]["stale_at"] = FIXED + timedelta(seconds=1)  # already stale at reveal
-    async with UnitOfWork(env["sessions"]) as uow:
-        ck = (await uow.session.execute(text("SELECT received_at FROM trading.pm_book_checkpoints WHERE token_id='token-p2-yes'"))).scalar_one()
     async with UnitOfWork(env["sessions"]) as uow:
         revealed = await logic.reveal(uow, trade_decision_id=created.trade_decision_id,
                                       quote_reveal_at=ck + timedelta(minutes=6),
@@ -624,27 +651,27 @@ async def test_linear_shrinkage_challenger_abstain_keeps_blind(decision_env):
     episode, _ = await _build_blind_committed_episode(env, ctx)
     logic = DecisionLogic(env["decision"], env["wf"])
     async with UnitOfWork(env["sessions"]) as uow:
-        created = await logic.create_decision(uow, episode_id=episode,
-                                              trigger_at=FIXED + timedelta(minutes=5),
-                                              experiment_variant="champion")
-    async with UnitOfWork(env["sessions"]) as uow:
         ck = (await uow.session.execute(text("SELECT received_at FROM trading.pm_book_checkpoints WHERE token_id='token-p2-yes'"))).scalar_one()
     async with UnitOfWork(env["sessions"]) as uow:
-        await logic.reveal(uow, trade_decision_id=created.trade_decision_id,
-                           quote_reveal_at=ck + timedelta(minutes=6), quotes=_quote_map(ctx))
+        created = await logic.create_decision(uow, episode_id=episode,
+                                              trigger_at=ck + timedelta(minutes=1),
+                                              experiment_variant="champion")
+    async with UnitOfWork(env["sessions"]) as uow:
+        revealed = await logic.reveal(uow, trade_decision_id=created.trade_decision_id,
+                                      quote_reveal_at=ck + timedelta(minutes=1, seconds=1),
+                                      quotes=_quote_map(ctx))
+    assert revealed.ok
     # 不完整 token price set → challenger ABSTAIN，不阻塞 BLIND_ONLY
     async with UnitOfWork(env["sessions"]) as uow:
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
             input_=MarketRelativeInput(
                 decision_mode="LINEAR_SHRINKAGE", w_blind=Decimal("0.5"),
-                q_blind={"w0": "0.6", "w1": "0.4"},
                 token_prices={ctx["yes_token"]: "0.52"}))
     assert not mr.ok and mr.reason == "ABSTAIN_MARKET_REFERENCE_UNIDENTIFIED"
     # BLIND_ONLY 仍可构造
     async with UnitOfWork(env["sessions"]) as uow:
         mr2 = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
-            input_=MarketRelativeInput(decision_mode="BLIND_ONLY",
-                                       q_blind={"w0": "0.6", "w1": "0.4"}))
+            input_=MarketRelativeInput(decision_mode="BLIND_ONLY"))
     assert mr2.ok

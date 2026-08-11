@@ -75,8 +75,6 @@ class DecisionHandler:
             )
             return HandlerResult(result.ok, result, result.reason)
         if kind == "g7a":
-            if policy_hash is None or version_manifest_id is None:
-                return HandlerResult(False, reason="g7a_policy_binding_required")
             candidates = [ActionCandidateInput(**c) for c in event.payload["candidates"]]
             result = await self._logic.run_g7a(
                 uow, trade_decision_id=event.trade_decision_id, candidates=candidates,
@@ -84,9 +82,7 @@ class DecisionHandler:
             )
             return HandlerResult(result.ok, result, result.reason)
         if kind == "g7b":
-            if policy_hash is None or version_manifest_id is None:
-                return HandlerResult(False, reason="g7b_policy_binding_required")
-            portfolio = PortfolioGateInput(**event.payload["portfolio"])
+            portfolio = PortfolioGateInput(**event.payload.get("portfolio", {}))
             result = await self._logic.run_g7b(
                 uow, trade_decision_id=event.trade_decision_id, portfolio=portfolio,
                 policy_hash=policy_hash, version_manifest_id=version_manifest_id,

@@ -18,6 +18,7 @@ from app.repositories.trading.decision import DecisionRepository
 from app.repositories.trading.execution import ExecutionRepository
 from app.repositories.trading.ledger import LedgerRepository
 from app.repositories.trading.workflow import WorkflowRepository
+from app.outbox.repository import OutboxRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,9 @@ class ShadowExecutionRuntime:
         self._sessions = sessions_factory
         self._decision_logic = DecisionLogic(DecisionRepository(), WorkflowRepository())
         self._decision_handler = DecisionHandler(self._decision_logic)
-        self._execution_logic = ShadowExecutionLogic(ExecutionRepository(), LedgerRepository())
+        self._execution_logic = ShadowExecutionLogic(
+            ExecutionRepository(), LedgerRepository(), OutboxRepository()
+        )
         self._execution_handler = ExecutionHandler(self._execution_logic)
 
     async def handle_decision_event(
@@ -49,8 +52,8 @@ class ShadowExecutionRuntime:
         self,
         event: ExecutionEvent,
         *,
-        portfolio_namespace: str,
-        cash_asset_key: str,
+        portfolio_namespace: str | None = None,
+        cash_asset_key: str | None = None,
     ) -> Any:
         async with UnitOfWork(self._sessions) as uow:
             return await self._execution_handler.handle(

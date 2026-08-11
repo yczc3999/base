@@ -79,14 +79,22 @@ def cap_check(
     bankroll_dec = _dec(bankroll)
     if bankroll_dec <= 0:
         raise ValueError("portfolio_bankroll_nonpositive")
+    caps = (_dec(per_market_cap), _dec(per_component_cap), _dec(global_cap))
+    if any(cap < ZERO or cap > _DECIMAL_ONE for cap in caps):
+        raise ValueError("portfolio_cap_out_of_range")
+    # Platform maxima are hard ceilings; a permission may only lower them.
+    if caps[0] > Decimal("0.04") or caps[1] > Decimal("0.06") or caps[2] > Decimal("0.30"):
+        raise ValueError("portfolio_cap_above_platform_maximum")
+    if min(market_exposure, component_exposure, global_exposure) < ZERO:
+        raise ValueError("portfolio_exposure_negative")
     per_market = market_exposure / bankroll_dec
     per_component = component_exposure / bankroll_dec
     global_fraction = global_exposure / bankroll_dec
-    if per_market > _dec(per_market_cap):
+    if per_market > caps[0]:
         return CapCheck(False, per_market, per_component, global_fraction, "per_market_cap_exceeded")
-    if per_component > _dec(per_component_cap):
+    if per_component > caps[1]:
         return CapCheck(False, per_market, per_component, global_fraction, "per_component_cap_exceeded")
-    if global_fraction > _dec(global_cap):
+    if global_fraction > caps[2]:
         return CapCheck(False, per_market, per_component, global_fraction, "global_cap_exceeded")
     return CapCheck(True, per_market, per_component, global_fraction)
 

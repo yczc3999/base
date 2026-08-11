@@ -40,13 +40,16 @@ class MarketRelativeInput(BaseModel):
 
     decision_mode: str = Field(default="BLIND_ONLY", pattern="^(BLIND_ONLY|LINEAR_SHRINKAGE)$")
     w_blind: Decimal | None = Field(default=None, ge=0, le=1)
-    q_blind: dict[str, str] = Field(min_length=1)
-    # {token_id: best_ask} 用于 shrinkage 的 coherent Q_market 构造（完整互斥集时）
+    # Compatibility assertions only.  The authoritative blind Q and market prices are
+    # loaded from the committed submission and the decision's quote bindings.
+    q_blind: dict[str, str] | None = None
     token_prices: dict[int, str] = Field(default_factory=dict)
 
     @field_validator("q_blind")
     @classmethod
-    def _v_q(cls, v: dict[str, str]) -> dict[str, str]:
+    def _v_q(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if v is None:
+            return None
         for key, value in v.items():
             if not isinstance(key, str) or not key:
                 raise ValueError("decision_q_state_key_invalid")
@@ -68,12 +71,13 @@ class ActionCandidateInput(BaseModel):
     token_id: int = Field(gt=0)
     action_type: str = Field(pattern="^(BUY_TOKEN|ADD_TOKEN|SELL_TOKEN_TO_REDUCE|SELL_TOKEN_TO_CLOSE|HOLD|FLIP)$")
     target_quantity: Decimal = Field(gt=0)
-    # {price: size} 深度级别（buy=ask，sell=bid）
-    depth_levels: list[list[Decimal | int]] = Field(min_length=1)
-    side: str = Field(pattern="^(buy|sell)$")
-    taker_fee_bps: Decimal = Field(default=Decimal("0"), ge=0)
-    horizon_days: Decimal = Field(default=Decimal("1"), gt=0)
-    bankroll: Decimal = Field(gt=0)
+    # Compatibility assertions only; execution inputs come from the bound checkpoint
+    # and frozen release.  Empty/None means "use the authoritative DB value".
+    depth_levels: list[list[Decimal | int]] = Field(default_factory=list)
+    side: str | None = Field(default=None, pattern="^(buy|sell)$")
+    taker_fee_bps: Decimal | None = Field(default=None, ge=0)
+    horizon_days: Decimal | None = Field(default=None, gt=0)
+    bankroll: Decimal | None = Field(default=None, gt=0)
 
     @field_validator("depth_levels")
     @classmethod
@@ -89,13 +93,16 @@ class PortfolioGateInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    bankroll: Decimal = Field(gt=0)
-    per_market_cap: Decimal = Field(default=Decimal("0.04"), ge=0, le=1)
-    per_component_cap: Decimal = Field(default=Decimal("0.06"), ge=0, le=1)
-    global_cap: Decimal = Field(default=Decimal("0.30"), ge=0, le=1)
-    market_exposure: Decimal = Field(ge=0)
-    component_exposure: Decimal = Field(ge=0)
-    global_exposure: Decimal = Field(ge=0)
+    # Legacy caller values are optional assertions; they are never used to grant
+    # capacity.  G7B derives all values under a DB lock.
+    bankroll: Decimal | None = Field(default=None, gt=0)
+    per_market_cap: Decimal | None = Field(default=None, ge=0, le=1)
+    per_component_cap: Decimal | None = Field(default=None, ge=0, le=1)
+    global_cap: Decimal | None = Field(default=None, ge=0, le=1)
+    market_exposure: Decimal | None = Field(default=None, ge=0)
+    component_exposure: Decimal | None = Field(default=None, ge=0)
+    global_exposure: Decimal | None = Field(default=None, ge=0)
+    portfolio_namespace: str | None = Field(default=None, min_length=1)
 
 
 class ActionSetInput(BaseModel):
@@ -104,6 +111,10 @@ class ActionSetInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     disposition: str = Field(pattern="^(ACTION|WAIT|ABSTAIN)$")
+    selected_action_type: str | None = Field(
+        default=None,
+        pattern="^(BUY_TOKEN|ADD_TOKEN|SELL_TOKEN_TO_REDUCE|SELL_TOKEN_TO_CLOSE|HOLD|FLIP)$",
+    )
     reason_code: str | None = None
     wake_condition: str | None = None
     recheck_at: datetime | None = None

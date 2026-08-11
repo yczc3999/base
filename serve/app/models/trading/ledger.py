@@ -64,6 +64,10 @@ class LedgerTransaction(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "kind IN ('FILL','REVERSAL','SETTLEMENT','OPERATING_COST')",
             name="ck_ledger_transactions_kind_known",
         ),
+        CheckConstraint(
+            "(kind = 'REVERSAL') = (reference_transaction_id IS NOT NULL)",
+            name="ck_ledger_transactions_reversal_ref_pair",
+        ),
         Index("ix_ledger_transactions_decision", "trade_decision_id"),
         Index("ix_ledger_transactions_execution", "execution_id"),
         {"schema": TRADING_SCHEMA},

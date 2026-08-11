@@ -45,7 +45,6 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(SERVE_DIR))
 
 from app.db.uow import UnitOfWork  # noqa: E402
-from app.domain.trading.hashing import canonical_hash  # noqa: E402
 from app.logics.trading.decision import DecisionLogic  # noqa: E402
 from app.logics.trading.execution import ShadowExecutionLogic  # noqa: E402
 from app.repositories.trading.cohort import CohortRepository  # noqa: E402
@@ -88,6 +87,12 @@ VALUATION_SECONDS = float(os.environ.get("PM_V2_VALUATION_SECONDS", "60"))
 TERMINALIZATION_SECONDS = float(os.environ.get("PM_V2_TERMINALIZATION_SECONDS", "60"))
 MIN_VALUATIONS_PER_SECOND = 100
 MIN_TERMINALIZATIONS_PER_SECOND = 10
+# Keep this leg deliberately paced instead of flooding the local PostgreSQL
+# instance.  The fixture below seeds one independent shadow namespace per run;
+# 12/s leaves headroom above the 10/s acceptance floor while bounding fixture
+# cardinality and making every completion a distinct economic effect.
+TERMINALIZATION_TARGET_RATE = 12
+MAX_TERMINALIZATION_FIXTURES = int(TERMINALIZATION_SECONDS * TERMINALIZATION_TARGET_RATE) + 32
 
 # 持续窗口：完整跑用 10s；缩短自检自动收窄（保证至少 1 个窗口可断言）。
 SUSTAINED_WINDOW_SECONDS = max(
@@ -163,7 +168,7 @@ async def _run_valuation_once(
 ) -> None:
     # 单线程事件循环内同步 next() 原子，保证跨 worker 全局唯一（避免 decision_key 冲突）。
     seq = next(seq_source)
-    trigger_at = FIXED + timedelta(microseconds=seq)
+    trigger_at = ctx["decision_time_base"] + timedelta(microseconds=seq)
     quote_reveal_at = trigger_at + timedelta(seconds=1)
     started = time.perf_counter()
     async with UnitOfWork(env["sessions"]) as uow:
@@ -181,10 +186,25 @@ async def _run_valuation_once(
             quote_reveal_at=quote_reveal_at, quotes=_quote_map(ctx))
         if not revealed.ok:
             raise RuntimeError(f"reveal failed: {revealed.reason}")
+        # An explicit observed zero is cost evidence.  Absence must remain fail-closed.
+        await uow.session.execute(
+            text(
+                "INSERT INTO trading.operating_cost_entries "
+                "(cost_key,cost_kind,amount,release_manifest_id,episode_id,"
+                " trade_decision_id,allocation_policy) "
+                "VALUES (:k,'INFRASTRUCTURE',0,:r,:e,:d,"
+                " '{\"kind\":\"fixed_marginal\",\"evidence\":\"observed_zero\"}'::jsonb)"
+            ),
+            {
+                "k": f"perf-valuation-cost-{created.trade_decision_id}",
+                "r": ctx["release"],
+                "e": ctx["episode"],
+                "d": created.trade_decision_id,
+            },
+        )
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
-            input_=MarketRelativeInput(decision_mode="BLIND_ONLY",
-                                       q_blind={"w0": "0.6", "w1": "0.4"}))
+            input_=MarketRelativeInput(decision_mode="BLIND_ONLY"))
         if not mr.ok:
             raise RuntimeError(f"market_relative failed: {mr.reason}")
         g7a = await logic.run_g7a(
@@ -205,8 +225,7 @@ async def _run_valuation_once(
                     horizon_days=Decimal("1"), bankroll=Decimal("100000"),
                 ),
             ],
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+        )
         if not g7a.ok:
             raise RuntimeError(f"g7a failed: {g7a.reason}")
     # 完整事务时间（含 commit）
@@ -255,7 +274,8 @@ async def _run_terminalization_once(
     spec_id: int,
     yes_token: int,
 ) -> None:
-    trigger_at = FIXED + timedelta(microseconds=sequence)
+    quantity = Decimal(sequence + 1)
+    trigger_at = ctx["decision_time_base"] + timedelta(microseconds=sequence)
     quote_reveal_at = trigger_at + timedelta(seconds=1)
     decided_at = trigger_at + timedelta(seconds=2)
     started = time.perf_counter()
@@ -266,85 +286,80 @@ async def _run_terminalization_once(
         metrics.peak_checked_out = max(metrics.peak_checked_out, int(engine.pool.checkedout()))
         created = await logic.create_decision(
             uow, episode_id=ctx["episode"], trigger_at=trigger_at,
-            experiment_variant="perf-terminalize")
+            # Each run is an independent shadow arm; otherwise the capacity cap would
+            # correctly stop this throughput benchmark after the shared arm fills.
+            experiment_variant=f"perf-terminalize-{sequence}")
         assert created.ok, created.reason
         revealed = await logic.reveal(
             uow, trade_decision_id=created.trade_decision_id,
             quote_reveal_at=quote_reveal_at, quotes=_quote_map(ctx))
         assert revealed.ok, revealed.reason
+        await uow.session.execute(
+            text(
+                "INSERT INTO trading.operating_cost_entries "
+                "(cost_key,cost_kind,amount,release_manifest_id,episode_id,"
+                " trade_decision_id,allocation_policy) "
+                "VALUES (:k,'INFRASTRUCTURE',0,:r,:e,:d,"
+                " '{\"kind\":\"fixed_marginal\",\"evidence\":\"observed_zero\"}'::jsonb)"
+            ),
+            {
+                "k": f"perf-terminal-cost-{created.trade_decision_id}",
+                "r": ctx["release"],
+                "e": ctx["episode"],
+                "d": created.trade_decision_id,
+            },
+        )
         mr = await logic.market_relative(
             uow, trade_decision_id=created.trade_decision_id,
-            input_=MarketRelativeInput(decision_mode="BLIND_ONLY",
-                                       q_blind={"w0": "0.6", "w1": "0.4"}))
+            input_=MarketRelativeInput(decision_mode="BLIND_ONLY"))
         assert mr.ok, mr.reason
         g7a = await logic.run_g7a(
             uow, trade_decision_id=created.trade_decision_id,
             candidates=[
                 ActionCandidateInput(
                     contract_spec_id=spec_id, token_id=yes_token,
-                    action_type="BUY_TOKEN", target_quantity=Decimal("100"),
-                    depth_levels=[[Decimal("0.52"), 100], [Decimal("0.53"), 200]],
-                    side="buy", taker_fee_bps=Decimal("0"),
-                    horizon_days=Decimal("1"), bankroll=Decimal("100000"),
+                    action_type="SELL_TOKEN_TO_CLOSE", target_quantity=quantity,
                 )
             ],
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+        )
         assert g7a.ok, g7a.reason
         g7b = await logic.run_g7b(
             uow, trade_decision_id=created.trade_decision_id,
-            portfolio=PortfolioGateInput(bankroll=Decimal("100000"),
-                                         market_exposure=Decimal("100"),
-                                         component_exposure=Decimal("100"),
-                                         global_exposure=Decimal("100")),
-            policy_hash=ctx["policy_hashes"]["eligibility"],
-            version_manifest_id=ctx["release"])
+            portfolio=PortfolioGateInput(
+                portfolio_namespace=f"shadow-perf-terminalize-{sequence}"
+            ),
+        )
         assert g7b.ok, g7b.reason
         terminal = await logic.terminalize(
             uow, trade_decision_id=created.trade_decision_id,
             action_set=ActionSetInput(
                 disposition="ACTION",
-                legs={"open": {spec_id: {yes_token: Decimal("100")}}},
+                selected_action_type="SELL_TOKEN_TO_CLOSE",
+                legs={"close": {spec_id: {yes_token: quantity}}},
             ),
-            underwriting=UnderwritingInput(
-                plan_version=1, entry_range={"min": "0.50", "max": "0.55"},
-                hold_to_resolution=True, thesis_hash="a" * 64,
-                invalidation={"evidence": "regime_change"},
-            ),
+            underwriting=None,
             decided_at=decided_at)
         assert terminal.ok, terminal.reason
-        decision_row = await env["decision"].get_trade_decision_by_id(
-            uow.session, created.trade_decision_id)
         action_sets = (await uow.session.execute(
             text("SELECT id FROM trading.action_sets WHERE trade_decision_id=:d"),
             {"d": created.trade_decision_id})).scalars().all()
         legs = await env["decision"].action_set_legs(uow.session, action_sets[0])
-        intent_hash = canonical_hash(
-            {"action_set_id": action_sets[0], "decision_id": created.trade_decision_id}
-        )
-        intent_id = await env["decision"].insert_action_intent(
-            uow.session,
-            intent_key=f"intent-{created.trade_decision_id}",
-            intent_hash=intent_hash,
-            trade_decision_id=created.trade_decision_id,
-            action_set_id=action_sets[0],
-            ttl_at=datetime.now(timezone.utc) + timedelta(days=30),
-            preflight={"action_set_hash": decision_row["output_hash"]},
-        )
+        intent_id = (
+            await uow.session.execute(
+                text(
+                    "SELECT id FROM trading.economic_action_intents "
+                    "WHERE trade_decision_id=:d AND status='COMMITTED'"
+                ),
+                {"d": created.trade_decision_id},
+            )
+        ).scalar_one()
         fill = await exec_logic.shadow_fill(
             uow,
             fill=ShadowFillInput(
                 execution_key=f"exec-{created.trade_decision_id}",
                 economic_action_intent_id=intent_id,
                 action_set_leg_id=legs[0]["id"],
-                contract_spec_id=spec_id, token_id=yes_token,
-                fill_role="open", quantity=Decimal("100"), side="buy",
-                depth_levels=[[Decimal("0.52"), 100], [Decimal("0.53"), 200]],
-                taker_fee_bps=Decimal("0"),
-                portfolio_namespace="shadow-perf",
             ),
-            portfolio_namespace="shadow-perf",
-            cash_asset_key="usd",
         )
         assert fill.ok, fill.reason
         assert fill.status == "FILLED"
@@ -394,11 +409,60 @@ async def _run() -> dict[str, Any]:
         ctx = await _seed(env)
         ctx["episode"], spec_ids = await _build_blind_committed_episode(env, ctx)
         ctx["spec_id"] = spec_ids[0]
+        ctx["decision_time_base"] = max(
+            ctx["checkpoint_recv_yes"], ctx["checkpoint_recv_no"]
+        ) + timedelta(seconds=1)
         logic = DecisionLogic(env["decision"], env["wf"])
         exec_logic = ShadowExecutionLogic(env["execution"], env["ledger"])
         spec_id = ctx["spec_id"]
         yes_token = ctx["yes_token"]
         no_token = ctx["no_token"]
+
+        # Gate 2 deliberately exercises the risk-reducing SELL/CLOSE path.  Each
+        # terminalization owns an independent namespace and a distinct quantity,
+        # so the benchmark cannot evade intent idempotency or capacity claims by
+        # replaying one economic action.  Seeded projections are outside the timed
+        # interval; every timed transaction still performs the full decision →
+        # intent → execution → signed lot → balanced ledger → outbox chain.
+        async with UnitOfWork(sessions) as uow:
+            component_id = (
+                await uow.session.execute(
+                    text(
+                        "SELECT component_id FROM trading.forecast_component_versions "
+                        "WHERE id=(SELECT component_version_id FROM trading.forecast_episodes "
+                        "WHERE id=:episode)"
+                    ),
+                    {"episode": ctx["episode"]},
+                )
+            ).scalar_one()
+            await uow.session.execute(
+                text(
+                    "INSERT INTO trading.positions "
+                    "(portfolio_namespace,contract_spec_id,token_id,market_id,component_id,"
+                    " quantity,cost_basis) "
+                    "SELECT 'shadow-perf-terminalize-' || gs::text,:spec,:token,:market,:component,"
+                    " gs + 1, 0 FROM generate_series(0,:last) AS gs"
+                ),
+                {
+                    "spec": spec_id,
+                    "token": yes_token,
+                    "market": ctx["market"],
+                    "component": component_id,
+                    "last": MAX_TERMINALIZATION_FIXTURES - 1,
+                },
+            )
+            await uow.session.execute(
+                text(
+                    "INSERT INTO trading.pm_book_levels "
+                    "(checkpoint_id,received_at,side,price,size,ordinal) "
+                    "VALUES (:checkpoint,:received,'bid',0.48,:size,2)"
+                ),
+                {
+                    "checkpoint": ctx["checkpoint_yes"],
+                    "received": ctx["checkpoint_recv_yes"],
+                    "size": MAX_TERMINALIZATION_FIXTURES,
+                },
+            )
 
         async with UnitOfWork(sessions) as uow:
             wal_start_lsn = (
@@ -432,12 +496,18 @@ async def _run() -> dict[str, Any]:
         term_start = time.perf_counter()
         done = 0
         while time.perf_counter() - term_start < TERMINALIZATION_SECONDS:
+            if done >= MAX_TERMINALIZATION_FIXTURES:
+                raise RuntimeError("terminalization_fixture_budget_exhausted")
             await _run_terminalization_once(
                 env=env, logic=logic, exec_logic=exec_logic, metrics=term_metrics,
                 sequence=done, benchmark_started=term_start, engine=async_engine,
                 ctx=ctx, spec_id=spec_id, yes_token=yes_token,
             )
             done += 1
+            target_elapsed = done / TERMINALIZATION_TARGET_RATE
+            remaining = target_elapsed - (time.perf_counter() - term_start)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
         terminalization_elapsed = time.perf_counter() - term_start
         terminalization_rate = done / terminalization_elapsed
 
@@ -451,12 +521,12 @@ async def _run() -> dict[str, Any]:
             terminal_decisions = (
                 await uow.session.execute(text(
                     "SELECT count(*) FROM trading.trade_decisions "
-                    "WHERE experiment_variant='perf-terminalize' AND status='ACTION'"))
+                    "WHERE experiment_variant LIKE 'perf-terminalize-%' AND status='ACTION'"))
             ).scalar_one()
             lost = (
                 await uow.session.execute(text(
                     "SELECT count(*) FROM trading.trade_decisions "
-                    "WHERE experiment_variant='perf-terminalize' AND status<>'ACTION'"))
+                    "WHERE experiment_variant LIKE 'perf-terminalize-%' AND status<>'ACTION'"))
             ).scalar_one()
             duplicate = (
                 await uow.session.execute(text(
@@ -482,6 +552,11 @@ async def _run() -> dict[str, Any]:
             ).scalar_one()
             ledger_posting_count = (
                 await uow.session.execute(text("SELECT count(*) FROM trading.ledger_postings"))
+            ).scalar_one()
+            outbox_count = (
+                await uow.session.execute(text(
+                    "SELECT count(*) FROM trading.transactional_outbox "
+                    "WHERE topic='shadow.execution.terminalized'"))
             ).scalar_one()
             wal_bytes = (
                 await uow.session.execute(
@@ -524,6 +599,7 @@ async def _run() -> dict[str, Any]:
             "peak_checked_out": term_metrics.peak_checked_out,
             "ledger_transactions": ledger_tx_count,
             "ledger_postings": ledger_posting_count,
+            "execution_outbox_events": outbox_count,
             "wal_bytes": int(wal_bytes),
             "lost": lost,
             "duplicate_decision": duplicate,
@@ -563,6 +639,7 @@ async def _run() -> dict[str, Any]:
         assert ledger_not_posted == 0, "ledger_not_posted"
         assert terminal_decisions == done, "terminal_count_mismatch"
         assert ledger_tx_count == done, "ledger_tx_count_mismatch"
+        assert outbox_count == done, "execution_outbox_count_mismatch"
 
         usage = resource.getrusage(resource.RUSAGE_SELF)
         results["environment"] = {

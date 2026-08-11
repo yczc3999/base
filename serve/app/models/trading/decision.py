@@ -42,7 +42,9 @@ from app.models.trading.mixins import (
 )
 from app.models.trading.types import (
     base_unit_type,
+    decimal_measure_type,
     external_id_type,
+    probability_type,
     sha256_type,
     utc_timestamp_type,
 )
@@ -54,7 +56,7 @@ ACTION_TYPES = (
     "BUY_TOKEN", "ADD_TOKEN", "SELL_TOKEN_TO_REDUCE", "SELL_TOKEN_TO_CLOSE",
     "HOLD", "FLIP",
 )
-LEG_ROLES = ("open", "close", "reduce", "hold")
+LEG_ROLES = ("open", "close", "reduce")
 
 
 class MarketRelativeDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
@@ -100,7 +102,7 @@ class MarketRelativeDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         nullable=False,
     )
     decision_mode: Mapped[str] = mapped_column(String(32), nullable=False)
-    w_blind: Mapped[Decimal | None] = mapped_column(base_unit_type())
+    w_blind: Mapped[Decimal | None] = mapped_column(probability_type())
     q_blind: Mapped[dict] = mapped_column(JSONB, nullable=False)
     q_decision: Mapped[dict] = mapped_column(JSONB, nullable=False)
     u_decision: Mapped[list] = mapped_column(JSONB, nullable=False)
@@ -181,6 +183,11 @@ class TradeDecision(TradingBase, BigIntIdentityMixin, TimestampMixin):
             "status <> 'ABSTAIN' OR reason_code IS NOT NULL",
             name="ck_trade_decisions_abstain_reason",
         ),
+        CheckConstraint(
+            "selected_action_type IS NULL OR selected_action_type IN "
+            "('BUY_TOKEN','ADD_TOKEN','SELL_TOKEN_TO_REDUCE','SELL_TOKEN_TO_CLOSE','HOLD','FLIP')",
+            name="ck_trade_decisions_selected_action_known",
+        ),
         Index("ix_trade_decisions_episode", "episode_id"),
         Index("ix_trade_decisions_submission", "forecast_submission_id"),
         {"schema": TRADING_SCHEMA},
@@ -197,9 +204,10 @@ class TradeDecision(TradingBase, BigIntIdentityMixin, TimestampMixin):
         ForeignKey("trading.forecast_submissions.id", name="fk_trade_decisions_submission"),
         nullable=False,
     )
-    forecast_lease_id: Mapped[int | None] = mapped_column(
+    forecast_lease_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.forecast_leases.id", name="fk_trade_decisions_lease"),
+        nullable=False,
     )
     objective_contract_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -294,23 +302,23 @@ class ActionCandidate(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     action_type: Mapped[str] = mapped_column(String(32), nullable=False)
     # executable depth walk
     fill_quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
-    vwap: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
+    vwap: Mapped[Decimal] = mapped_column(probability_type(), nullable=False)
     executable_depth: Mapped[dict] = mapped_column(JSONB, nullable=False)
     cost_components: Mapped[dict] = mapped_column(JSONB, nullable=False)
     cashflow_reconciliation_residual: Mapped[Decimal] = mapped_column(
         base_unit_type(), nullable=False, server_default="0"
     )
     # valuation
-    gross_edge: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    break_even_payout_probability: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    net_edge: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    robust_ev: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    point_ev: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    roi: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    expected_log_growth: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    worst_loss: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    capital_days: Mapped[Decimal | None] = mapped_column(base_unit_type())
-    edge_delay_erosion: Mapped[Decimal | None] = mapped_column(base_unit_type())
+    gross_edge: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    break_even_payout_probability: Mapped[Decimal | None] = mapped_column(probability_type())
+    net_edge: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    robust_ev: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    point_ev: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    roi: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    expected_log_growth: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    worst_loss: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    capital_days: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
+    edge_delay_erosion: Mapped[Decimal | None] = mapped_column(decimal_measure_type())
 
 
 class ResolutionCashflow(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
@@ -342,6 +350,7 @@ class ActionSet(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __tablename__ = "action_sets"
     __table_args__ = (
         UniqueConstraint("action_set_key", name="uq_action_sets_key"),
+        UniqueConstraint("trade_decision_id", name="uq_action_sets_trade_decision"),
         CheckConstraint(
             "disposition IN ('ACTION','WAIT','ABSTAIN')",
             name="ck_action_sets_disposition_known",
@@ -380,13 +389,14 @@ class ActionSetLeg(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="uq_action_set_legs_set_spec_token_role",
         ),
         CheckConstraint(
-            "leg_role IN ('open','close','reduce','hold')",
+            "leg_role IN ('open','close','reduce')",
             name="ck_action_set_legs_role_known",
         ),
         CheckConstraint("quantity > 0", name="ck_action_set_legs_quantity_positive"),
         CheckConstraint(
-            "signed_quantity <> 0",
-            name="ck_action_set_legs_signed_nonzero",
+            "(leg_role = 'open' AND signed_quantity = quantity) OR "
+            "(leg_role IN ('close','reduce') AND signed_quantity = -quantity)",
+            name="ck_action_set_legs_role_sign",
         ),
         Index("ix_action_set_legs_set", "action_set_id"),
         {"schema": TRADING_SCHEMA},
@@ -410,7 +420,7 @@ class ActionSetLeg(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     leg_role: Mapped[str] = mapped_column(String(16), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
     signed_quantity: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
-    entry_vwap: Mapped[Decimal] = mapped_column(base_unit_type(), nullable=False)
+    entry_vwap: Mapped[Decimal] = mapped_column(probability_type(), nullable=False)
 
 
 class UnderwritingPlan(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
@@ -443,7 +453,7 @@ class UnderwritingPlan(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     thesis_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     invalidation: Mapped[dict] = mapped_column(JSONB, nullable=False)
     wake_condition: Mapped[str | None] = mapped_column(String(255))
-    edge_close_threshold: Mapped[Decimal | None] = mapped_column(base_unit_type())
+    edge_close_threshold: Mapped[Decimal | None] = mapped_column(probability_type())
     time_stop_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())
 
 

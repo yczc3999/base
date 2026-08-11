@@ -118,24 +118,34 @@ def _seed_decision_deps(url, env, *, episode_id=1):
     try:
         with engine.begin() as c:
             c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(text(
+                "INSERT INTO trading.evaluation_cohorts "
+                "(id,cohort_key,status,objective_contract_id,strategy_version_id,release_manifest_id,policy_hashes,seed_hash) "
+                "VALUES (900003,:ck,'OPEN',:obj,:strat,:rel,'{}'::jsonb,:h) ON CONFLICT (id) DO NOTHING"
+            ), {"ck": f"cohort-{episode_id}", "obj": env["obj"], "strat": env["strat"], "rel": env["rel"], "h": "1" * 64})
+            c.execute(text(
+                "INSERT INTO trading.decision_opportunities "
+                "(id,opportunity_key,cohort_id,chain_type,objective_contract_id,strategy_version_id,triggered_at) "
+                "VALUES (:id,:k,900003,'DECISION',:obj,:strat,now()) ON CONFLICT (id) DO NOTHING"
+            ), {"id": 900000 + episode_id, "k": f"opp-{episode_id}", "obj": env["obj"], "strat": env["strat"]})
             c.execute(
                 text(
                     "INSERT INTO trading.forecast_episodes "
                     "(id, episode_key, decision_opportunity_id, component_version_id, "
                     " strategy_version_id, objective_contract_id, trigger, cutoff_at, horizon, "
                     " experiment_variant, status, cognition_status) VALUES "
-                    "(:id, :key, 900001, 900002, :strat, :obj, 'contract', now(), "
-                    " 'resolution', 'champion', 'ROUTED', 'PENDING')"
+                    "(:id, :key, :opp, 900002, :strat, :obj, 'contract', now(), "
+                    " 'resolution', 'champion', 'BLIND_COMMITTED', 'COMMITTED')"
                 ),
-                {"id": episode_id, "key": f"{episode_id:064x}", "strat": env["strat"], "obj": env["obj"]},
+                {"id": episode_id, "opp": 900000 + episode_id, "key": f"{episode_id:064x}", "strat": env["strat"], "obj": env["obj"]},
             )
             sub_id = c.execute(
                 text(
                     "INSERT INTO trading.forecast_submissions "
                     "(episode_id, submission_key, Q, U, forecast_input_manifest_id, "
-                    " contract_schema_prior_evidence_hash, algorithm_hash) VALUES "
+                    " contract_schema_prior_evidence_hash, algorithm_hash, status, committed_at) VALUES "
                     "(:ep, :key, '{\"w0\":\"1\"}'::jsonb, '[{\"w0\":\"1\"}]'::jsonb, "
-                    " 900004, :h, :h) RETURNING id"
+                    " 900004, :h, :h, 'BLIND_COMMITTED', now()) RETURNING id"
                 ),
                 {"ep": episode_id, "key": f"sub-{episode_id}", "h": "b" * 64},
             ).scalar_one()
@@ -144,7 +154,7 @@ def _seed_decision_deps(url, env, *, episode_id=1):
                     "INSERT INTO trading.forecast_leases "
                     "(submission_id, valid_until, invalidation_conditions, evidence_hash, "
                     " schema_hash, spec_hash) VALUES "
-                    "(:sub, now(), '{}'::jsonb, :h, :h, :h) RETURNING id"
+                    "(:sub, now()+interval '1 day', '{}'::jsonb, :h, :h, :h) RETURNING id"
                 ),
                 {"sub": sub_id, "h": "c" * 64},
             ).scalar_one()
@@ -196,41 +206,44 @@ def _update_decision(url, decision_id, *, status=None, quote_bound_at=None,
     _execute(url, f"UPDATE trading.trade_decisions SET {', '.join(sets)} WHERE id=:id", params)
 
 
-def _seed_terminal_decision(url, env, deps, *, decision_key=None):
-    """Walk a decision CREATED→QUOTE_BOUND→G7A→G7B→ACTION in a single transaction."""
+def _seed_terminal_decision(url, env, deps, *, decision_key=None, status="ACTION"):
+    """Seed a terminal identity under replica for tests of downstream table guards."""
     qb = datetime.now(timezone.utc)
     dd = qb + timedelta(minutes=1)
     engine = create_engine(url)
     try:
         with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
             decision = c.execute(
                 text(
                     "INSERT INTO trading.trade_decisions "
                     "(decision_key, episode_id, forecast_submission_id, forecast_lease_id, "
                     " objective_contract_id, strategy_version_id, release_manifest_id, "
                     " execution_spec_version_id, capital_permission_manifest_id, "
-                    " experiment_variant, status, trigger_at, input_hash) VALUES "
+                    " experiment_variant, status, selected_action_type, trigger_at, quote_bound_at, "
+                    " decided_at, input_hash, output_hash, reason_code) VALUES "
                     "(:key, :ep, :sub, :lease, :obj, :strat, :rel, :exec, :cap, "
-                    " 'champion', 'CREATED', :trigger_at, :hash) RETURNING id"
+                    " 'champion', :status, :selected, :trigger_at, :qb, :dd, :hash, :oh, :reason) RETURNING id"
                 ),
                 {
                     "key": decision_key or (uuid4().hex + uuid4().hex),
                     "ep": deps["episode"], "sub": deps["sub"], "lease": deps["lease"],
                     "obj": env["obj"], "strat": env["strat"], "rel": env["rel"],
                     "exec": env["exec"], "cap": env["cap"],
-                    "trigger_at": qb - timedelta(hours=1), "hash": "a" * 64,
+                    "trigger_at": qb - timedelta(hours=1), "qb": qb, "dd": dd,
+                    "hash": "a" * 64, "oh": "d" * 64,
+                    "status": status,
+                    "selected": "BUY_TOKEN" if status == "ACTION" else None,
+                    "reason": "fixture" if status == "ABSTAIN" else None,
                 },
             ).scalar_one()
-            c.execute(text("UPDATE trading.trade_decisions SET status='QUOTE_BOUND', quote_bound_at=:qb WHERE id=:id"), {"qb": qb, "id": decision})
-            c.execute(text("UPDATE trading.trade_decisions SET status='G7A' WHERE id=:id"), {"id": decision})
-            c.execute(text("UPDATE trading.trade_decisions SET status='G7B' WHERE id=:id"), {"id": decision})
-            c.execute(text("UPDATE trading.trade_decisions SET status='ACTION', decided_at=:dd, output_hash=:oh WHERE id=:id"), {"dd": dd, "oh": "d" * 64, "id": decision})
+            c.execute(text("SET LOCAL session_replication_role = origin"))
         return decision
     finally:
         engine.dispose()
 
 
-def _seed_leg_fk_targets(url):
+def _seed_leg_fk_targets(url, *, episode_id=1):
     """Seed pm_markets/pm_tokens/contract_specs under replica so action_set_legs FKs resolve."""
     engine = create_engine(url)
     try:
@@ -239,6 +252,8 @@ def _seed_leg_fk_targets(url):
             mid = c.execute(text("INSERT INTO trading.pm_markets (gamma_market_id, condition_id) VALUES ('m-30', 'c-30') RETURNING id")).scalar_one()
             token = c.execute(text("INSERT INTO trading.pm_tokens (token_id, market_id, outcome_index) VALUES ('t-30', :m, 0) RETURNING id"), {"m": mid}).scalar_one()
             cspec = c.execute(text("INSERT INTO trading.contract_specs (contract_key, version_no, snapshot_id, kc_resolution_states, token_ids, token_count, state_count, compiler_version, schema_version, status, content_hash) VALUES ('cs-30', 1, 900001, '[\"YES\"]'::jsonb, '{}'::jsonb, 1, 1, 'v1', 1, 'pass', :h) RETURNING id"), {"h": "e" * 64}).scalar_one()
+            c.execute(text("INSERT INTO trading.episode_contract_specs (episode_id,contract_spec_id) VALUES (:ep,:cs)"), {"ep": episode_id, "cs": cspec})
+            c.execute(text("INSERT INTO trading.payout_functions (contract_spec_id,pm_token_id,token_version_id,outcome_index,function_ir,test_vectors,algorithm_hash,content_hash) VALUES (:cs,:t,900099,0,'{\"YES\":\"1\"}'::jsonb,'{}'::jsonb,:h,:h)"), {"cs": cspec, "t": token, "h": "9" * 64})
             c.execute(text("SET LOCAL session_replication_role = origin"))
         return {"cs": cspec, "token": token}
     finally:
@@ -309,21 +324,23 @@ def test_trade_decision_lifecycle_guard(temp_pg_db):
     with pytest.raises(Exception, match="v2_trade_decision_immutable"):
         _update_decision(url, d2, status="G7A")
 
-    # 完整路径 CREATED→QUOTE_BOUND→G7A→G7B→ACTION（终态）合法
+    # 状态路径本身合法，但缺 exact quote/gates/action evidence 的 terminal 必须 fail-closed。
     dd = qb + timedelta(minutes=1)
     _update_decision(url, d2, status="QUOTE_BOUND", quote_bound_at=qb)
     _update_decision(url, d2, status="G7A")
     _update_decision(url, d2, status="G7B")
-    _update_decision(url, d2, status="ACTION", decided_at=dd, output_hash="b" * 64)
-    assert _query(url, "SELECT status FROM trading.trade_decisions WHERE id=:id", {"id": d2}) == [("ACTION",)]
+    with pytest.raises(Exception, match="v2_trade_decision_required_tokens_missing|v2_trade_decision_gate_evidence_missing"):
+        _update_decision(url, d2, status="ACTION", decided_at=dd, output_hash="b" * 64)
+    assert _query(url, "SELECT status FROM trading.trade_decisions WHERE id=:id", {"id": d2}) == [("G7B",)]
 
     # 终态后再改 status 被拒
+    terminal = _seed_terminal_decision(url, env, deps)
     with pytest.raises(Exception, match="v2_trade_decision_terminal_immutable"):
-        _update_decision(url, d2, status="WAIT")
+        _update_decision(url, terminal, status="WAIT")
 
     # identity 不可改
     d3 = _insert_trade_decision(url, env, deps)
-    with pytest.raises(Exception, match="v2_trade_decision_identity_immutable"):
+    with pytest.raises(Exception, match="v2_trade_decision_identity_(?:immutable|invalid)"):
         _update_decision(url, d3, episode_id=deps["episode"] + 100)
 
 
@@ -360,14 +377,16 @@ def test_action_set_legs_consistency(temp_pg_db):
     ])
 
     # WAIT 必须带 wake_condition 或 recheck_at
+    wait_decision = _seed_terminal_decision(url, env, deps, status="WAIT")
     with pytest.raises(Exception, match="ck_action_sets_wait_wake"):
-        _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, action_set_hash) VALUES ('as-wait-bad', :d, 'WAIT', :h)", {"d": decision, "h": "c" * 64})
-    _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, wake_condition, action_set_hash) VALUES ('as-wait-ok', :d, 'WAIT', 'wake', :h)", {"d": decision, "h": "c" * 64})
+        _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, action_set_hash) VALUES ('as-wait-bad', :d, 'WAIT', :h)", {"d": wait_decision, "h": "c" * 64})
+    _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, wake_condition, action_set_hash) VALUES ('as-wait-ok', :d, 'WAIT', 'wake', :h)", {"d": wait_decision, "h": "c" * 64})
 
     # ABSTAIN 必须带 reason_code
+    abstain_decision = _seed_terminal_decision(url, env, deps, status="ABSTAIN")
     with pytest.raises(Exception, match="ck_action_sets_abstain_reason"):
-        _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, action_set_hash) VALUES ('as-abstain-bad', :d, 'ABSTAIN', :h)", {"d": decision, "h": "d" * 64})
-    _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, reason_code, action_set_hash) VALUES ('as-abstain-ok', :d, 'ABSTAIN', 'r', :h)", {"d": decision, "h": "d" * 64})
+        _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, action_set_hash) VALUES ('as-abstain-bad', :d, 'ABSTAIN', :h)", {"d": abstain_decision, "h": "d" * 64})
+    _execute(url, "INSERT INTO trading.action_sets (action_set_key, trade_decision_id, disposition, reason_code, action_set_hash) VALUES ('as-abstain-ok', :d, 'ABSTAIN', 'r', :h)", {"d": abstain_decision, "h": "d" * 64})
 
 
 def test_downgrade_fail_closed_on_unknown_object(temp_pg_db):

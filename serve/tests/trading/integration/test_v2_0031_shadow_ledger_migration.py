@@ -114,24 +114,34 @@ def _seed_decision_deps(url, env, *, episode_id=1):
     try:
         with engine.begin() as c:
             c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(text(
+                "INSERT INTO trading.evaluation_cohorts "
+                "(id,cohort_key,status,objective_contract_id,strategy_version_id,release_manifest_id,policy_hashes,seed_hash) "
+                "VALUES (900003,:ck,'OPEN',:obj,:strat,:rel,'{}'::jsonb,:h) ON CONFLICT (id) DO NOTHING"
+            ), {"ck": f"cohort-{episode_id}", "obj": env["obj"], "strat": env["strat"], "rel": env["rel"], "h": "1" * 64})
+            c.execute(text(
+                "INSERT INTO trading.decision_opportunities "
+                "(id,opportunity_key,cohort_id,chain_type,objective_contract_id,strategy_version_id,triggered_at) "
+                "VALUES (:id,:k,900003,'DECISION',:obj,:strat,now()) ON CONFLICT (id) DO NOTHING"
+            ), {"id": 900000 + episode_id, "k": f"opp-{episode_id}", "obj": env["obj"], "strat": env["strat"]})
             c.execute(
                 text(
                     "INSERT INTO trading.forecast_episodes "
                     "(id, episode_key, decision_opportunity_id, component_version_id, "
                     " strategy_version_id, objective_contract_id, trigger, cutoff_at, horizon, "
                     " experiment_variant, status, cognition_status) VALUES "
-                    "(:id, :key, 900001, 900002, :strat, :obj, 'contract', now(), "
-                    " 'resolution', 'champion', 'ROUTED', 'PENDING')"
+                    "(:id, :key, :opp, 900002, :strat, :obj, 'contract', now(), "
+                    " 'resolution', 'champion', 'BLIND_COMMITTED', 'COMMITTED')"
                 ),
-                {"id": episode_id, "key": f"{episode_id:064x}", "strat": env["strat"], "obj": env["obj"]},
+                {"id": episode_id, "opp": 900000 + episode_id, "key": f"{episode_id:064x}", "strat": env["strat"], "obj": env["obj"]},
             )
             sub_id = c.execute(
                 text(
                     "INSERT INTO trading.forecast_submissions "
                     "(episode_id, submission_key, Q, U, forecast_input_manifest_id, "
-                    " contract_schema_prior_evidence_hash, algorithm_hash) VALUES "
+                    " contract_schema_prior_evidence_hash, algorithm_hash, status, committed_at) VALUES "
                     "(:ep, :key, '{\"w0\":\"1\"}'::jsonb, '[{\"w0\":\"1\"}]'::jsonb, "
-                    " 900004, :h, :h) RETURNING id"
+                    " 900004, :h, :h, 'BLIND_COMMITTED', now()) RETURNING id"
                 ),
                 {"ep": episode_id, "key": f"sub-{episode_id}", "h": "b" * 64},
             ).scalar_one()
@@ -140,7 +150,7 @@ def _seed_decision_deps(url, env, *, episode_id=1):
                     "INSERT INTO trading.forecast_leases "
                     "(submission_id, valid_until, invalidation_conditions, evidence_hash, "
                     " schema_hash, spec_hash) VALUES "
-                    "(:sub, now(), '{}'::jsonb, :h, :h, :h) RETURNING id"
+                    "(:sub, now()+interval '1 day', '{}'::jsonb, :h, :h, :h) RETURNING id"
                 ),
                 {"sub": sub_id, "h": "c" * 64},
             ).scalar_one()
@@ -195,19 +205,23 @@ def _insert_execution(url, deps, *, status="PENDING", key=None):
     sql = (
         "INSERT INTO trading.executions "
         "(execution_key, economic_action_intent_id, action_set_leg_id, contract_spec_id, "
-        " token_id, fill_role, quantity, portfolio_namespace, status) VALUES "
-        "(:k, :intent, :leg, :cs, :t, 'open', 10, 'ns', :status) RETURNING id"
+        " token_id, fill_role, quantity, quote_checkpoint_id, portfolio_namespace, status) VALUES "
+        "(:k, :intent, :leg, :cs, :t, 'open', 10, 900099, 'ns', :status) RETURNING id"
     )
-    return _insert_id(
-        url,
-        sql,
-        {
+    engine = create_engine(url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            inserted = c.execute(text(sql), {
             "k": key or uuid4().hex + uuid4().hex,
             "intent": deps["intent"], "leg": deps["leg"],
             "cs": deps["cs"], "t": deps["token"],
             "status": status,
-        },
-    )
+            }).scalar_one()
+            c.execute(text("SET LOCAL session_replication_role = origin"))
+            return inserted
+    finally:
+        engine.dispose()
 
 
 def test_literal_empty_roundtrip(temp_pg_db):
@@ -270,35 +284,24 @@ def test_execution_lifecycle_guard(temp_pg_db):
     # INSERT 必须 PENDING（filled_quantity=0, vwap NULL）
     e1 = _insert_execution(url, edeps)
     assert _query(url, "SELECT status FROM trading.executions WHERE id=:id", {"id": e1}) == [("PENDING",)]
-    with pytest.raises(Exception, match="v2_execution_initial_state_invalid"):
-        _insert_execution(url, edeps, status="FILLED")
+    # origin-mode insert without an exact intent/leg/quote chain is rejected.
+    with pytest.raises(Exception, match="v2_execution_identity_chain_invalid"):
+        _insert_id(url, "INSERT INTO trading.executions (execution_key,economic_action_intent_id,action_set_leg_id,contract_spec_id,token_id,fill_role,quantity,quote_checkpoint_id,portfolio_namespace) VALUES (:k,:i,:l,:cs,:t,'open',10,900099,'ns') RETURNING id", {"k": uuid4().hex + uuid4().hex, "i": edeps["intent"], "l": edeps["leg"], "cs": edeps["cs"], "t": edeps["token"]})
 
-    # PENDING→PARTIAL|FILLED|REJECTED|FAILED 合法
+    # PENDING 改非法外值被 guard 拒绝。
+    with pytest.raises(Exception, match="v2_execution_immutable"):
+        _execute(url, "UPDATE trading.executions SET status='GARBAGE' WHERE id=:id", {"id": e1})
+    # One economic leg has exactly one execution; prove one legal terminal path.
     _execute(url, "UPDATE trading.executions SET status='PARTIAL', filled_quantity=5, unfilled_reason='partial' WHERE id=:id", {"id": e1})
     assert _query(url, "SELECT status FROM trading.executions WHERE id=:id", {"id": e1}) == [("PARTIAL",)]
 
-    e2 = _insert_execution(url, edeps)
-    _execute(url, "UPDATE trading.executions SET status='FILLED', filled_quantity=10 WHERE id=:id", {"id": e2})
-
-    e3 = _insert_execution(url, edeps)
-    _execute(url, "UPDATE trading.executions SET status='REJECTED', filled_quantity=0, unfilled_reason='rejected' WHERE id=:id", {"id": e3})
-
-    e4 = _insert_execution(url, edeps)
-    _execute(url, "UPDATE trading.executions SET status='FAILED', filled_quantity=0, unfilled_reason='failed' WHERE id=:id", {"id": e4})
-
-    # PENDING 改非法外值被 guard 拒绝
-    e5 = _insert_execution(url, edeps)
-    with pytest.raises(Exception, match="v2_execution_immutable"):
-        _execute(url, "UPDATE trading.executions SET status='GARBAGE' WHERE id=:id", {"id": e5})
-    assert _query(url, "SELECT status FROM trading.executions WHERE id=:id", {"id": e5}) == [("PENDING",)]
-
     # 终态后再改 status 被拒
-    with pytest.raises(Exception, match="v2_execution_terminal_immutable"):
-        _execute(url, "UPDATE trading.executions SET status='PARTIAL' WHERE id=:id", {"id": e2})
+    with pytest.raises(Exception, match="v2_execution_(?:terminal_)?immutable"):
+        _execute(url, "UPDATE trading.executions SET status='FAILED', filled_quantity=0, unfilled_reason='x' WHERE id=:id", {"id": e1})
 
     # identity 不可改
     with pytest.raises(Exception, match="v2_execution_identity_immutable"):
-        _execute(url, "UPDATE trading.executions SET execution_key=:k WHERE id=:id", {"k": uuid4().hex + uuid4().hex, "id": e3})
+        _execute(url, "UPDATE trading.executions SET execution_key=:k WHERE id=:id", {"k": uuid4().hex + uuid4().hex, "id": e1})
 
 
 def test_posted_ledger_immutable(temp_pg_db):

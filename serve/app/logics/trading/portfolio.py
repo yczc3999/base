@@ -1,20 +1,18 @@
-"""Portfolio Logic（WP-03 Checkpoint C）。
-
-- 组合保险丝 4%/6%/30% 以 DB-backed 原子计算（SELECT ... FOR UPDATE / advisory lock）。
-- 不同 shadow variant 使用独立 portfolio namespace，禁止合并 PnL/风险。
-- exposure-increasing 候选须在并发下不得共同越限。
-"""
+"""DB-backed G7B minimum-portfolio capacity checks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.portfolio import cap_check
-from app.repositories.trading.execution import ExecutionRepository
+
+
+ZERO = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -24,15 +22,21 @@ class PortfolioExposure:
     market_fraction: Decimal | None = None
     component_fraction: Decimal | None = None
     global_fraction: Decimal | None = None
+    market_exposure: Decimal = ZERO
+    component_exposure: Decimal = ZERO
+    global_exposure: Decimal = ZERO
+    bankroll: Decimal = ZERO
+    per_market_cap: Decimal = Decimal("0.04")
+    per_component_cap: Decimal = Decimal("0.06")
+    global_cap: Decimal = Decimal("0.30")
 
 
 class PortfolioLogic:
-    """组合保险丝；DB 原子，禁止先查后写。"""
+    """Derive positions + active intent claims while holding a transaction lock."""
 
-    def __init__(
-        self,
-        execution: ExecutionRepository,
-    ) -> None:
+    def __init__(self, execution: Any | None = None) -> None:
+        # Kept for source compatibility; authoritative reads are performed here so
+        # callers cannot supply projections.
         self._execution = execution
 
     async def acquire_capacity_lock(
@@ -43,14 +47,30 @@ class PortfolioLogic:
         component_id: int | None,
         market_id: int | None,
     ) -> None:
-        """transaction-scoped advisory lock on (namespace, component, market)，固定顺序。"""
         await uow.session.execute(
             text(
-                "SELECT pg_advisory_xact_lock(hashtextextended(:ns, 9913), "
-                "hashtextextended(coalesce(:cmp,'0') || ':' || coalesce(:mkt,'0'), 9914))"
+                "SELECT pg_advisory_xact_lock(hashtextextended("
+                ":ns || ':' || coalesce(:cmp,'0') || ':' || coalesce(:mkt,'0'), 9913))"
             ),
             {"ns": portfolio_namespace, "cmp": str(component_id), "mkt": str(market_id)},
         )
+
+    @staticmethod
+    def frozen_caps(limits: dict[str, Any] | None) -> tuple[Decimal, Decimal, Decimal]:
+        limits = limits or {}
+        market = min(
+            Decimal("0.04"),
+            Decimal(str(limits.get("per_market_net_risk_capital_fraction", "0.04"))),
+        )
+        component = min(
+            Decimal("0.06"),
+            Decimal(str(limits.get("per_component_net_risk_capital_fraction", "0.06"))),
+        )
+        global_ = min(
+            Decimal("0.30"),
+            Decimal(str(limits.get("global_risk_capital_fraction", "0.30"))),
+        )
+        return market, component, global_
 
     async def check_capacity(
         self,
@@ -64,35 +84,88 @@ class PortfolioLogic:
         per_market_cap: Decimal = Decimal("0.04"),
         per_component_cap: Decimal = Decimal("0.06"),
         global_cap: Decimal = Decimal("0.30"),
+        market_id: int | None = None,
+        component_id: int | None = None,
+        exclude_decision_id: int | None = None,
+        lock: bool = True,
     ) -> PortfolioExposure:
-        """DB-backed cap check：以当前 positions 净敞口 + 候选新增，并发下共同不越限。"""
-        positions = await self._execution.positions_for_namespace(
-            uow.session, portfolio_namespace
-        )
-        market_exposure = Decimal("0")
-        component_exposure = Decimal("0")
-        global_exposure = Decimal("0")
-        for position in positions:
-            # 净敞口 = quantity × 参考价（base-unit）；此处用 quantity 绝对值聚合。
-            exposure = abs(position["quantity"])
+        if lock:
+            await self.acquire_capacity_lock(
+                uow,
+                portfolio_namespace=portfolio_namespace,
+                component_id=component_id,
+                market_id=market_id,
+            )
+
+        # Cost basis is the conservative current risk capital projection.  Active
+        # COMMITTED intents are capacity claims until their economic effect exists.
+        position_rows = (
+            await uow.session.execute(
+                text(
+                    "SELECT market_id, component_id, "
+                    "       CASE WHEN cost_basis > 0 THEN cost_basis ELSE abs(quantity) END AS exposure "
+                    "FROM trading.positions WHERE portfolio_namespace=:ns FOR UPDATE"
+                ),
+                {"ns": portfolio_namespace},
+            )
+        ).mappings().all()
+        claim_rows = (
+            await uow.session.execute(
+                text(
+                    "SELECT pt.market_id, cv.component_id, "
+                    "       abs(l.quantity * l.entry_vwap) AS exposure "
+                    "FROM trading.economic_action_intents i "
+                    "JOIN trading.trade_decisions td ON td.id=i.trade_decision_id "
+                    "JOIN trading.forecast_episodes fe ON fe.id=td.episode_id "
+                    "JOIN trading.forecast_component_versions cv ON cv.id=fe.component_version_id "
+                    "JOIN trading.action_set_legs l ON l.action_set_id=i.action_set_id "
+                    "JOIN trading.pm_tokens pt ON pt.id=l.token_id "
+                    "WHERE i.status='COMMITTED' "
+                    " AND i.preflight->>'portfolio_namespace'=:ns AND "
+                    " (CAST(:exclude AS bigint) IS NULL OR td.id<>CAST(:exclude AS bigint)) "
+                    " AND NOT EXISTS (SELECT 1 FROM trading.executions e "
+                    "  WHERE e.economic_action_intent_id=i.id "
+                    "    AND e.action_set_leg_id=l.id "
+                    "    AND e.status IN ('PARTIAL','FILLED','REJECTED','FAILED'))"
+                ),
+                {"exclude": exclude_decision_id, "ns": portfolio_namespace},
+            )
+        ).mappings().all()
+
+        market_exposure = ZERO
+        component_exposure = ZERO
+        global_exposure = ZERO
+        for row in [*position_rows, *claim_rows]:
+            exposure = abs(Decimal(str(row["exposure"] or 0)))
             global_exposure += exposure
-            component_exposure += exposure if position["component_id"] is not None else Decimal("0")
-            market_exposure += exposure if position["market_id"] is not None else Decimal("0")
+            if component_id is not None and row["component_id"] == component_id:
+                component_exposure += exposure
+            if market_id is not None and row["market_id"] == market_id:
+                market_exposure += exposure
+
+        market_total = max(ZERO, market_exposure + new_market_exposure)
+        component_total = max(ZERO, component_exposure + new_component_exposure)
+        global_total = max(ZERO, global_exposure + new_global_exposure)
         check = cap_check(
-            market_exposure=market_exposure + new_market_exposure,
-            component_exposure=component_exposure + new_component_exposure,
-            global_exposure=global_exposure + new_global_exposure,
+            market_exposure=market_total,
+            component_exposure=component_total,
+            global_exposure=global_total,
             bankroll=bankroll,
             per_market_cap=per_market_cap,
             per_component_cap=per_component_cap,
             global_cap=global_cap,
         )
-        if not check.ok:
-            return PortfolioExposure(
-                False, check.reason, check.per_market_fraction,
-                check.per_component_fraction, check.global_fraction,
-            )
         return PortfolioExposure(
-            True, None, check.per_market_fraction,
-            check.per_component_fraction, check.global_fraction,
+            check.ok,
+            check.reason,
+            check.per_market_fraction,
+            check.per_component_fraction,
+            check.global_fraction,
+            market_total,
+            component_total,
+            global_total,
+            bankroll,
+            per_market_cap,
+            per_component_cap,
+            global_cap,
         )

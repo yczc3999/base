@@ -491,17 +491,33 @@ class DecisionRepository:
         action_set_id: int,
         ttl_at: datetime | None,
         preflight: dict,
+        status: str = "COMMITTED",
     ) -> int:
         result = await session.execute(
             text(
                 "INSERT INTO trading.economic_action_intents "
-                "(intent_key, intent_hash, trade_decision_id, action_set_id, ttl_at, preflight) "
-                "VALUES (:k, :h, :d, :as, :ttl, :p) RETURNING id"
+                "(intent_key, intent_hash, trade_decision_id, action_set_id, ttl_at, preflight, status) "
+                "VALUES (:k, :h, :d, :as, :ttl, :p, 'PLANNED') "
+                "ON CONFLICT (intent_hash) DO NOTHING RETURNING id"
             ).bindparams(bindparam("p", type_=JSONB())),
             {"k": intent_key, "h": intent_hash, "d": trade_decision_id, "as": action_set_id,
              "ttl": ttl_at, "p": preflight},
         )
-        return result.scalar_one()
+        inserted = result.scalar_one_or_none()
+        if inserted is not None:
+            if status == "COMMITTED":
+                await session.execute(
+                    text(
+                        "UPDATE trading.economic_action_intents SET status='COMMITTED' "
+                        "WHERE id=:i AND status='PLANNED'"
+                    ),
+                    {"i": inserted},
+                )
+            return inserted
+        existing = await self.get_action_intent_by_hash(session, intent_hash)
+        if existing is None:
+            raise RuntimeError("action_intent_missing_after_insert")
+        return existing["id"]
 
     async def get_action_intent_by_hash(
         self, session: AsyncSession, intent_hash: str
@@ -566,7 +582,9 @@ class DecisionRepository:
                 "SELECT r.id AS release_manifest_id, r.release_name, r.status AS release_status, "
                 "       r.execution_spec_version_id, r.capital_permission_manifest_id, "
                 "       es.status AS exec_spec_status, es.content_hash AS exec_spec_hash, "
-                "       cp.status AS capital_status, cp.mode, cp.authorized_capital, cp.kill_switch "
+                "       es.content AS exec_spec_content, es.created_at AS exec_spec_frozen_at, "
+                "       cp.status AS capital_status, cp.mode, cp.authorized_capital, cp.kill_switch, "
+                "       cp.evaluation_capital, cp.capability, cp.limits, cp.content_hash AS capital_hash "
                 "FROM trading.release_manifests r "
                 "JOIN trading.execution_spec_versions es ON es.id=r.execution_spec_version_id "
                 "JOIN trading.capital_permission_manifests cp ON cp.id=r.capital_permission_manifest_id "
@@ -593,3 +611,266 @@ class DecisionRepository:
         if row is None:
             return None
         return await self.frozen_release(session, row[0])
+
+    # ---------------- authoritative decision inputs ----------------
+
+    async def decision_context(
+        self, session: AsyncSession, trade_decision_id: int, *, for_update: bool = False
+    ) -> dict[str, Any] | None:
+        """Load the exact committed cognition, lease and frozen release for a decision."""
+        suffix = " FOR UPDATE OF td" if for_update else ""
+        result = await session.execute(
+            text(
+                "SELECT td.*, fe.status AS episode_status, fe.component_version_id, "
+                "       cv.component_id, fs.status AS submission_status, fs.q AS committed_q, "
+                "       fs.u AS committed_u, fl.valid_until AS lease_valid_until, "
+                "       r.status AS release_status, es.status AS exec_spec_status, "
+                "       es.content AS exec_spec_content, es.content_hash AS exec_spec_hash, "
+                "       es.created_at AS exec_spec_frozen_at, cp.status AS capital_status, "
+                "       cp.mode AS capital_mode, cp.evaluation_capital, cp.authorized_capital, "
+                "       cp.kill_switch, cp.capability, cp.limits, cp.content_hash AS capital_hash, "
+                "       sv.content AS strategy_content, sv.content_hash AS strategy_hash "
+                "FROM trading.trade_decisions td "
+                "JOIN trading.forecast_episodes fe ON fe.id=td.episode_id "
+                "JOIN trading.forecast_component_versions cv ON cv.id=fe.component_version_id "
+                "JOIN trading.forecast_submissions fs ON fs.id=td.forecast_submission_id "
+                "JOIN trading.forecast_leases fl ON fl.id=td.forecast_lease_id "
+                "JOIN trading.release_manifests r ON r.id=td.release_manifest_id "
+                " AND r.execution_spec_version_id=td.execution_spec_version_id "
+                " AND r.capital_permission_manifest_id=td.capital_permission_manifest_id "
+                "JOIN trading.execution_spec_versions es ON es.id=td.execution_spec_version_id "
+                "JOIN trading.strategy_versions sv ON sv.id=td.strategy_version_id "
+                "JOIN trading.capital_permission_manifests cp "
+                " ON cp.id=td.capital_permission_manifest_id "
+                "WHERE td.id=:d" + suffix
+            ),
+            {"d": trade_decision_id},
+        )
+        rows = _rows(result)
+        return rows[0] if rows else None
+
+    async def required_tokens_for_decision(
+        self, session: AsyncSession, trade_decision_id: int
+    ) -> list[dict[str, Any]]:
+        """Exact episode token set plus payout/world/market mapping."""
+        result = await session.execute(
+            text(
+                "SELECT ecs.contract_spec_id, pf.pm_token_id AS token_id, "
+                "       pt.token_id AS external_token_id, pt.outcome_index, pt.market_id, "
+                "       pm.active AS market_active, pm.closed AS market_closed, "
+                "       pm.accepting_orders, pm.enable_order_book, pm.end_date, "
+                "       cv.component_id, m.h_c, pf.function_ir AS payout_ir "
+                "FROM trading.trade_decisions td "
+                "JOIN trading.forecast_episodes fe ON fe.id=td.episode_id "
+                "JOIN trading.forecast_component_versions cv ON cv.id=fe.component_version_id "
+                "JOIN trading.episode_contract_specs ecs ON ecs.episode_id=td.episode_id "
+                "JOIN trading.forecast_component_contract_specs m "
+                " ON m.component_version_id=fe.component_version_id "
+                " AND m.contract_spec_id=ecs.contract_spec_id "
+                "JOIN trading.payout_functions pf ON pf.contract_spec_id=ecs.contract_spec_id "
+                "JOIN trading.pm_tokens pt ON pt.id=pf.pm_token_id "
+                "JOIN trading.pm_markets pm ON pm.id=pt.market_id "
+                "WHERE td.id=:d "
+                "ORDER BY ecs.contract_spec_id, pt.outcome_index, pt.token_id"
+            ),
+            {"d": trade_decision_id},
+        )
+        return _rows(result)
+
+    async def episode_markets(
+        self, session: AsyncSession, episode_id: int
+    ) -> list[dict[str, Any]]:
+        result = await session.execute(
+            text(
+                "SELECT DISTINCT pm.id AS market_id, pm.active, pm.closed, pm.accepting_orders, "
+                "       pm.enable_order_book, pm.end_date "
+                "FROM trading.episode_contract_specs ecs "
+                "JOIN trading.payout_functions pf ON pf.contract_spec_id=ecs.contract_spec_id "
+                "JOIN trading.pm_tokens pt ON pt.id=pf.pm_token_id "
+                "JOIN trading.pm_markets pm ON pm.id=pt.market_id "
+                "WHERE ecs.episode_id=:e ORDER BY pm.id"
+            ),
+            {"e": episode_id},
+        )
+        return _rows(result)
+
+    async def checkpoint_material(
+        self,
+        session: AsyncSession,
+        *,
+        external_token_id: str,
+        checkpoint_id: int,
+        checkpoint_received_at: datetime,
+    ) -> dict[str, Any] | None:
+        result = await session.execute(
+            text(
+                "SELECT id AS checkpoint_id, token_id AS external_token_id, received_at, "
+                "       best_bid, best_ask, tick_size, min_order_size, completeness, validity "
+                "FROM trading.pm_book_checkpoints "
+                "WHERE id=:c AND received_at=:r AND token_id=:t"
+            ),
+            {"c": checkpoint_id, "r": checkpoint_received_at, "t": external_token_id},
+        )
+        rows = _rows(result)
+        if not rows:
+            return None
+        levels = await session.execute(
+            text(
+                "SELECT side, price, size, ordinal FROM trading.pm_book_levels "
+                "WHERE checkpoint_id=:c AND received_at=:r "
+                "ORDER BY side, ordinal, price"
+            ),
+            {"c": checkpoint_id, "r": checkpoint_received_at},
+        )
+        row = rows[0]
+        row["levels"] = _rows(levels)
+        return row
+
+    async def bound_market_material(
+        self, session: AsyncSession, trade_decision_id: int
+    ) -> list[dict[str, Any]]:
+        result = await session.execute(
+            text(
+                "SELECT q.token_id AS external_token_id, q.checkpoint_id, "
+                "       q.checkpoint_received_at, q.best_bid, q.best_ask, q.as_of, "
+                "       q.received_at, q.stale_at, pt.id AS token_id, pt.market_id, "
+                "       pf.contract_spec_id, pf.function_ir AS payout_ir, m.h_c, "
+                "       cv.component_id "
+                "FROM trading.pm_quote_bindings q "
+                "JOIN trading.trade_decisions td ON td.id=q.trade_decision_id "
+                "JOIN trading.forecast_episodes fe ON fe.id=td.episode_id "
+                "JOIN trading.forecast_component_versions cv ON cv.id=fe.component_version_id "
+                "JOIN trading.pm_tokens pt ON pt.token_id=q.token_id "
+                "JOIN trading.payout_functions pf ON pf.pm_token_id=pt.id "
+                "JOIN trading.episode_contract_specs ecs ON ecs.episode_id=td.episode_id "
+                " AND ecs.contract_spec_id=pf.contract_spec_id "
+                "JOIN trading.forecast_component_contract_specs m "
+                " ON m.component_version_id=fe.component_version_id "
+                " AND m.contract_spec_id=pf.contract_spec_id "
+                "WHERE q.trade_decision_id=:d "
+                "ORDER BY pf.contract_spec_id, pt.outcome_index, q.token_id"
+            ),
+            {"d": trade_decision_id},
+        )
+        rows = _rows(result)
+        for row in rows:
+            levels = await session.execute(
+                text(
+                    "SELECT side, price, size, ordinal FROM trading.pm_book_levels "
+                    "WHERE checkpoint_id=:c AND received_at=:r "
+                    "ORDER BY side, ordinal, price"
+                ),
+                {"c": row["checkpoint_id"], "r": row["checkpoint_received_at"]},
+            )
+            row["levels"] = _rows(levels)
+        return rows
+
+    async def allocated_operating_cost(
+        self, session: AsyncSession, trade_decision_id: int
+    ) -> dict[str, Any] | None:
+        result = await session.execute(
+            text(
+                "SELECT count(*) AS evidence_count, COALESCE(sum(o.amount),0) AS amount, "
+                "       jsonb_agg(o.allocation_policy ORDER BY o.id) AS policies "
+                "FROM trading.trade_decisions td "
+                "JOIN trading.operating_cost_entries o ON "
+                " (o.trade_decision_id=td.id OR "
+                "  (o.trade_decision_id IS NULL AND o.episode_id=td.episode_id) OR "
+                "  (o.trade_decision_id IS NULL AND o.episode_id IS NULL "
+                "   AND o.release_manifest_id=td.release_manifest_id)) "
+                "WHERE td.id=:d"
+            ),
+            {"d": trade_decision_id},
+        )
+        row = result.mappings().one()
+        return dict(row) if row["evidence_count"] else None
+
+    async def cognition_review_passed(
+        self,
+        session: AsyncSession,
+        *,
+        episode_id: int,
+        forecast_submission_id: int,
+    ) -> bool:
+        result = await session.execute(
+            text(
+                "SELECT EXISTS ("
+                " SELECT 1 FROM trading.forecast_episodes fe "
+                " JOIN trading.forecast_submissions fs "
+                "   ON fs.id=:s AND fs.episode_id=fe.id "
+                " WHERE fe.id=:e "
+                "   AND fe.status='BLIND_COMMITTED' "
+                "   AND fe.cognition_status='COMMITTED' "
+                "   AND fs.status='BLIND_COMMITTED' AND fs.committed_at IS NOT NULL "
+                "   AND EXISTS (SELECT 1 FROM trading.gate_decisions gd "
+                "     WHERE gd.gate='G6' AND gd.target_kind='episode' "
+                "       AND gd.target_id=fe.id AND gd.result='PASS') "
+                "   AND EXISTS (SELECT 1 FROM trading.coherence_checks cc "
+                "     WHERE cc.submission_id=fs.id AND cc.check_name='q_nonneg_total' "
+                "       AND cc.severity='hard' AND cc.passed) "
+                "   AND EXISTS (SELECT 1 FROM trading.coherence_checks cc "
+                "     WHERE cc.submission_id=fs.id AND cc.check_name='u_contains_q' "
+                "       AND cc.severity='hard' AND cc.passed) "
+                "   AND NOT EXISTS (SELECT 1 FROM trading.episode_contract_specs ecs "
+                "     WHERE ecs.episode_id=fe.id AND NOT EXISTS ("
+                "       SELECT 1 FROM trading.coherence_checks cc "
+                "       WHERE cc.submission_id=fs.id "
+                "         AND cc.check_name='projection_complete:' || ecs.contract_spec_id::text "
+                "         AND cc.severity='hard' AND cc.passed)) "
+                "   AND NOT EXISTS (SELECT 1 FROM trading.coherence_checks cc "
+                "     WHERE cc.submission_id=fs.id "
+                "       AND cc.severity='hard' AND NOT cc.passed) "
+                ")"
+            ),
+            {"e": episode_id, "s": forecast_submission_id},
+        )
+        return bool(result.scalar_one())
+
+    async def review_passed(self, session: AsyncSession, trade_decision_id: int) -> bool:
+        result = await session.execute(
+            text(
+                "SELECT td.episode_id, td.forecast_submission_id, EXISTS ("
+                " SELECT 1 FROM trading.discrepancy_reviews dr "
+                " WHERE dr.trade_decision_id=td.id "
+                "   AND dr.kind='book_integrity' AND dr.result='PASS'"
+                ") AS book_reviewed FROM trading.trade_decisions td WHERE td.id=:d"
+            ),
+            {"d": trade_decision_id},
+        )
+        row = result.mappings().first()
+        if row is None or not row["book_reviewed"]:
+            return False
+        return await self.cognition_review_passed(
+            session,
+            episode_id=row["episode_id"],
+            forecast_submission_id=row["forecast_submission_id"],
+        )
+
+    async def has_position_for_decision(
+        self, session: AsyncSession, trade_decision_id: int, portfolio_namespace: str
+    ) -> bool:
+        result = await session.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM trading.positions p "
+                " JOIN trading.episode_contract_specs ecs ON ecs.contract_spec_id=p.contract_spec_id "
+                " JOIN trading.trade_decisions td ON td.episode_id=ecs.episode_id "
+                " WHERE td.id=:d AND p.portfolio_namespace=:ns AND p.quantity>0)"
+            ),
+            {"d": trade_decision_id, "ns": portfolio_namespace},
+        )
+        return bool(result.scalar_one())
+
+    async def has_valid_underwriting(
+        self, session: AsyncSession, trade_decision_id: int, at: datetime
+    ) -> bool:
+        result = await session.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM trading.underwriting_plans up "
+                " JOIN trading.trade_decisions source ON source.id=up.trade_decision_id "
+                " JOIN trading.trade_decisions current ON current.episode_id=source.episode_id "
+                " WHERE current.id=:d AND up.hold_to_resolution "
+                " AND (up.time_stop_at IS NULL OR up.time_stop_at>:at))"
+            ),
+            {"d": trade_decision_id, "at": at},
+        )
+        return bool(result.scalar_one())

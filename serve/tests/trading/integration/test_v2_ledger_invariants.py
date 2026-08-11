@@ -135,7 +135,8 @@ async def test_posted_immutable_and_reversal(ledger_env):
     async with UnitOfWork(env["sessions"]) as uow:
         rev = await env["ledger"].insert_transaction(
             uow.session, transaction_key="lt-rev-1", kind="REVERSAL",
-            trade_decision_id=None, execution_id=None, portfolio_namespace="ns")
+            trade_decision_id=None, execution_id=None, portfolio_namespace="ns",
+            reference_transaction_id=tx)
         reversed_postings = [
             {**p, "amount": str(-__import__("decimal").Decimal(p["amount"]))}
             for p in _balanced_buy_postings()

@@ -15,7 +15,7 @@ from app.schemas.trading.execution import ShadowFillInput
 
 @dataclass(frozen=True)
 class ExecutionEvent:
-    kind: str  # shadow_fill
+    kind: str  # shadow_fill | ledger_reversal | system_net
     payload: dict | None = None
 
 
@@ -37,16 +37,29 @@ class ExecutionHandler:
         uow: UnitOfWork,
         event: ExecutionEvent,
         *,
-        portfolio_namespace: str,
-        cash_asset_key: str,
+        portfolio_namespace: str | None = None,
+        cash_asset_key: str | None = None,
     ) -> HandlerResult:
-        if event.kind != "shadow_fill":
-            raise ValueError(f"execution_event_unknown:{event.kind}")
         if event.payload is None:
             return HandlerResult(False, reason="execution_event_incomplete")
-        fill = ShadowFillInput(**event.payload)
-        result = await self._logic.shadow_fill(
-            uow, fill=fill,
-            portfolio_namespace=portfolio_namespace, cash_asset_key=cash_asset_key,
-        )
+        if event.kind == "shadow_fill":
+            fill = ShadowFillInput(**event.payload)
+            result = await self._logic.shadow_fill(
+                uow, fill=fill,
+                portfolio_namespace=portfolio_namespace, cash_asset_key=cash_asset_key,
+            )
+        elif event.kind == "ledger_reversal":
+            result = await self._logic.reverse_ledger(
+                uow,
+                reference_transaction_id=int(event.payload["reference_transaction_id"]),
+                transaction_key=str(event.payload["transaction_key"]),
+            )
+        elif event.kind == "system_net":
+            namespace = str(event.payload.get("portfolio_namespace") or portfolio_namespace or "")
+            if not namespace:
+                return HandlerResult(False, reason="portfolio_namespace_required")
+            result = await self._logic.system_net(uow, portfolio_namespace=namespace)
+            return HandlerResult(True, result)
+        else:
+            raise ValueError(f"execution_event_unknown:{event.kind}")
         return HandlerResult(result.ok, result, result.reason)
