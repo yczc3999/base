@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "researcher/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["branch", "claim", "source_url", "published_at", "observed_at"],
+        "properties": {
+          "branch": {"type": "string", "minLength": 1},
+          "claim": {"type": "string", "minLength": 1},
+          "source_url": {"type": "string", "minLength": 1},
+          "published_at": {"type": "string", "format": "date-time"},
+          "observed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "joint_forecaster/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Q", "U", "key_uncertainties", "abstain"],
+  "properties": {
+    "Q": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "minProperties": 1
+    },
+    "U": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {"type": "string"},
+        "minProperties": 1
+      },
+      "minItems": 1
+    },
+    "key_uncertainties": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "abstain": {"type": "boolean"}
+  }
+}

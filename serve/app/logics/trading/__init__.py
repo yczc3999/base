@@ -1,10 +1,17 @@
-"""Trading Logic 包（WP-01C）。
+"""Trading Logic 包（WP-01C / WP-02）。
 
 Logic 拥有业务规则；Repository 只做 SQL；orchestrator 定义跨 Gate 顺序。
 """
 
 from app.logics.trading.component import ComponentLogic, G2Result
 from app.logics.trading.contract import ContractLogic, G1Result
+from app.logics.trading.evidence import (
+    EvidenceLogic,
+    G4Result,
+    G5AResult,
+    G5BResult,
+)
+from app.logics.trading.forecast import ForecastLogic, G6Result, InputManifestMaterial
 from app.logics.trading.market_data import (
     BookState,
     FreshnessDecision,
@@ -35,6 +42,13 @@ __all__ = [
     "ScreeningLogic",
     "G0Result",
     "R0Result",
+    "EvidenceLogic",
+    "G4Result",
+    "G5AResult",
+    "G5BResult",
+    "ForecastLogic",
+    "G6Result",
+    "InputManifestMaterial",
     "BookState",
     "FreshnessDecision",
     "FreshnessPolicy",

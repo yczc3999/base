@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "planner_prior/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "applicability",
+    "sample_rule",
+    "width",
+    "failure_conditions",
+    "market_blind_declaration"
+  ],
+  "oneOf": [
+    {"required": ["reference_class"]},
+    {"required": ["hazard_ref"]}
+  ],
+  "properties": {
+    "reference_class": {"type": "string", "minLength": 1},
+    "hazard_ref": {"type": "string", "minLength": 1},
+    "applicability": {"type": "object", "additionalProperties": true},
+    "sample_rule": {"type": "object", "additionalProperties": true},
+    "width": {"type": "object", "additionalProperties": true},
+    "failure_conditions": {"type": "object", "additionalProperties": true},
+    "market_blind_declaration": {"const": true}
+  }
+}

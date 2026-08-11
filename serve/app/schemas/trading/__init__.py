@@ -1,4 +1,4 @@
-"""Trading 内部 typed command/query DTO（WP-01C）。
+"""Trading 内部 typed command/query DTO（WP-01C / WP-02）。
 
 只表达 typed input，不复用 ORM class、不发网络、不实现 Gate（实施合同 §5）。
 Gate 判定在 Logic；本包只做严格解析/规范化。
@@ -19,6 +19,19 @@ from app.schemas.trading.workflow import (
     R0PolicyInput,
     RejectAuditPolicyInput,
 )
+from app.schemas.trading.evidence import (
+    PriorInput,
+    EvidenceRevisionInput,
+    EvidenceCoveragePolicyInput,
+    EvidenceBundleInput,
+)
+from app.schemas.trading.forecast import (
+    QDistributionInput,
+    ForecastSubmissionInput,
+    PayoutProjectionInput,
+    ForecastLeaseInput,
+    CoherenceCheckInput,
+)
 
 __all__ = [
     "ContractSpecInput",
@@ -32,4 +45,13 @@ __all__ = [
     "R0BatchItemInput",
     "R0PolicyInput",
     "RejectAuditPolicyInput",
+    "PriorInput",
+    "EvidenceRevisionInput",
+    "EvidenceCoveragePolicyInput",
+    "EvidenceBundleInput",
+    "QDistributionInput",
+    "ForecastSubmissionInput",
+    "PayoutProjectionInput",
+    "ForecastLeaseInput",
+    "CoherenceCheckInput",
 ]

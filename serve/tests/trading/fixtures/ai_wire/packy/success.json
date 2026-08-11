@@ -1,0 +1,1 @@
+{"id":"req_pk_1","choices":[{"message":{"role":"assistant","content":"{\"fallback\":true}","model":"packy-preview"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}

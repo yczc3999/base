@@ -7,13 +7,16 @@
 
 from __future__ import annotations
 
-# 所有动态分区父表前缀（0002 月分区 + 0011 日分区）
+# 所有动态分区父表前缀（0002 月分区 + 0011 日分区 + 0021 月分区）
 DYNAMIC_PARTITION_PREFIXES = (
     "outbox_delivery_history_",        # 0002: 月 RANGE
     "pm_source_event_batches_",        # 0011: 日 RANGE
     "pm_source_event_index_",          # 0011: 日 RANGE
     "pm_book_checkpoints_",            # 0011: 日 RANGE
     "pm_book_levels_",                 # 0011: 日 RANGE
+    "ai_invocations_",                 # 0021: 月 RANGE
+    "ai_tool_calls_",                  # 0021: 月 RANGE
+    "ai_validation_results_",          # 0021: 月 RANGE
 )
 
 

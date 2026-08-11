@@ -55,6 +55,24 @@ from app.models.trading.workflow import (
     InformationSnapshot,
     InformationSnapshotItem,
 )
+from app.models.trading.forecast import (
+    CoherenceCheck,
+    EvidenceBundle,
+    EvidenceBundleItem,
+    EvidenceCoveragePolicy,
+    EvidenceRevision,
+    ForecastChallenge,
+    ForecastInputManifest,
+    ForecastLease,
+    ForecastSubmission,
+    PayoutProjection,
+    Prior,
+)
+from app.models.trading.ai import (
+    AIInvocation,
+    AIToolCall,
+    AIValidationResult,
+)
 from app.models.trading.control import (
     CapitalPermissionManifest,
     ExecutionSpecVersion,
@@ -125,6 +143,22 @@ __all__ = [
     "InformationSnapshot",
     "InformationSnapshotItem",
     "GateDecision",
+    # forecast
+    "Prior",
+    "EvidenceCoveragePolicy",
+    "EvidenceRevision",
+    "EvidenceBundle",
+    "EvidenceBundleItem",
+    "ForecastInputManifest",
+    "ForecastSubmission",
+    "PayoutProjection",
+    "CoherenceCheck",
+    "ForecastChallenge",
+    "ForecastLease",
+    # ai
+    "AIInvocation",
+    "AIToolCall",
+    "AIValidationResult",
     # control
     "RuntimeConfigVersion",
     "StrategyObjectiveContract",

@@ -13,6 +13,14 @@ from app.domain.trading.payout import (
     apply_payout_lookup,
     validate_payout_ir,
 )
+from app.domain.trading.probability import (
+    bernoulli_p_blind,
+    expected_payout,
+    normalize_q,
+    payout_bounds,
+    push_forward_mu,
+    validate_u,
+)
 
 __all__ = [
     "canonical_bytes",
@@ -21,4 +29,10 @@ __all__ = [
     "assert_frozen_gate_binding",
     "apply_payout_lookup",
     "validate_payout_ir",
+    "normalize_q",
+    "validate_u",
+    "push_forward_mu",
+    "expected_payout",
+    "payout_bounds",
+    "bernoulli_p_blind",
 ]

@@ -441,10 +441,11 @@ class WorkflowRepository:
     async def terminal_episode(
         self, session: AsyncSession, episode_id: int, *, drop_reason: str
     ) -> bool:
+        """DRAFT/ROUTED → PRE_COMMIT_TERMINAL（WP-02：G6 失败也允许 ROUTED 终态）。"""
         result = await session.execute(
             text(
                 "UPDATE trading.forecast_episodes SET status='PRE_COMMIT_TERMINAL', drop_reason=:r "
-                "WHERE id=:e AND status='DRAFT'"
+                "WHERE id=:e AND status IN ('DRAFT','ROUTED')"
             ),
             {"e": episode_id, "r": drop_reason},
         )
@@ -477,6 +478,10 @@ class WorkflowRepository:
             "G1": "opportunity",
             "G2": "opportunity",
             "R1": "episode",
+            "G4": "episode",
+            "G5A": "episode",
+            "G5B": "episode",
+            "G6": "episode",
         }.get(gate)
         if expected_target != target_kind:
             raise ValueError(f"gate_target_mismatch:{gate}:{target_kind}")
@@ -535,6 +540,10 @@ class WorkflowRepository:
             "G1": "opportunity",
             "G2": "opportunity",
             "R1": "episode",
+            "G4": "episode",
+            "G5A": "episode",
+            "G5B": "episode",
+            "G6": "episode",
         }.get(gate)
         if expected_target != target_kind:
             raise ValueError(f"gate_target_mismatch:{gate}:{target_kind}")

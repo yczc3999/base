@@ -1,4 +1,4 @@
-"""DB-evidenced G0→R0→G1→G2→R1 state machine."""
+"""DB-evidenced G0→R0→G1→G2→R1→G4→G5A→G5B→G6 state machine."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.domain.trading.hashing import canonical_hash
 from app.domain.trading.gates import assert_frozen_gate_binding
 from app.repositories.trading.workflow import WorkflowRepository
 
-ORDER = ("G0", "R0", "G1", "G2", "R1")
+ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6")
 _INDEX = {gate: index for index, gate in enumerate(ORDER)}
 
 
@@ -405,6 +405,32 @@ class TradingStateMachine:
             )
         else:
             await self._wf.mark_episode_routed(uow.session, episode_id)
+
+    async def terminal_g6_fail(
+        self, uow: UnitOfWork, episode_id: int, reason: str
+    ) -> bool:
+        """G6 hard check 失败 → episode 进入 PRE_COMMIT_TERMINAL（不生成 committed submission）。"""
+        gate = await self._wf.get_gate_decision(
+            uow.session, gate="G6", target_kind="episode", target_id=episode_id
+        )
+        if gate is None or gate["result"] not in ("FAIL",):
+            raise IllegalTransitionError("g6_fail_evidence_missing")
+        if reason and reason != gate["reason_code"]:
+            raise IllegalTransitionError("g6_fail_reason_mismatch")
+        episode = await self._wf.get_episode(uow.session, episode_id)
+        if episode is None or episode["status"] != "ROUTED":
+            raise IllegalTransitionError("episode_not_routed")
+        result = await self._wf.terminal_episode(
+            uow.session, episode_id, drop_reason=reason
+        )
+        if result:
+            return True
+        existing = await self._wf.get_episode(uow.session, episode_id)
+        return bool(
+            existing
+            and existing["status"] == "PRE_COMMIT_TERMINAL"
+            and existing["drop_reason"] == reason
+        )
 
     async def _require_parent(self, uow: UnitOfWork, parent_id: int) -> dict:
         parent = await self._wf.get_opportunity(uow.session, parent_id)

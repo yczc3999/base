@@ -116,11 +116,43 @@ class StrategyVersion(TradingBase, BigIntIdentityMixin, TimestampMixin):
 
 
 class ModelRoleBinding(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
-    """同一 strategy version 内 role 唯一的模型绑定。"""
+    """同一 strategy version 内 role 唯一、版本化的 typed capability binding（WP-02 强化）。
+
+    保存 requested provider/route/model、network policy、允许 tools/domains 与 capability；
+    ``content_hash`` 覆盖完整 binding（含 network/capability），以便 ai_invocations 按
+    ``model_role_binding_id`` 精确复现输入。
+    """
 
     __tablename__ = "model_role_bindings"
     __table_args__ = (
-        UniqueConstraint("strategy_version_id", "role", name="uq_model_role_bindings_strategy_role"),
+        UniqueConstraint(
+            "strategy_version_id", "role", "binding_version",
+            name="uq_model_role_bindings_strategy_role_version",
+        ),
+        CheckConstraint(
+            "provider IN ('deepseek','xai','gemini','kimi','packy')",
+            name="ck_model_role_bindings_provider_known",
+        ),
+        CheckConstraint(
+            "network_policy IN ('NONE','WEB_X','SEARCH_URL')",
+            name="ck_model_role_bindings_network_policy_known",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(allowed_tools) = 'array'",
+            name="ck_model_role_bindings_tools_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(allowed_domains) = 'array'",
+            name="ck_model_role_bindings_domains_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(capability) = 'object'",
+            name="ck_model_role_bindings_capability_object",
+        ),
+        CheckConstraint(
+            "binding_version >= 0",
+            name="ck_model_role_bindings_version_nonneg",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -130,7 +162,14 @@ class ModelRoleBinding(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         nullable=False,
     )
     role: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    route: Mapped[str] = mapped_column(String(64), nullable=False)
     model_ref: Mapped[str] = mapped_column(external_id_type(), nullable=False)
+    network_policy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="NONE")
+    allowed_tools: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    allowed_domains: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    capability: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    binding_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
 
 

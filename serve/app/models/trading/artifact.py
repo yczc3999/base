@@ -96,7 +96,8 @@ class ArtifactLineageEdge(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="ck_artifact_lineage_edges_no_self",
         ),
         CheckConstraint(
-            "relation IN ('derived','supersedes','references','raw')",
+            "relation IN ('READS','PRODUCES','VALIDATES','SUPERSEDES','PROJECTS_TO','USED_BY',"
+            " 'derived','supersedes','references','raw')",
             name="ck_artifact_lineage_edges_relation_known",
         ),
         {"schema": TRADING_SCHEMA},

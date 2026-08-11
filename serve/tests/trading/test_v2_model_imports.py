@@ -64,6 +64,20 @@ from app.models.trading import (
     StrategyObjectiveContract,
     StrategyVersion,
     TransactionalOutbox,
+    CoherenceCheck,
+    EvidenceBundle,
+    EvidenceBundleItem,
+    EvidenceCoveragePolicy,
+    EvidenceRevision,
+    ForecastChallenge,
+    ForecastInputManifest,
+    ForecastLease,
+    ForecastSubmission,
+    PayoutProjection,
+    Prior,
+    AIInvocation,
+    AIToolCall,
+    AIValidationResult,
 )
 from app.models.trading.constants import TRADING_SCHEMA
 
@@ -124,6 +138,20 @@ EXPECTED = [
     "information_snapshots",
     "information_snapshot_items",
     "gate_decisions",
+    "priors",
+    "evidence_coverage_policies",
+    "evidence_revisions",
+    "evidence_bundles",
+    "evidence_bundle_items",
+    "forecast_input_manifests",
+    "forecast_submissions",
+    "payout_projections",
+    "coherence_checks",
+    "forecast_challenges",
+    "forecast_leases",
+    "ai_invocations",
+    "ai_tool_calls",
+    "ai_validation_results",
 ]
 
 
@@ -190,6 +218,20 @@ def test_explicit_model_symbols_importable():
         "information_snapshots": InformationSnapshot,
         "information_snapshot_items": InformationSnapshotItem,
         "gate_decisions": GateDecision,
+        "priors": Prior,
+        "evidence_coverage_policies": EvidenceCoveragePolicy,
+        "evidence_revisions": EvidenceRevision,
+        "evidence_bundles": EvidenceBundle,
+        "evidence_bundle_items": EvidenceBundleItem,
+        "forecast_input_manifests": ForecastInputManifest,
+        "forecast_submissions": ForecastSubmission,
+        "payout_projections": PayoutProjection,
+        "coherence_checks": CoherenceCheck,
+        "forecast_challenges": ForecastChallenge,
+        "forecast_leases": ForecastLease,
+        "ai_invocations": AIInvocation,
+        "ai_tool_calls": AIToolCall,
+        "ai_validation_results": AIValidationResult,
     }
     for tablename, model in symbols.items():
         assert model.__tablename__ == tablename
@@ -215,6 +257,10 @@ def test_app_models_exports_trading():
         "ScreeningEpisode", "AuditSample", "DecisionOpportunity", "DecisionOpportunityMarket",
         "ForecastEpisode", "EpisodeContractSpec", "EpisodeMembership", "InformationSnapshot",
         "InformationSnapshotItem", "GateDecision",
+        "Prior", "EvidenceCoveragePolicy", "EvidenceRevision", "EvidenceBundle",
+        "EvidenceBundleItem", "ForecastInputManifest", "ForecastSubmission",
+        "PayoutProjection", "CoherenceCheck", "ForecastChallenge", "ForecastLease",
+        "AIInvocation", "AIToolCall", "AIValidationResult",
     ):
         assert model in exported, model
 

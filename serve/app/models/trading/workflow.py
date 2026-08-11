@@ -1,4 +1,4 @@
-"""Trading workflow models（WP-01C Checkpoint C，revision ``b1000013``）。
+"""Trading workflow models（WP-01C Checkpoint C，revision ``b1000013``；WP-02 b1000020 强化）。
 
 8 张表：decision_opportunities、decision_opportunity_markets、episode_memberships、
 forecast_episodes、episode_contract_specs、information_snapshots、information_snapshot_items、
@@ -9,8 +9,11 @@ gate_decisions。
   G2 fail child=PRE_COMMIT_TERMINAL、episode 数=0。
 - forecast_episode 引用恰一个 component version + 一个 parent opportunity；episode key 唯一。
 - deferred trigger 核验 ``episode_contract_specs`` 与 component membership 完全相等。
-- gate_decisions append-only；G0/R0 只绑 screening，G1/G2 绑 opportunity，R1 绑 episode。
-- episode 终态只到 ROUTED|PRE_COMMIT_TERMINAL（禁止 BLIND_COMMITTED）。
+- gate_decisions append-only；G0/R0 只绑 screening，G1/G2 绑 opportunity，
+  R1/G4/G5A/G5B/G6 绑 episode。
+- episode 终态：ROUTED→BLIND_COMMITTED（WP-02 G6 原子提交）或 PRE_COMMIT_TERMINAL。
+- forecast_episodes 携带 cognition_status（PENDING→…→COMMITTED|PRE_COMMIT_TERMINAL）与
+  prior/evidence/commit 时间戳。
 - information_snapshots 本期只冻结 Gate 结构化输入；不含 forecast/quote-derived blind 内容。
 """
 
@@ -41,8 +44,10 @@ from app.models.trading.types import external_id_type, sha256_type, utc_timestam
 CHAIN_TYPES = ("DECISION", "RESEARCH_EVAL")
 OPP_STATUS = ("OPEN", "PRE_COMMIT_TERMINAL", "ROUTED", "SUPERSEDED")
 OPP_DISPOSITION = ("completed", "rejected", "deferred", "failed", "expired", "superseded")
-EPISODE_STATUS = ("DRAFT", "ROUTED", "PRE_COMMIT_TERMINAL")
-GATE_NAMES = ("G0", "R0", "G1", "G2", "R1")
+# WP-02：G6 原子 blind commit 允许 ROUTED→BLIND_COMMITTED。
+EPISODE_STATUS = ("DRAFT", "ROUTED", "BLIND_COMMITTED", "PRE_COMMIT_TERMINAL")
+# WP-02：gate allowlist 扩展 G4/G5A/G5B/G6（cognition gates，绑 episode）。
+GATE_NAMES = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6")
 ROUTE_CHANNELS = ("reject", "shallow", "standard", "deep")
 
 
@@ -123,14 +128,24 @@ class DecisionOpportunityMarket(TradingBase, BigIntIdentityMixin, CreatedAtMixin
 
 
 class ForecastEpisode(TradingBase, BigIntIdentityMixin, TimestampMixin):
-    """component-level forecast episode；恰属一个 component version（任务 §7/A3）。"""
+    """component-level forecast episode；恰属一个 component version（任务 §7/A3）。
+
+    WP-02（b1000020）：新增 cognition_status 与 cognition 时间戳，支持
+    ROUTED→BLIND_COMMITTED 原子提交。
+    """
 
     __tablename__ = "forecast_episodes"
     __table_args__ = (
         UniqueConstraint("episode_key", name="uq_forecast_episodes_key"),
         CheckConstraint(
-            "status IN ('DRAFT','ROUTED','PRE_COMMIT_TERMINAL')",
+            "status IN ('DRAFT','ROUTED','BLIND_COMMITTED','PRE_COMMIT_TERMINAL')",
             name="ck_forecast_episodes_status_known",
+        ),
+        CheckConstraint(
+            "cognition_status IN "
+            "('PENDING','PRIOR_READY','EVIDENCE_READY','FORECAST_READY',"
+            " 'COMMITTED','PRE_COMMIT_TERMINAL')",
+            name="ck_forecast_episodes_cognition_status_known",
         ),
         CheckConstraint("episode_key ~ '^[0-9a-f]{64}$'", name="ck_forecast_episodes_key_hex"),
         Index("ix_forecast_episodes_opportunity", "decision_opportunity_id"),
@@ -164,6 +179,13 @@ class ForecastEpisode(TradingBase, BigIntIdentityMixin, TimestampMixin):
     experiment_variant: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="DRAFT")
     drop_reason: Mapped[str | None] = mapped_column(String(128))
+    # WP-02 cognition 状态与时间戳
+    cognition_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="PENDING"
+    )
+    prior_frozen_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())
+    evidence_bundle_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())
+    forecast_committed_at: Mapped[datetime | None] = mapped_column(utc_timestamp_type())
 
 
 class EpisodeContractSpec(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
@@ -237,7 +259,10 @@ class InformationSnapshot(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("snapshot_key", name="uq_information_snapshots_key"),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="ck_information_snapshots_hash_hex"),
-        CheckConstraint("gate IN ('G0','R0','G1','G2','R1')", name="ck_information_snapshots_gate_known"),
+        CheckConstraint(
+            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6')",
+            name="ck_information_snapshots_gate_known",
+        ),
         CheckConstraint("jsonb_typeof(content) = 'object'", name="ck_information_snapshots_content_object"),
         CheckConstraint(
             "(episode_id IS NULL) <> (opportunity_id IS NULL)",
@@ -288,7 +313,7 @@ class GateDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("gate", "target_id", "target_kind", name="uq_gate_decisions_target"),
         CheckConstraint(
-            "gate IN ('G0','R0','G1','G2','R1')",
+            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6')",
             name="ck_gate_decisions_gate_known",
         ),
         CheckConstraint(
@@ -298,7 +323,7 @@ class GateDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         CheckConstraint(
             "(gate IN ('G0','R0') AND target_kind = 'screening') OR "
             "(gate IN ('G1','G2') AND target_kind = 'opportunity') OR "
-            "(gate = 'R1' AND target_kind = 'episode')",
+            "(gate IN ('R1','G4','G5A','G5B','G6') AND target_kind = 'episode')",
             name="ck_gate_decisions_gate_target_pair",
         ),
         CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="ck_gate_decisions_input_hash_hex"),

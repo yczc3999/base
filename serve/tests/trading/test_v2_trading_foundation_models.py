@@ -41,8 +41,9 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_56_trading_tables():
-    """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+ 12 cohort/episode（0013）。"""
+def test_exactly_70_trading_tables():
+    """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+
+    12 cohort/episode（0013）+ 11 cognition（0020）+ 3 AI（0021）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -62,6 +63,10 @@ def test_exactly_56_trading_tables():
         "decision_opportunities", "decision_opportunity_markets", "episode_memberships",
         "forecast_episodes", "episode_contract_specs", "information_snapshots",
         "information_snapshot_items", "gate_decisions",
+        "priors", "evidence_coverage_policies", "evidence_revisions", "evidence_bundles",
+        "evidence_bundle_items", "forecast_input_manifests", "forecast_submissions",
+        "payout_projections", "coherence_checks", "forecast_challenges", "forecast_leases",
+        "ai_invocations", "ai_tool_calls", "ai_validation_results",
     }
 
 
@@ -73,6 +78,9 @@ def test_all_tables_schema_qualified_bigint_identity_pk():
         "pm_source_event_index": "received_at",
         "pm_book_checkpoints": "received_at",
         "pm_book_levels": "received_at",
+        "ai_invocations": "occurred_at",
+        "ai_tool_calls": "occurred_at",
+        "ai_validation_results": "occurred_at",
     }
     for name, t in TRADING.items():
         if name in composite_pk_tables:
@@ -152,9 +160,15 @@ def test_control_versions_jsonb_and_status():
         assert f"ck_{tbl}_status_known" in _checks(tbl)
 
 
-def test_model_role_bindings_role_unique_within_strategy_version():
+def test_model_role_bindings_role_versioned_within_strategy_version():
+    """WP-02 强化：role 唯一键升级为 (strategy_version_id, role, binding_version)。"""
     uq = _uniques("model_role_bindings")
-    assert any({c.name for c in u.columns} == {"strategy_version_id", "role"} for u in uq)
+    assert any(
+        {c.name for c in u.columns} == {"strategy_version_id", "role", "binding_version"}
+        for u in uq
+    )
+    assert "ck_model_role_bindings_provider_known" in _checks("model_role_bindings")
+    assert "ck_model_role_bindings_network_policy_known" in _checks("model_role_bindings")
     assert _fk_targets("model_role_bindings") == ["trading.strategy_versions.id"]
 
 

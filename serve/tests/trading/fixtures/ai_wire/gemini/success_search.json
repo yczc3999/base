@@ -1,0 +1,1 @@
+{"candidates":[{"content":{"parts":[{"text":"{\"verified\":true}"},{"groundingChunks":[{"web":{"uri":"https://example.com/source"}}]}]}}],"usageMetadata":{"promptTokenCount":300,"candidatesTokenCount":40}}
