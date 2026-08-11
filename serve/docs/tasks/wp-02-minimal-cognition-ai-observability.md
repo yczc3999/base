@@ -6,6 +6,19 @@
 > 唯一交付：`serve/docs/manifests/wp-02-minimal-cognition-ai-observability.md`<br>
 > 最后更新：2026-08-11 EDT
 
+## 0. 快车道执行规则
+
+1. A（数据库/迁移）、B（Gateway/AI 事实）、C（预测 Logic/fixture）按文件所有权**并行施工**，
+   汇合后只做一次集成与全量回归；不得把内部 Checkpoint 拆成新任务或等待用户确认。
+2. 中途只运行所属模块的编译、单元和定向集成测试；完整 `tests/trading` 与全仓 `pytest` 仅在
+   manifest 前各运行一次。
+3. 只有会导致资金、事实、盲态污染、不可回放、状态机错误或迁移破坏的 P0/P1 阻塞交付；
+   P2/P3 记录到 manifest backlog，不反复整改。
+4. DeepSeek V4 Flash 负责批量实现；迁移、并发状态机、概率/coherence 与 provider wire 边界必须
+   使用更强推理复核，但审查限于当前合同，发现真实问题后直接修复，不扩张设计。
+5. 优先形成 `R1 ROUTED → BLIND_COMMITTED` 的真实纵向路径；解释性字段、高级 challenger、
+   Admin 展示和非关键优化不得抢占关键路径。
+
 ## 1. 目标与用户价值
 
 把 WP-01C 的 `R1 ROUTED` episode 推进为一份**市场盲、不可变、可回放**的 component-level

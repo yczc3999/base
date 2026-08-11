@@ -14,7 +14,7 @@
 | 前置实现 | `WP-01C` 已接受；head=`b1000013` |
 | 前置审查 | 98 定向、1242 full；真 PG performance hard assertions PASS；无剩余 P0/P1 |
 | 本任务范围 | 0020/0021、prior/evidence、G4–G6、Q/U/projection、immutable blind commit、AI invocation/gateway/observability |
-| 内部 checkpoint | A cognition facts/0020 → B AI facts+gateway/0021 → C 四角色 workflow/replay/perf；中间不等待、不拆 manifest |
+| 内部 checkpoint | A cognition DB、B AI Gateway、C forecast Logic 并行 → 一次集成/replay/perf/full；中间不等待、不拆 manifest |
 | 后续 | 验收后进入 `WP-03` market-relative decision、portfolio 与 shadow execution |
 
 ## 固定交接协议
