@@ -7,16 +7,16 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-05` |
-| 状态 | `DONE（待审）` |
-| 任务文档 | [`wp-05-execution-readiness-private-clob.md`](wp-05-execution-readiness-private-clob.md) |
-| 交付 manifest | `serve/docs/manifests/wp-05-execution-readiness-private-clob.md` |
-| 前置实现 | `WP-04` 已接受；head=`b1000041` → 已到 `b1000051` |
-| 本任务范围 | P-stability、0050/0051、envelope Vault、account/funds/reservation、private CLOB、User WS、heartbeat、确定性对账 |
-| 内部 checkpoint | A stability/spec、B 0050 Vault/accounts/fencing、C 0051 authorization/order/trade/reconcile、D tests/perf/manifest；一个 manifest |
-| 关键边界 | 新闻类不变；`authorized_capital=0`；fixture-only/fake transport；真实网络与资金副作用=0 |
-| 交付证据 | 唯一 manifest 内必须先 `P_STABILITY_MANIFEST`，后 `P_EXECUTION_READINESS_MANIFEST` |
-| 后续 | WP-05 接受后进入 `WP-06` Polygon/relayer/settlement；不得提前授予 canary/live 或非零资金 |
+| Task | `WP-06` |
+| 状态 | `READY` |
+| 任务文档 | [`wp-06-polygon-relayer-settlement.md`](wp-06-polygon-relayer-settlement.md) |
+| 交付 manifest | `serve/docs/manifests/wp-06-polygon-relayer-settlement.md` |
+| 前置实现 | `WP-05` 已接受；head=`b1000051`；manifest SHA=`04e365b4…c2fc9` |
+| 本任务范围 | `0052`、versioned contract registry、Polygon RPC、Deposit Wallet Relayer、CTF payout/split/merge/redeem、finality/UNKNOWN/settlement ledger |
+| 内部 checkpoint | A source/registry/wire freeze、B 0052 DB、C Driver/Logic/runtime、D recovery/perf/security/manifest；一个 manifest |
+| 关键边界 | 新闻类不变；fake-only/`authorized_capital=0`；Relayer CONFIRMED 不等于 finality；真实 network/chain/money=0 |
+| 交付证据 | registry proxy/beacon/implementation code hash、canonical finalized receipt、active redeem 唯一、UNKNOWN 零盲重发、结算/账本可重建 |
+| 后续 | WP-06 接受后进入 `WP-07A` Admin API；不得提前实现 UI、canary/live 或非零资金 |
 
 ## 固定交接协议
 
@@ -65,4 +65,4 @@
 | `WP-02` | DONE | ACCEPTED | 审查修复提交 `e9f4c20`；218 定向、1390 full，均 0 skip/fail；AI 197.782/s、blind commit 59.711/s 持续 60s；完整 Artifact/lineage、global attempt identity、exact cache 与 runtime 边界全关；manifest SHA `5bc49cf3…` |
 | `WP-03` | DONE | ACCEPTED | 审查修复提交 `2a22ff9`；69 unit + 17 真 PG/replay、1255 trading、1466 full，均 0 skip/fail；VAL 206.796/s、TERM 12.0/s 持续 60s；DB-authoritative Q/quote/cost/cap、intent、BUY/SELL ledger、reversal、V1 Gold 边界全关；manifest SHA `996869e2…` |
 | `WP-04` | DONE | ACCEPTED | 审查修复提交 `8ff2067`；63 unit + 57 真 PG/replay、1375 trading、1586 full，均 0 skip/fail；clean perf keyset 100,006 行 p99=3.254ms、scientific replay p99=21.218ms、rebuild hash一致且 lost/dup=0、498.493 q/s；生产 policy、CAS/full cashflow、midpoint/vector exclusion、exact cohort/五层/replay/cursor/DB guard 全关；manifest SHA `c22daa47…` |
-| `WP-05` | DONE | 待审 | 108 unit/contract + 34 真 PG/replay、1517 trading、1728 full，均 0 skip/fail；perf preflight p99=10.8ms、submit p99=11.1ms、reconcile p99=23.5ms、81.9 intents/s 60s、fake_transport_calls=5712、real_network_calls=0；P-stability hash 稳定、vault AES-GCM/AAD、fencing、envelope、UNKNOWN 无盲重发、User WS→REST reconcile 全关；官方 heartbeat 漂移保留为激活 blocker；manifest SHA `c1bac2fd…` |
+| `WP-05` | DONE | ACCEPTED | 审查修复 `f53888f` + 性能证据 `5588576`；1566 trading、1777 full，均 0 skip/fail；clean perf 3024 intents/60.006s=50.395/s，WS p99=5.185ms、1k reconcile p99=91.043ms、pool peak exec2/recon1、fake/real=4706/0；Vault identity、fund consumption、全副作用 fencing、UNKNOWN 恢复、CONFIRMED trade、heartbeat hard-stop、NegRisk/clock/egress 全关；manifest SHA `04e365b4…c2fc9`；进入 WP-06 |
