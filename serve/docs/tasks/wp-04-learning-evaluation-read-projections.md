@@ -1,6 +1,6 @@
 # WP-04 — 标签审计、五层评价、科学回放、G8 与只读投影
 
-> 状态：**READY**  
+> 状态：**ACCEPTED（审查通过）**
 > 前置：`WP-03` 已接受；Alembic head=`b1000031`  
 > 执行模型：DeepSeek V4 Flash  
 > 唯一完成交付：`serve/docs/manifests/wp-04-learning-evaluation-read-projections.md`  
@@ -75,6 +75,8 @@ metric 或 PnL 都不得反向修改 label、forecast、decision、ledger 或 pe
 serve/tests/trading/fixtures/p3_learning/p_evaluation_spec_v1.json
 serve/tests/trading/fixtures/p3_learning/{bernoulli,multiclass,mean_only,label_conflict,reject_audit,holdout_tamper}.json
 serve/tests/trading/fixtures/p3_learning/p3_helpers.py
+serve/app/domain/trading/evaluation_policy.py
+serve/app/domain/trading/p_evaluation_spec_v1.json
 serve/app/domain/trading/scoring.py
 serve/app/domain/trading/inference.py
 ```
@@ -82,6 +84,11 @@ serve/app/domain/trading/inference.py
 fixture 冻结 label policy、target canonicalization、baseline convention、horizon/episode weight、split、
 cluster/time-block bootstrap、`n_eff`、multiple-testing/stopping、五层 primary/guardrail 与 promotion policy。
 内容 hash 和 `frozen_at` 必须早于首个 evaluation assignment。
+
+> 审查批准的范围内必要扩展：生产运行时不得依赖 `tests/` 被打包，因此修复提交
+> `8ff2067f10779921970ef76eef7e9e11c7c0da18` 增加 deployment-owned、启动即自校验 content hash 的
+> `evaluation_policy.py + p_evaluation_spec_v1.json`；生产副本与冻结测试 fixture 字节全等。该扩展不改变
+> policy，只关闭部署缺少 tests 目录时的错误依赖。
 
 ### B — `b1000040_v2_0040_p3_learning`
 
