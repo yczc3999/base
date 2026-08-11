@@ -1,0 +1,72 @@
+{
+  "name": "time_nested",
+  "world_states": [
+    {"world_state_id": "w0", "assignment": {"event_confirmed": true, "as_of": "early"}},
+    {"world_state_id": "w1", "assignment": {"event_confirmed": false, "as_of": "late"}},
+    {"world_state_id": "w2", "assignment": {"event_confirmed": null, "as_of": "pending"}}
+  ],
+  "Q": {"w0": "0.20", "w1": "0.50", "w2": "0.30"},
+  "U": [
+    {"w0": "0.20", "w1": "0.50", "w2": "0.30"},
+    {"w0": "0.15", "w1": "0.55", "w2": "0.30"}
+  ],
+  "contracts": [
+    {
+      "contract_key": "attack_by_date",
+      "resolution_states": ["YES", "NO", "OTHER"],
+      "tokens": [
+        {"token_key": "yes", "outcome_index": 0, "payout": {"YES": "1", "NO": "0", "OTHER": "0.5"}},
+        {"token_key": "no", "outcome_index": 1, "payout": {"YES": "0", "NO": "1", "OTHER": "0.5"}}
+      ],
+      "h_c": {"w0": "YES", "w1": "NO", "w2": "OTHER"}
+    }
+  ],
+  "book_depth": [
+    {
+      "token_key": "yes",
+      "bids": [[0.48, 100]],
+      "asks": [[0.50, 100], [0.51, 200], [0.52, 300]],
+      "as_of": "2026-08-11T01:00:00Z"
+    },
+    {
+      "token_key": "no",
+      "bids": [[0.50, 150]],
+      "asks": [[0.52, 100]],
+      "as_of": "2026-08-11T01:00:00Z"
+    }
+  ],
+  "expected": {
+    "decision_mode": "BLIND_ONLY",
+    "disposition": "WAIT",
+    "action": null,
+    "legs": [],
+    "wake_condition": "recheck on next book update or when the clock crosses into the late window (probability mass shifts from w2 toward w0/w1)",
+    "note": "Time-nested: w0=early YES, w1=late NO, w2=pending (OTHER, intermediate payout 0.5). Blind E[yes] = P(YES)*1 + P(OTHER)*0.5 = 0.20 + 0.30*0.5 = 0.35. Best executable ask = 0.50; robust EV under U lower bound = 0.15 + 0.30*0.5 = 0.30 < 0.50 → ask too deep / edge insufficient → WAIT."
+  },
+  "counterexamples": {
+    "h_c_not_total": {
+      "kind": "h_c",
+      "invalid": {"w0": "YES", "w1": "NO"},
+      "reason": "h_c_not_total:w2"
+    },
+    "payout_missing_state": {
+      "kind": "payout",
+      "contract_key": "attack_by_date",
+      "token_key": "yes",
+      "invalid": {"YES": "1", "NO": "0"},
+      "reason": "payout_key_mismatch:missing=OTHER"
+    },
+    "q_not_total": {
+      "kind": "Q",
+      "invalid": {"w0": "0.2", "w1": "0.5", "w2": "0.4"},
+      "reason": "q_not_total"
+    },
+    "payout_float": {
+      "kind": "payout",
+      "contract_key": "attack_by_date",
+      "token_key": "no",
+      "invalid": {"YES": 0.0, "NO": 1.0, "OTHER": 0.5},
+      "reason": "payout_float_forbidden"
+    }
+  }
+}

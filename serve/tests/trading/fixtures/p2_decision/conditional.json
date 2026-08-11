@@ -1,0 +1,77 @@
+{
+  "name": "conditional",
+  "world_states": [
+    {"world_state_id": "w0", "assignment": {"primary": "harris", "general": "harris"}},
+    {"world_state_id": "w1", "assignment": {"primary": "harris", "general": "other"}},
+    {"world_state_id": "w2", "assignment": {"primary": "other", "general": "harris"}},
+    {"world_state_id": "w3", "assignment": {"primary": "other", "general": "other"}}
+  ],
+  "Q": {"w0": "0.30", "w1": "0.20", "w2": "0.25", "w3": "0.25"},
+  "U": [
+    {"w0": "0.30", "w1": "0.20", "w2": "0.25", "w3": "0.25"},
+    {"w0": "0.25", "w1": "0.25", "w2": "0.25", "w3": "0.25"}
+  ],
+  "contracts": [
+    {
+      "contract_key": "harris_conditional",
+      "resolution_states": ["YES", "NO", "PARTIAL"],
+      "tokens": [
+        {"token_key": "yes", "outcome_index": 0, "payout": {"YES": "1", "NO": "0", "PARTIAL": "0.5"}},
+        {"token_key": "no", "outcome_index": 1, "payout": {"YES": "0", "NO": "1", "PARTIAL": "0.5"}}
+      ],
+      "h_c": {"w0": "YES", "w1": "NO", "w2": "PARTIAL", "w3": "PARTIAL"}
+    }
+  ],
+  "book_depth": [
+    {"token_key": "yes", "bids": [[0.40, 100]], "asks": [[0.42, 100], [0.43, 200]], "as_of": "2026-08-11T01:00:00Z"},
+    {"token_key": "no", "bids": [[0.53, 100]], "asks": [[0.55, 100]], "as_of": "2026-08-11T01:00:00Z"}
+  ],
+  "expected": {
+    "decision_mode": "BLIND_ONLY",
+    "disposition": "ACTION",
+    "action": "BUY_TOKEN",
+    "legs": [
+      {"token_key": "yes", "leg_role": "OPEN", "sign": "+", "quantity": 100}
+    ],
+    "challenger": {
+      "decision_mode": "LINEAR_SHRINKAGE",
+      "disposition": "ABSTAIN",
+      "abstain_reason": "ABSTAIN_MARKET_REFERENCE_UNIDENTIFIED",
+      "note": "A single conditional contract's token quotes identify only the conditional probability P(general|primary), not the joint distribution over the 4 worlds (base-event quote plus correlation are also required). No identifiable joint market reference → challenger abstains and must NOT block the BLIND_ONLY baseline."
+    },
+    "conditional_identity": {
+      "base_event": "primary = harris",
+      "conditional_event": "general = harris",
+      "P_condition": "0.50",
+      "P_yes_given_condition": "0.60",
+      "condition_false_worlds": ["w2", "w3"]
+    },
+    "note": "Conditional market: payout only paid when the condition (primary=harris) holds; condition-false worlds (w2,w3) resolve PARTIAL at 0.5. Blind E[yes] = P(YES)*1 + P(PARTIAL)*0.5 = 0.30 + 0.50*0.5 = 0.55. Best ask 0.42; robust EV under U lower bound = 0.25 + 0.50*0.5 = 0.50 > 0.42 → +0.08 edge → BLIND_ONLY ACTION BUY yes. Conditional identity: P(condition)=P(w0)+P(w1)=0.50; P(yes|condition)=P(w0)/0.50=0.60."
+  },
+  "counterexamples": {
+    "missing_conditional_state": {
+      "kind": "payout",
+      "contract_key": "harris_conditional",
+      "token_key": "yes",
+      "invalid": {"YES": "1", "NO": "0"},
+      "reason": "payout_key_mismatch:missing=PARTIAL"
+    },
+    "payout_pays_when_condition_false": {
+      "kind": "payout",
+      "contract_key": "harris_conditional",
+      "token_key": "yes",
+      "invalid": {"YES": "1", "NO": "0", "PARTIAL": "1"},
+      "reason": "conditional_pays_when_condition_false"
+    },
+    "h_c_not_total": {
+      "kind": "h_c",
+      "invalid": {"w0": "YES", "w1": "NO", "w2": "PARTIAL"},
+      "reason": "h_c_not_total:w3"
+    },
+    "q_not_total": {
+      "kind": "Q",
+      "invalid": {"w0": "0.3", "w1": "0.2", "w2": "0.25", "w3": "0.3"},
+      "reason": "q_not_total"
+    }
+  }
+}

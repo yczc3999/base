@@ -44,10 +44,12 @@ from app.models.trading.types import external_id_type, sha256_type, utc_timestam
 CHAIN_TYPES = ("DECISION", "RESEARCH_EVAL")
 OPP_STATUS = ("OPEN", "PRE_COMMIT_TERMINAL", "ROUTED", "SUPERSEDED")
 OPP_DISPOSITION = ("completed", "rejected", "deferred", "failed", "expired", "superseded")
-# WP-02：G6 原子 blind commit 允许 ROUTED→BLIND_COMMITTED。
-EPISODE_STATUS = ("DRAFT", "ROUTED", "BLIND_COMMITTED", "PRE_COMMIT_TERMINAL")
-# WP-02：gate allowlist 扩展 G4/G5A/G5B/G6（cognition gates，绑 episode）。
-GATE_NAMES = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6")
+# WP-02：G6 原子 blind commit 允许 ROUTED→BLIND_COMMITTED；WP-03：揭价后 REVEALED→DECIDED。
+EPISODE_STATUS = (
+    "DRAFT", "ROUTED", "BLIND_COMMITTED", "REVEALED", "DECIDED", "PRE_COMMIT_TERMINAL",
+)
+# WP-03：gate allowlist 增加 G7A/G7B（decision gates，绑 trade_decision）。
+GATE_NAMES = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
 ROUTE_CHANNELS = ("reject", "shallow", "standard", "deep")
 
 
@@ -138,7 +140,7 @@ class ForecastEpisode(TradingBase, BigIntIdentityMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("episode_key", name="uq_forecast_episodes_key"),
         CheckConstraint(
-            "status IN ('DRAFT','ROUTED','BLIND_COMMITTED','PRE_COMMIT_TERMINAL')",
+            "status IN ('DRAFT','ROUTED','BLIND_COMMITTED','REVEALED','DECIDED','PRE_COMMIT_TERMINAL')",
             name="ck_forecast_episodes_status_known",
         ),
         CheckConstraint(
@@ -260,12 +262,13 @@ class InformationSnapshot(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         UniqueConstraint("snapshot_key", name="uq_information_snapshots_key"),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="ck_information_snapshots_hash_hex"),
         CheckConstraint(
-            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6')",
+            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6','G7A','G7B')",
             name="ck_information_snapshots_gate_known",
         ),
         CheckConstraint("jsonb_typeof(content) = 'object'", name="ck_information_snapshots_content_object"),
         CheckConstraint(
-            "(episode_id IS NULL) <> (opportunity_id IS NULL)",
+            "(episode_id IS NOT NULL)::int + (opportunity_id IS NOT NULL)::int "
+            "+ (trade_decision_id IS NOT NULL)::int = 1",
             name="ck_information_snapshots_one_target",
         ),
         {"schema": TRADING_SCHEMA},
@@ -279,6 +282,10 @@ class InformationSnapshot(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     opportunity_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("trading.decision_opportunities.id", name="fk_information_snapshots_opportunity"),
+    )
+    trade_decision_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.trade_decisions.id", name="fk_information_snapshots_trade_decision"),
     )
     gate: Mapped[str] = mapped_column(String(8), nullable=False)
     content: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -313,17 +320,18 @@ class GateDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("gate", "target_id", "target_kind", name="uq_gate_decisions_target"),
         CheckConstraint(
-            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6')",
+            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6','G7A','G7B')",
             name="ck_gate_decisions_gate_known",
         ),
         CheckConstraint(
-            "target_kind IN ('screening','opportunity','episode')",
+            "target_kind IN ('screening','opportunity','episode','trade_decision')",
             name="ck_gate_decisions_target_kind_known",
         ),
         CheckConstraint(
             "(gate IN ('G0','R0') AND target_kind = 'screening') OR "
             "(gate IN ('G1','G2') AND target_kind = 'opportunity') OR "
-            "(gate IN ('R1','G4','G5A','G5B','G6') AND target_kind = 'episode')",
+            "(gate IN ('R1','G4','G5A','G5B','G6') AND target_kind = 'episode') OR "
+            "(gate IN ('G7A','G7B') AND target_kind = 'trade_decision')",
             name="ck_gate_decisions_gate_target_pair",
         ),
         CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="ck_gate_decisions_input_hash_hex"),

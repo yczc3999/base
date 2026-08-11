@@ -9,6 +9,7 @@ from runtimes.trading.cognition import (
     CognitionRuntime,
     RoleBinding,
 )
+from runtimes.trading.execution import ShadowExecutionRuntime
 
 __all__ = [
     "FrameRunResult",
@@ -16,4 +17,5 @@ __all__ = [
     "BookWsIngestor",
     "CognitionRuntime",
     "RoleBinding",
+    "ShadowExecutionRuntime",
 ]

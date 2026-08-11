@@ -1,0 +1,30 @@
+{
+  "name": "v1_gold_reentry",
+  "scenarios": [
+    {
+      "id": "after_terminal",
+      "market_status": "terminal",
+      "decision": "must_zero_increase",
+      "expected_action": "NO_ACTION_or_REDUCE_only",
+      "note": "Market already terminal (resolved/closed): exposure increase must be 0 under all paths. Only NO_ACTION, or a risk-reducing REDUCE/CLOSE of an already-held position, is permitted."
+    },
+    {
+      "id": "stale_quote_13h",
+      "quote_age_hours": 13,
+      "expected": "reject_stale",
+      "note": "Quote age 13h far exceeds the frozen execution spec staleness policy (max_quote_age_seconds=300, i.e. 5 minutes): the quote must be rejected and no decision may be formed against a stale price. Stale quotes are never back-filled with future observations."
+    },
+    {
+      "id": "duplicate_old_signal",
+      "already_decided": true,
+      "expected": "effect_zero_no_duplicate",
+      "note": "The same opportunity / action role already has an active exposure-increasing intent (intent_hash globally unique via idempotency_claims): a duplicate old signal must produce economic effect 0 — no duplicate fill, position lot, or ledger effect."
+    },
+    {
+      "id": "unreviewed_equates_pass",
+      "reviewed": false,
+      "expected": "no_open",
+      "note": "UNREVIEWED does not equal PASS: an unreviewed forecast/quote must not open a new position. Re-entry after the end of an episode requires a reviewed, still-valid underwriting."
+    }
+  ]
+}

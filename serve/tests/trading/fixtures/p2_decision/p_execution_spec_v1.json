@@ -1,0 +1,153 @@
+{
+  "schema_version": "p2/execution-spec/v1",
+  "spec_key": "p2-execution-spec-v1",
+  "spec_version": 1,
+  "frozen_at": "2026-08-11T00:00:00Z",
+  "release": {
+    "release_name": "p2-shadow-release-v1",
+    "git_sha": "0000000000000000000000000000000000000000000000000000000000000000",
+    "image_digest": "p2-shadow@sha256",
+    "db_revision": "b1000030"
+  },
+  "objective": {
+    "objective_fn_version": "objective/v1",
+    "units": "USD",
+    "decision_horizon": "HOLD_TO_RESOLUTION",
+    "HOLD_TO_RESOLUTION": true,
+    "discount_policy": {"kind": "none"},
+    "capital_charge_policy": {"kind": "linear", "annual_rate_bps": 0, "period_days": 1},
+    "NO_ACTION": {"action": "NO_ACTION"},
+    "allowed_actions": [
+      "NO_ACTION",
+      "BUY_TOKEN",
+      "ADD_TOKEN",
+      "SELL_TOKEN_TO_REDUCE",
+      "SELL_TOKEN_TO_CLOSE",
+      "HOLD",
+      "FLIP"
+    ],
+    "trading_cost_scope": {"include": true},
+    "data_cost_scope": {"include": true},
+    "llm_cost_scope": {"include": true},
+    "search_cost_scope": {"include": true},
+    "infrastructure_cost_scope": {"include": true},
+    "human_cost_scope": {"include": true},
+    "operational_cost_scope": {"include": true},
+    "robustness_policy": {"kind": "worst_case_over_U"},
+    "hard_constraint_ordering": ["eligibility", "capital", "risk_limits"]
+  },
+  "strategy": {
+    "strategy_key": "p2-shadow-strategy-v1",
+    "strategy_version": 1,
+    "mode": "shadow",
+    "belief_baseline": "BLIND_ONLY",
+    "optional_shrinkage": {
+      "enabled": false,
+      "algorithm_id": "linear-shrinkage/v1",
+      "w_blind": null,
+      "learned_default_w": false
+    }
+  },
+  "execution": {
+    "execution_spec_key": "p2-exec-spec-v1",
+    "execution_spec_version": 1,
+    "hold_to_resolution": true,
+    "short_sell_to_open": false,
+    "execution_mode": "shadow_only",
+    "authorized_capital": 0,
+    "authorization_required": false,
+    "price_convention": "executable_depth_walk",
+    "depth_walk": {
+      "algorithm": "deterministic_level_walk/v1",
+      "max_levels": 10,
+      "fill_policy": "conservative",
+      "midpoint_fill": false
+    },
+    "fee": {
+      "taker_fee_bps": 0,
+      "maker_fee_bps": 0,
+      "baseline_rebate_bps": 0
+    },
+    "slippage": {"bps": 0},
+    "latency": {"latency_seconds": 0.0},
+    "staleness": {
+      "ttl_seconds": 300,
+      "max_quote_age_seconds": 300,
+      "quote_before_decision_seconds": 60
+    },
+    "capacity": {
+      "minimum_deployable_capacity": 1,
+      "maximum_single_leg_units": 1000,
+      "base_units_per_share": 100
+    },
+    "cost_accounting": {
+      "discount_policy": "none",
+      "funding_fee": "none",
+      "capital_charge": "linear@0bps",
+      "operating_cost_allocation": "fixed_marginal",
+      "mutually_exclusive_identity": "fee_spread_slippage_funding_discount_capital_operating_are_disjoint",
+      "baseline_rebate": 0
+    },
+    "risk_limits": {
+      "per_market_net_risk_capital_fraction": "0.04",
+      "per_component_net_risk_capital_fraction": "0.06",
+      "global_risk_capital_fraction": "0.30",
+      "kill_switch": false,
+      "cap_can_only_lower": true
+    },
+    "rounding": {
+      "share_quantity_base_units": true,
+      "decimal_places_quantity": 0,
+      "price_decimal_places": 6,
+      "cash_base_units": true,
+      "posting_scale": 0
+    }
+  },
+  "capital_permission": {
+    "name": "p2-shadow-capital-v1",
+    "mode": "shadow",
+    "evaluation_capital": 100000,
+    "authorized_capital": 0,
+    "kill_switch": false,
+    "capability": {
+      "can_open": true,
+      "can_add": true,
+      "can_reduce": true,
+      "can_close": true,
+      "can_flip": true,
+      "can_hold": true,
+      "can_generate_intent": true
+    },
+    "limits": {
+      "per_market_net_risk_capital_fraction": "0.04",
+      "per_component_net_risk_capital_fraction": "0.06",
+      "global_risk_capital_fraction": "0.30"
+    }
+  },
+  "decision_ontology": {
+    "actions": [
+      "BUY_TOKEN",
+      "ADD_TOKEN",
+      "SELL_TOKEN_TO_REDUCE",
+      "SELL_TOKEN_TO_CLOSE",
+      "HOLD",
+      "FLIP"
+    ],
+    "dispositions": ["ACTION", "WAIT", "ABSTAIN"],
+    "disposition_semantics": {
+      "NO_ACTION": "counterfactual baseline, not a runtime output",
+      "WAIT": "valid chain but no robust action now; requires wake condition",
+      "ABSTAIN": "validity gate failed; terminal reason; no action set",
+      "HOLD": "ACTION terminal with zero legs; requires existing position + valid underwriting; no intent/execution",
+      "RISK_REVIEW": "hard forecast failure; only reduce/close/HOLD; decision_class marker, not a parallel state machine"
+    },
+    "flip_semantics": "FLIP = close leg + open opposite leg; open failing G7A must not block risk-reducing close"
+  },
+  "ledger": {
+    "identity": "ΔW = settlement_cashflow - executable_entry_cashflow - explicit_fee - execution_adjustment - funding_or_discount - capital_charge - allocated_marginal_operating_cost",
+    "posting_balance": "per (asset_type, asset_key) signed sum = 0 before POSTED, at least 2 postings per asset",
+    "asset_types": ["CASH", "TOKEN"],
+    "shadow_venue": "shadow",
+    "portfolio_namespace": "shadow-champion"
+  }
+}

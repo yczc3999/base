@@ -8,13 +8,14 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-03` |
-| 状态 | `READY` |
+| 状态 | `DONE（待审）` |
 | 任务文档 | [`wp-03-market-relative-decision-shadow-ledger.md`](wp-03-market-relative-decision-shadow-ledger.md) |
 | 交付 manifest | `serve/docs/manifests/wp-03-market-relative-decision-shadow-ledger.md` |
-| 前置实现 | `WP-02` 已接受；head=`b1000021` |
+| 前置实现 | `WP-02` 已接受；head=`b1000021` → `b1000031` |
 | 本任务范围 | 0030/0031、reveal/quote binding、G7A/G7B、action/intent、minimum portfolio、shadow fill、position/ledger/system-net |
 | 内部 checkpoint | A execution spec、B decision/G7A、C portfolio/shadow/ledger、D runtime/replay/perf/full；一个 manifest |
 | 关键边界 | 新闻类、`HOLD_TO_RESOLUTION`、shadow only、authorized capital=0、quote-only=0 AI |
+| 交付证据 | 102 定向（0 skip）、1482 full（0 skip）；perf hard_assertions=PASS（VAL 270.6/s、TERM 78.7/s 持续 60s）；head=`b1000031` |
 | 后续 | WP-03 接受后进入 `WP-04` label/evaluation/replay/promotion |
 
 ## 固定交接协议
@@ -62,3 +63,4 @@
 | `WP-01B` | DONE | ACCEPTED | 70 wire + 30 真 PG/replay；paced 1k/s×60s、5k/s×10s 均过；933 trading、1144 full；四链 frame、lease/fence resume、epoch barrier、raw evidence/replay 全关；manifest SHA `06b01cdd…` |
 | `WP-01C` | DONE | ACCEPTED | 98 定向、1242 full；50k enrollment+R0=8.714s，完整 pipeline=144.99/s 持续 67.046s；Gate policy exact binding、contract/component/cohort/episode DB 不变量与 replay 全过；manifest SHA `4a17a08a…` |
 | `WP-02` | DONE | ACCEPTED | 审查修复提交 `e9f4c20`；218 定向、1390 full，均 0 skip/fail；AI 197.782/s、blind commit 59.711/s 持续 60s；完整 Artifact/lineage、global attempt identity、exact cache 与 runtime 边界全关；manifest SHA `5bc49cf3…` |
+| `WP-03` | DONE | ⚠ 待审 | 102 定向（0 skip）、1482 full（0 skip）；perf hard_assertions=PASS（decision valuation 270.6/s、shadow terminalization 78.7/s 持续 60s）；reveal/quote binding、G7A/G7B、action/intent、shadow fill、双分录 ledger、replay 全过；manifest SHA `875a1716…` |

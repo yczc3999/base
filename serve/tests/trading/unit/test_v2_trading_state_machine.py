@@ -1,8 +1,8 @@
-"""WP-01C 状态机单测（架构 §1.1 / 任务 §7）。
+"""trading ORDER 状态机单测（扩展至 G0..G6,G7A,G7B）。
 
-- 合法/非法 Gate 顺序（越 Gate 拒绝）。
-- episode key 确定性 + sorted spec-set 稳定。
-- 硬约束：hard fail 后不得越 Gate。
+- ORDER 常量 = G0→R0→G1→G2→R1→G4→G5A→G5B→G6→G7A→G7B 完整序列。
+- assert_order：顺序相邻通过；越步 / 未知 gate 拒绝。
+- 保留 WP-01C 的 episode-key 确定性与 gate-binding 测试。
 """
 
 from datetime import datetime, timezone
@@ -13,24 +13,29 @@ import pytest
 from app.orchestrator.trading_state_machine import (
     EpisodeKeyMaterial,
     IllegalTransitionError,
+    ORDER,
     TradingStateMachine,
     episode_key,
 )
 from app.domain.trading.gates import assert_frozen_gate_binding
 
 
-def test_legal_forward_transitions():
+def test_order_constant_is_full_sequence():
+    assert ORDER == ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
+
+
+def test_adjacent_transitions_all_pass():
     sm = TradingStateMachine(None)
-    sm.assert_order("G0", "R0")
-    sm.assert_order("R0", "G1")
-    sm.assert_order("G1", "G2")
-    sm.assert_order("G2", "R1")
+    for frm, to in zip(ORDER, ORDER[1:]):
+        sm.assert_order(frm, to)  # 不抛异常即通过
 
 
 @pytest.mark.parametrize("frm,to", [
-    ("G0", "G1"), ("G0", "G2"), ("R0", "G2"), ("G1", "R1"), ("G2", "G0"),
+    ("G0", "G1"), ("G0", "G2"), ("R0", "G2"), ("G1", "R1"),
+    ("R1", "G5A"), ("G4", "G6"), ("G5A", "G6"), ("G5B", "G7A"),
+    ("G6", "G7B"), ("G7A", "G6"), ("G7B", "G7A"), ("G2", "G0"),
 ])
-def test_illegal_transitions_rejected(frm, to):
+def test_skipped_or_backward_transitions_rejected(frm, to):
     sm = TradingStateMachine(None)
     with pytest.raises(IllegalTransitionError):
         sm.assert_order(frm, to)
@@ -40,6 +45,10 @@ def test_unknown_gate_rejected():
     sm = TradingStateMachine(None)
     with pytest.raises(IllegalTransitionError, match="unknown_gate"):
         sm.assert_order("G0", "G9")
+    with pytest.raises(IllegalTransitionError, match="unknown_gate"):
+        sm.assert_order("G9", "G0")
+    with pytest.raises(IllegalTransitionError, match="unknown_gate"):
+        sm.assert_order("G8", "G7A")
 
 
 def test_gate_binding_must_come_from_frozen_cohort():

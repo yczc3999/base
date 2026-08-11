@@ -33,6 +33,14 @@ from app.logics.trading.universe import (
     market_is_eligible,
     market_normalized_content,
 )
+from app.logics.trading.decision import (
+    DecisionLogic,
+    DecisionResult,
+    G7AResult,
+    G7BResult,
+)
+from app.logics.trading.execution import FillResult, ShadowExecutionLogic
+from app.logics.trading.portfolio import PortfolioExposure, PortfolioLogic
 
 __all__ = [
     "ComponentLogic",
@@ -49,6 +57,14 @@ __all__ = [
     "ForecastLogic",
     "G6Result",
     "InputManifestMaterial",
+    "DecisionLogic",
+    "DecisionResult",
+    "G7AResult",
+    "G7BResult",
+    "ShadowExecutionLogic",
+    "FillResult",
+    "PortfolioLogic",
+    "PortfolioExposure",
     "BookState",
     "FreshnessDecision",
     "FreshnessPolicy",

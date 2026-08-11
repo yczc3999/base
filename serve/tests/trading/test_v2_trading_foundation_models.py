@@ -41,9 +41,10 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_70_trading_tables():
+def test_exactly_85_trading_tables():
     """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+
-    12 cohort/episode（0013）+ 11 cognition（0020）+ 3 AI（0021）。"""
+    12 cohort/episode（0013）+ 11 cognition（0020）+ 3 AI（0021）+ 9 decision（0030）
+    + 3 execution（0031）+ 3 ledger（0031）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -67,6 +68,11 @@ def test_exactly_70_trading_tables():
         "evidence_bundle_items", "forecast_input_manifests", "forecast_submissions",
         "payout_projections", "coherence_checks", "forecast_challenges", "forecast_leases",
         "ai_invocations", "ai_tool_calls", "ai_validation_results",
+        "market_relative_decisions", "discrepancy_reviews", "trade_decisions",
+        "action_candidates", "resolution_cashflows", "action_sets", "action_set_legs",
+        "underwriting_plans", "economic_action_intents",
+        "executions", "positions", "position_lots",
+        "ledger_transactions", "ledger_postings", "operating_cost_entries",
     }
 
 

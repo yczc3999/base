@@ -1,0 +1,68 @@
+{
+  "name": "void_partial",
+  "world_states": [
+    {"world_state_id": "w0", "assignment": {"approval": "granted"}},
+    {"world_state_id": "w1", "assignment": {"approval": "denied"}},
+    {"world_state_id": "w2", "assignment": {"regulatory": "voided"}},
+    {"world_state_id": "w3", "assignment": {"regulatory": "partial"}}
+  ],
+  "Q": {"w0": "0.55", "w1": "0.25", "w2": "0.10", "w3": "0.10"},
+  "U": [
+    {"w0": "0.55", "w1": "0.25", "w2": "0.10", "w3": "0.10"},
+    {"w0": "0.50", "w1": "0.30", "w2": "0.10", "w3": "0.10"}
+  ],
+  "contracts": [
+    {
+      "contract_key": "reg_approval",
+      "resolution_states": ["YES", "NO", "VOID", "PARTIAL"],
+      "tokens": [
+        {"token_key": "yes", "outcome_index": 0, "payout": {"YES": "1", "NO": "0", "VOID": "1", "PARTIAL": "0.5"}},
+        {"token_key": "no", "outcome_index": 1, "payout": {"YES": "0", "NO": "1", "VOID": "1", "PARTIAL": "0.5"}}
+      ],
+      "h_c": {"w0": "YES", "w1": "NO", "w2": "VOID", "w3": "PARTIAL"}
+    }
+  ],
+  "book_depth": [
+    {"token_key": "yes", "bids": [[0.58, 100]], "asks": [[0.60, 100], [0.61, 200]], "as_of": "2026-08-11T01:00:00Z"},
+    {"token_key": "no", "bids": [[0.36, 100]], "asks": [[0.38, 100]], "as_of": "2026-08-11T01:00:00Z"}
+  ],
+  "expected": {
+    "decision_mode": "BLIND_ONLY",
+    "disposition": "ACTION",
+    "action": "BUY_TOKEN",
+    "legs": [
+      {"token_key": "yes", "leg_role": "OPEN", "sign": "+", "quantity": 100}
+    ],
+    "note": "VOID/PARTIAL path: w2 resolves VOID (full refund, payout 1 for both tokens), w3 resolves PARTIAL (payout 0.5). Blind E[yes] = P(YES)*1 + P(VOID)*1 + P(PARTIAL)*0.5 = 0.55 + 0.10 + 0.05 = 0.70. Best ask 0.60; robust EV under U lower bound = 0.50 + 0.10 + 0.05 = 0.65 > 0.60 → +0.05 edge. Leg cashflow recomputation includes the VOID refund branch (payout 1) and PARTIAL branch (0.5)."
+  },
+  "counterexamples": {
+    "void_not_total": {
+      "kind": "payout",
+      "contract_key": "reg_approval",
+      "token_key": "yes",
+      "invalid": {"YES": "1", "NO": "0", "PARTIAL": "0.5"},
+      "reason": "payout_key_mismatch:missing=VOID"
+    },
+    "void_no_refund": {
+      "kind": "payout",
+      "contract_key": "reg_approval",
+      "token_key": "yes",
+      "invalid": {"YES": "1", "NO": "0", "VOID": "0", "PARTIAL": "0.5"},
+      "reason": "void_refund_expected:1"
+    },
+    "partial_out_of_range": {
+      "kind": "payout",
+      "contract_key": "reg_approval",
+      "token_key": "no",
+      "invalid": {"YES": "0", "NO": "1", "VOID": "1", "PARTIAL": "1.5"},
+      "reason": "payout_out_of_range:PARTIAL=1.5"
+    },
+    "payout_float": {
+      "kind": "payout",
+      "contract_key": "reg_approval",
+      "token_key": "yes",
+      "invalid": {"YES": 1.0, "NO": 0.0, "VOID": 1.0, "PARTIAL": 0.5},
+      "reason": "payout_float_forbidden"
+    }
+  }
+}

@@ -363,9 +363,12 @@ class PMQuoteBinding(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
 
     __tablename__ = "pm_quote_bindings"
     __table_args__ = (
-        UniqueConstraint(
-            "token_id", "checkpoint_id", "checkpoint_received_at",
-            name="uq_pm_quote_bindings_token_checkpoint",
+        # WP-03：允许不同 decision 复用同一 checkpoint；同 decision 内 token 唯一（partial unique index）。
+        Index(
+            "uq_pm_quote_bindings_decision_token",
+            "trade_decision_id", "token_id",
+            unique=True,
+            postgresql_where=text("trade_decision_id IS NOT NULL"),
         ),
         CheckConstraint(
             "best_bid > 0 AND best_ask > 0 AND best_bid <= 1 AND best_ask <= 1",
@@ -396,6 +399,10 @@ class PMQuoteBinding(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     checkpoint_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     checkpoint_received_at: Mapped[datetime] = mapped_column(
         utc_timestamp_type(), nullable=False
+    )
+    trade_decision_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.trade_decisions.id", name="fk_pm_quote_bindings_trade_decision"),
     )
     best_bid: Mapped[Decimal] = mapped_column(_price_column(), nullable=False)
     best_ask: Mapped[Decimal] = mapped_column(_price_column(), nullable=False)

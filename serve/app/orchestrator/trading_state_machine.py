@@ -1,4 +1,4 @@
-"""DB-evidenced G0→R0→G1→G2→R1→G4→G5A→G5B→G6 state machine."""
+"""DB-evidenced G0→R0→G1→G2→R1→G4→G5A→G5B→G6→G7A→G7B state machine."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.domain.trading.hashing import canonical_hash
 from app.domain.trading.gates import assert_frozen_gate_binding
 from app.repositories.trading.workflow import WorkflowRepository
 
-ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6")
+ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
 _INDEX = {gate: index for index, gate in enumerate(ORDER)}
 
 

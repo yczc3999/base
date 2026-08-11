@@ -482,6 +482,8 @@ class WorkflowRepository:
             "G5A": "episode",
             "G5B": "episode",
             "G6": "episode",
+            "G7A": "trade_decision",
+            "G7B": "trade_decision",
         }.get(gate)
         if expected_target != target_kind:
             raise ValueError(f"gate_target_mismatch:{gate}:{target_kind}")
@@ -544,6 +546,8 @@ class WorkflowRepository:
             "G5A": "episode",
             "G5B": "episode",
             "G6": "episode",
+            "G7A": "trade_decision",
+            "G7B": "trade_decision",
         }.get(gate)
         if expected_target != target_kind:
             raise ValueError(f"gate_target_mismatch:{gate}:{target_kind}")

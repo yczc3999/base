@@ -73,6 +73,27 @@ from app.models.trading.ai import (
     AIToolCall,
     AIValidationResult,
 )
+from app.models.trading.decision import (
+    ActionCandidate,
+    ActionSet,
+    ActionSetLeg,
+    DiscrepancyReview,
+    EconomicActionIntent,
+    MarketRelativeDecision,
+    ResolutionCashflow,
+    TradeDecision,
+    UnderwritingPlan,
+)
+from app.models.trading.execution import (
+    Execution,
+    Position,
+    PositionLot,
+)
+from app.models.trading.ledger import (
+    LedgerPosting,
+    LedgerTransaction,
+    OperatingCostEntry,
+)
 from app.models.trading.control import (
     CapitalPermissionManifest,
     ExecutionSpecVersion,
@@ -159,6 +180,24 @@ __all__ = [
     "AIInvocation",
     "AIToolCall",
     "AIValidationResult",
+    # decision
+    "MarketRelativeDecision",
+    "DiscrepancyReview",
+    "TradeDecision",
+    "ActionCandidate",
+    "ResolutionCashflow",
+    "ActionSet",
+    "ActionSetLeg",
+    "UnderwritingPlan",
+    "EconomicActionIntent",
+    # execution
+    "Execution",
+    "Position",
+    "PositionLot",
+    # ledger
+    "LedgerTransaction",
+    "LedgerPosting",
+    "OperatingCostEntry",
     # control
     "RuntimeConfigVersion",
     "StrategyObjectiveContract",

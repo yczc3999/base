@@ -1,0 +1,82 @@
+{
+  "name": "shadow_book_depth",
+  "world_states": [
+    {"world_state_id": "w0", "assignment": {"passes_threshold": true}},
+    {"world_state_id": "w1", "assignment": {"passes_threshold": false}}
+  ],
+  "Q": {"w0": "0.65", "w1": "0.35"},
+  "U": [
+    {"w0": "0.65", "w1": "0.35"},
+    {"w0": "0.60", "w1": "0.40"}
+  ],
+  "contracts": [
+    {
+      "contract_key": "threshold_pass",
+      "resolution_states": ["YES", "NO"],
+      "tokens": [
+        {"token_key": "yes", "outcome_index": 0, "payout": {"YES": "1", "NO": "0"}},
+        {"token_key": "no", "outcome_index": 1, "payout": {"YES": "0", "NO": "1"}}
+      ],
+      "h_c": {"w0": "YES", "w1": "NO"}
+    }
+  ],
+  "book_depth": [
+    {
+      "token_key": "yes",
+      "bids": [[0.50, 100], [0.49, 200]],
+      "asks": [[0.52, 100], [0.53, 100], [0.55, 200]],
+      "as_of": "2026-08-11T01:00:00Z"
+    },
+    {
+      "token_key": "no",
+      "bids": [[0.48, 100], [0.47, 150]],
+      "asks": [[0.50, 150]],
+      "as_of": "2026-08-11T01:00:00Z"
+    }
+  ],
+  "expected": {
+    "decision_mode": "BLIND_ONLY",
+    "disposition": "ACTION",
+    "action": "BUY_TOKEN",
+    "legs": [
+      {"token_key": "yes", "leg_role": "OPEN", "sign": "+", "quantity": 500}
+    ],
+    "fill": {
+      "requested_quantity": 500,
+      "filled_quantity": 400,
+      "unfilled_quantity": 100,
+      "unfilled_reason": "depth_insufficient",
+      "vwap": "0.5375",
+      "gross_notional": "215.00",
+      "fee": "0",
+      "edge_vs_q": "0.1125"
+    },
+    "note": "Depth-walk fixture: requested 500 shares of yes. Deterministic ask walk (max_levels=10): 100@0.52 + 100@0.53 + 200@0.55 = 400 executable → book depth insufficient to cover target size → PARTIAL fill 400, unfilled 100 (unfilled_reason=depth_insufficient). VWAP = (100*0.52 + 100*0.53 + 200*0.55) / 400 = 215.00/400 = 0.5375; fee 0 bps, slippage 0. Q_yes = 0.65 → edge +0.1125; robust EV under U lower bound = 0.60, still > 0.5375 VWAP → ACTION."
+  },
+  "counterexamples": {
+    "crossed_book": {
+      "kind": "book",
+      "token_key": "yes",
+      "invalid": {"bids": [[0.55, 100]], "asks": [[0.52, 100]]},
+      "reason": "book_crossed"
+    },
+    "negative_price": {
+      "kind": "book",
+      "token_key": "yes",
+      "invalid": {"asks": [[-0.01, 100]]},
+      "reason": "price_out_of_range"
+    },
+    "zero_size": {
+      "kind": "book",
+      "token_key": "yes",
+      "invalid": {"asks": [[0.52, 0]]},
+      "reason": "level_size_nonpositive"
+    },
+    "price_above_one": {
+      "kind": "book",
+      "token_key": "yes",
+      "invalid": {"asks": [[1.5, 100]]},
+      "reason": "price_out_of_range"
+    }
+  }
+}
