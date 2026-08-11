@@ -93,6 +93,25 @@ from app.models.trading import (
     LedgerPosting,
     LedgerTransaction,
     OperatingCostEntry,
+    AblationRun,
+    ChallengerVariant,
+    ErrorReview,
+    Experiment,
+    ExperimentVariant,
+    MetricRun,
+    PromotionDecision,
+    ReplayRun,
+    ResolutionCluster,
+    ResolutionClusterMembership,
+    ResolutionLabel,
+    ScoreObservation,
+    ScoreTarget,
+    ScoreTargetMembership,
+    AccountRiskCurrent,
+    LatestChainSummary,
+    OpsHealthCurrent,
+    PipelineFunnelHourly,
+    ProviderCostDaily,
 )
 from app.models.trading.constants import TRADING_SCHEMA
 
@@ -182,6 +201,27 @@ EXPECTED = [
     "ledger_transactions",
     "ledger_postings",
     "operating_cost_entries",
+    # WP-04（b1000040）：settlement / evaluation / audit
+    "resolution_labels",
+    "resolution_clusters",
+    "resolution_cluster_memberships",
+    "score_targets",
+    "score_target_memberships",
+    "score_observations",
+    "experiments",
+    "experiment_variants",
+    "challenger_variants",
+    "metric_runs",
+    "error_reviews",
+    "ablation_runs",
+    "promotion_decisions",
+    "replay_runs",
+    # WP-04（b1000041）：read projections
+    "ops_health_current",
+    "pipeline_funnel_hourly",
+    "account_risk_current",
+    "provider_cost_daily",
+    "latest_chain_summary",
 ]
 
 
@@ -277,6 +317,25 @@ def test_explicit_model_symbols_importable():
         "ledger_transactions": LedgerTransaction,
         "ledger_postings": LedgerPosting,
         "operating_cost_entries": OperatingCostEntry,
+        "resolution_labels": ResolutionLabel,
+        "resolution_clusters": ResolutionCluster,
+        "resolution_cluster_memberships": ResolutionClusterMembership,
+        "score_targets": ScoreTarget,
+        "score_target_memberships": ScoreTargetMembership,
+        "score_observations": ScoreObservation,
+        "experiments": Experiment,
+        "experiment_variants": ExperimentVariant,
+        "challenger_variants": ChallengerVariant,
+        "metric_runs": MetricRun,
+        "error_reviews": ErrorReview,
+        "ablation_runs": AblationRun,
+        "promotion_decisions": PromotionDecision,
+        "replay_runs": ReplayRun,
+        "ops_health_current": OpsHealthCurrent,
+        "pipeline_funnel_hourly": PipelineFunnelHourly,
+        "account_risk_current": AccountRiskCurrent,
+        "provider_cost_daily": ProviderCostDaily,
+        "latest_chain_summary": LatestChainSummary,
     }
     for tablename, model in symbols.items():
         assert model.__tablename__ == tablename
@@ -306,6 +365,8 @@ def test_app_models_exports_trading():
         "EvidenceBundleItem", "ForecastInputManifest", "ForecastSubmission",
         "PayoutProjection", "CoherenceCheck", "ForecastChallenge", "ForecastLease",
         "AIInvocation", "AIToolCall", "AIValidationResult",
+        "OpsHealthCurrent", "PipelineFunnelHourly", "AccountRiskCurrent",
+        "ProviderCostDaily", "LatestChainSummary",
     ):
         assert model in exported, model
 

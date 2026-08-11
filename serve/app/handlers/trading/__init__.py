@@ -6,6 +6,14 @@ Handler 只解析 event、调用一个 Logic/UoW、返回 completion（实施合
 from app.handlers.trading.cognition import CognitionEvent, CognitionHandler
 from app.handlers.trading.decision import DecisionEvent, DecisionHandler
 from app.handlers.trading.execution import ExecutionEvent, ExecutionHandler
+from app.handlers.trading.settlement import (
+    HandlerResult as SettlementHandlerResult,
+)
+from app.handlers.trading.settlement import SettlementEvent, SettlementHandler
+from app.handlers.trading.evaluation import (
+    HandlerResult as EvaluationHandlerResult,
+)
+from app.handlers.trading.evaluation import EvaluationEvent, EvaluationHandler
 
 __all__ = [
     "CognitionEvent",
@@ -14,4 +22,11 @@ __all__ = [
     "DecisionHandler",
     "ExecutionEvent",
     "ExecutionHandler",
+    # WP-04
+    "SettlementEvent",
+    "SettlementHandler",
+    "SettlementHandlerResult",
+    "EvaluationEvent",
+    "EvaluationHandler",
+    "EvaluationHandlerResult",
 ]

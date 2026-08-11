@@ -1,0 +1,22 @@
+{
+  "name": "mean_only",
+  "scenario_kind": "mean_only",
+  "description": "Mean-only partial/scalar payout function: predicted mean vs actual mean, fixed mean squared payout loss.",
+  "contract_spec": {
+    "contract_key": "mean_only_demo"
+  },
+  "payout_function": {
+    "kind": "scalar_mean",
+    "payout_meaning": "expected share of an underlying continuous metric"
+  },
+  "predicted_mean": "0.72",
+  "actual_mean": "0.60",
+  "label": {
+    "state": "final_admissible"
+  },
+  "golden": {
+    "mean_squared_payout_loss": "0.0144",
+    "note": "mse = (0.72 - 0.60)^2 = 0.0144"
+  },
+  "content_hash": "2667131fd1f9cc58c436b3e5f40a7fa327dc48d7a334ff5367d261004fbbd971"
+}

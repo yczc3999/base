@@ -41,6 +41,26 @@ from app.logics.trading.decision import (
 )
 from app.logics.trading.execution import FillResult, ShadowExecutionLogic
 from app.logics.trading.portfolio import PortfolioExposure, PortfolioLogic
+from app.logics.trading.settlement import (
+    ClusterResult,
+    LabelRevisionResult,
+    SettlementLogic,
+    SplitIntegrityResult,
+)
+from app.logics.trading.evaluation import (
+    EvaluationLogic,
+    ExperimentResult,
+    MetricRunResult,
+    PromotionResult,
+    ScoreResult,
+)
+from app.logics.trading.replay import (
+    AblationResult,
+    ErrorReviewResult,
+    ReplayLogic,
+    ReplayResult,
+)
+from app.logics.trading.projection import ProjectionLogic
 
 __all__ = [
     "ComponentLogic",
@@ -65,6 +85,21 @@ __all__ = [
     "FillResult",
     "PortfolioLogic",
     "PortfolioExposure",
+    # WP-04
+    "SettlementLogic",
+    "LabelRevisionResult",
+    "ClusterResult",
+    "SplitIntegrityResult",
+    "EvaluationLogic",
+    "ScoreResult",
+    "MetricRunResult",
+    "PromotionResult",
+    "ExperimentResult",
+    "ReplayLogic",
+    "ReplayResult",
+    "AblationResult",
+    "ErrorReviewResult",
+    "ProjectionLogic",
     "BookState",
     "FreshnessDecision",
     "FreshnessPolicy",

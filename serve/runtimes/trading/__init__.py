@@ -10,6 +10,8 @@ from runtimes.trading.cognition import (
     RoleBinding,
 )
 from runtimes.trading.execution import ShadowExecutionRuntime
+from runtimes.trading.evaluation import EvaluationRuntime
+from runtimes.trading.replay import ReplayRuntime
 
 __all__ = [
     "FrameRunResult",
@@ -18,4 +20,7 @@ __all__ = [
     "CognitionRuntime",
     "RoleBinding",
     "ShadowExecutionRuntime",
+    # WP-04
+    "EvaluationRuntime",
+    "ReplayRuntime",
 ]

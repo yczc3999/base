@@ -49,7 +49,8 @@ EPISODE_STATUS = (
     "DRAFT", "ROUTED", "BLIND_COMMITTED", "REVEALED", "DECIDED", "PRE_COMMIT_TERMINAL",
 )
 # WP-03：gate allowlist 增加 G7A/G7B（decision gates，绑 trade_decision）。
-GATE_NAMES = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
+# WP-04：gate allowlist 增加 G8（promotion gate，绑 metric_run）。
+GATE_NAMES = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B", "G8")
 ROUTE_CHANNELS = ("reject", "shallow", "standard", "deep")
 
 
@@ -320,18 +321,19 @@ class GateDecision(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("gate", "target_id", "target_kind", name="uq_gate_decisions_target"),
         CheckConstraint(
-            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6','G7A','G7B')",
+            "gate IN ('G0','R0','G1','G2','R1','G4','G5A','G5B','G6','G7A','G7B','G8')",
             name="ck_gate_decisions_gate_known",
         ),
         CheckConstraint(
-            "target_kind IN ('screening','opportunity','episode','trade_decision')",
+            "target_kind IN ('screening','opportunity','episode','trade_decision','metric_run')",
             name="ck_gate_decisions_target_kind_known",
         ),
         CheckConstraint(
             "(gate IN ('G0','R0') AND target_kind = 'screening') OR "
             "(gate IN ('G1','G2') AND target_kind = 'opportunity') OR "
             "(gate IN ('R1','G4','G5A','G5B','G6') AND target_kind = 'episode') OR "
-            "(gate IN ('G7A','G7B') AND target_kind = 'trade_decision')",
+            "(gate IN ('G7A','G7B') AND target_kind = 'trade_decision') OR "
+            "(gate IN ('G8') AND target_kind = 'metric_run')",
             name="ck_gate_decisions_gate_target_pair",
         ),
         CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="ck_gate_decisions_input_hash_hex"),

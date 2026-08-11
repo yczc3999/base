@@ -1,0 +1,45 @@
+{
+  "name": "label_conflict",
+  "scenario_kind": "settlement_conflict",
+  "description": "Settlement conflict: rule evidence and token-mapping/cashflow evidence disagree, so SETTLEMENT_CONFLICT forces the label to disputed.",
+  "contract_spec": {
+    "contract_key": "label_conflict_demo",
+    "resolution_states": [
+      "YES",
+      "NO"
+    ],
+    "h_c": {
+      "w0": "YES",
+      "w1": "NO"
+    }
+  },
+  "rule_evidence": {
+    "resolution_rule": "YES",
+    "source": "platform_resolution_event",
+    "as_of": "2026-08-05T00:00:00Z"
+  },
+  "cashflow_evidence": {
+    "token_key": "yes",
+    "reported_payout": "0.00",
+    "source": "onchain_redeem_feed"
+  },
+  "conflicts": [
+    {
+      "kind": "rule",
+      "detail": "rule evidence resolves YES but cashflow evidence implies NO"
+    },
+    {
+      "kind": "token_mapping",
+      "detail": "reported token payout disagrees with the frozen payout IR"
+    }
+  ],
+  "expected": {
+    "label_state": "disputed",
+    "code": "SETTLEMENT_CONFLICT",
+    "conflict_set": [
+      "rule",
+      "token_mapping"
+    ]
+  },
+  "content_hash": "c13958871726b5dc55e35621e690e05bbf90e8d989d0487724cba67f8167da40"
+}

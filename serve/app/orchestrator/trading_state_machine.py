@@ -1,14 +1,33 @@
-"""DB-evidenced G0→R0→G1→G2→R1→G4→G5A→G5B→G6→G7A→G7B state machine."""
+"""DB-evidenced G0→R0→G1→G2→R1→G4→G5A→G5B→G6→G7A→G7B state machine.
+
+WP-04：追加 G8 评审（metric_run 目标的 promotion gate，不在 episode 线性链内）。
+"""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
+
+from sqlalchemy import text
 
 from app.db.uow import UnitOfWork
 from app.domain.trading.hashing import canonical_hash
 from app.domain.trading.gates import assert_frozen_gate_binding
 from app.repositories.trading.workflow import WorkflowRepository
+
+_SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "tests" / "trading" / "fixtures" / "p3_learning" / "p_evaluation_spec_v1.json"
+)
+
+
+def _p3_promotion_policy_hash() -> str:
+    """P3 spec 冻结的 promotion_policy canonical hash（与 p3_helpers.spec_policy_hashes 同源）。"""
+    with open(_SPEC_PATH, encoding="utf-8") as f:
+        spec = json.load(f)
+    return canonical_hash(spec["promotion_policy"])
 
 ORDER = ("G0", "R0", "G1", "G2", "R1", "G4", "G5A", "G5B", "G6", "G7A", "G7B")
 _INDEX = {gate: index for index, gate in enumerate(ORDER)}
@@ -447,3 +466,82 @@ class TradingStateMachine:
             or parent["strategy_version_id"] != strategy_version_id
         ):
             raise IllegalTransitionError("child_parent_binding_mismatch")
+
+    # ---------------- G8 评审（WP-04 Checkpoint C） ----------------
+    # G8 绑定 ``(G8, metric_run, metric_run_id)``，不在 episode 线性链内（ORDER 不插入 G8）。
+    # 只 future-effective：批准未来 shadow episode assignment，不写历史。
+
+    async def review_promotion_g8(
+        self,
+        uow: UnitOfWork,
+        *,
+        metric_run_id: int,
+        promotion_type: str,
+        from_ref: str,
+        to_ref: str,
+        evidence_manifest_hash: str,
+        policy_hash: str,
+        version_manifest_id: int,
+        result: str,
+        reason_code: str | None,
+        committed_at: datetime,
+    ) -> None:
+        if promotion_type not in ("capital", "strategy"):
+            raise IllegalTransitionError("g8_promotion_type_unknown")
+        if result not in ("PASS", "FAIL"):
+            raise IllegalTransitionError("g8_result_invalid")
+        if policy_hash != _p3_promotion_policy_hash():
+            raise IllegalTransitionError("g8_policy_hash_mismatch")
+        if from_ref == to_ref:
+            raise IllegalTransitionError("g8_from_to_required")
+        if result == "FAIL" and reason_code is None:
+            raise IllegalTransitionError("g8_failure_reason_required")
+
+        result_row = await uow.session.execute(
+            text(
+                "SELECT id, status, release_manifest_id FROM trading.metric_runs WHERE id=:mid"
+            ),
+            {"mid": metric_run_id},
+        )
+        target = result_row.first()
+        if target is None or target[1] != "COMPLETED":
+            raise IllegalTransitionError("g8_metric_run_not_completed")
+        if target[2] != version_manifest_id:
+            raise IllegalTransitionError("g8_release_binding_mismatch")
+
+        input_hash = canonical_hash(
+            {
+                "metric_run_id": metric_run_id,
+                "promotion_type": promotion_type,
+                "from_ref": from_ref,
+                "to_ref": to_ref,
+                "evidence_manifest_hash": evidence_manifest_hash,
+                "policy_hash": policy_hash,
+            }
+        )
+        # workflow.insert_gate_decision 的 gate→target map 尚缺 G8（B 留给 C 的接入点）；
+        # 直接内联 INSERT（与 insert_gate_decision 相同 SQL 语义），不改 workflow.py。
+        await uow.session.execute(
+            text(
+                "INSERT INTO trading.gate_decisions "
+                "(gate, target_kind, target_id, input_hash, policy_hash, version_manifest_id, "
+                " result, reason_code, committed_at) "
+                "VALUES ('G8', 'metric_run', :tid, :ih, :ph, :vm, :res, :rc, :ca) "
+                "ON CONFLICT (gate, target_id, target_kind) DO NOTHING"
+            ),
+            {
+                "tid": metric_run_id,
+                "ih": input_hash,
+                "ph": policy_hash,
+                "vm": version_manifest_id,
+                "res": result,
+                "rc": reason_code,
+                "ca": committed_at,
+            },
+        )
+
+    async def g8_approved(self, uow: UnitOfWork, metric_run_id: int) -> bool:
+        gate = await self._wf.get_gate_decision(
+            uow.session, gate="G8", target_kind="metric_run", target_id=metric_run_id
+        )
+        return bool(gate and gate["result"] == "PASS")

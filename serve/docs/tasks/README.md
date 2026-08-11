@@ -8,10 +8,10 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-04` |
-| 状态 | `READY` |
+| 状态 | `DONE（待审）` |
 | 任务文档 | [`wp-04-learning-evaluation-read-projections.md`](wp-04-learning-evaluation-read-projections.md) |
 | 交付 manifest | `serve/docs/manifests/wp-04-learning-evaluation-read-projections.md` |
-| 前置实现 | `WP-03` 已接受；head=`b1000031` → 目标 `b1000041` |
+| 前置实现 | `WP-03` 已接受；head=`b1000031` → 已到 `b1000041` |
 | 本任务范围 | 0040/0041、label audit、canonical target、五层 metric、split/holdout、replay/G8、read projections |
 | 内部 checkpoint | A evaluation spec、B 0040 learning facts、C evaluation/replay/G8、D 0041 projections/perf/full；一个 manifest |
 | 关键边界 | 新闻类、shadow only、authorized capital=0、final-admissible-only proper loss、projection 非权威 |
@@ -64,3 +64,4 @@
 | `WP-01C` | DONE | ACCEPTED | 98 定向、1242 full；50k enrollment+R0=8.714s，完整 pipeline=144.99/s 持续 67.046s；Gate policy exact binding、contract/component/cohort/episode DB 不变量与 replay 全过；manifest SHA `4a17a08a…` |
 | `WP-02` | DONE | ACCEPTED | 审查修复提交 `e9f4c20`；218 定向、1390 full，均 0 skip/fail；AI 197.782/s、blind commit 59.711/s 持续 60s；完整 Artifact/lineage、global attempt identity、exact cache 与 runtime 边界全关；manifest SHA `5bc49cf3…` |
 | `WP-03` | DONE | ACCEPTED | 审查修复提交 `2a22ff9`；69 unit + 17 真 PG/replay、1255 trading、1466 full，均 0 skip/fail；VAL 206.796/s、TERM 12.0/s 持续 60s；DB-authoritative Q/quote/cost/cap、intent、BUY/SELL ledger、reversal、V1 Gold 边界全关；manifest SHA `996869e2…` |
+| `WP-04` | DONE | 待审 | 57 unit + 49 真 PG/replay、1361 trading、1572 full，均 0 skip/fail；keyset 100k 行 p99=2.93ms、replay p99=57.9ms、rebuild hash 一致、470 q/s 持续 10s；label 五态 fail-closed、canonical target、五层 metric、split/holdout、G8 future-effective、只读投影全关；manifest SHA `1d8a9083…` |

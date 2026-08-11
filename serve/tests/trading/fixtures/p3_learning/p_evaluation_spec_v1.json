@@ -1,0 +1,198 @@
+{
+  "schema_version": "p3/evaluation-spec/v1",
+  "spec_key": "p3-evaluation-spec-v1",
+  "spec_version": 1,
+  "frozen_at": "2026-08-10T00:00:00Z",
+  "git_revision_placeholder": "HEAD",
+  "label_policy": {
+    "states": [
+      "pending",
+      "provisional",
+      "disputed",
+      "final_admissible",
+      "final_excluded"
+    ],
+    "transitions": [
+      {
+        "from": "pending",
+        "to": "provisional"
+      },
+      {
+        "from": "provisional",
+        "to": "disputed"
+      },
+      {
+        "from": "provisional",
+        "to": "final_admissible"
+      },
+      {
+        "from": "provisional",
+        "to": "final_excluded"
+      }
+    ],
+    "final_admissible_requires": {
+      "resolution_state_in_frozen_Rc": true,
+      "token_payout_recomputable_from_frozen_h_g": true,
+      "payout_equals_actual_cashflow": true
+    },
+    "final_excluded_requires": {
+      "exclusion_reason": true
+    },
+    "disputed_requires": {
+      "conflict_set": true
+    },
+    "settlement_conflict_code": "SETTLEMENT_CONFLICT",
+    "settlement_conflict_target": "disputed",
+    "conflict_sources": [
+      "rule",
+      "resolution_source",
+      "token_mapping",
+      "cashflow"
+    ],
+    "evidence_required": "resolution_evidence_artifact_must_exist_and_hash_verifiable"
+  },
+  "target_canonicalization": {
+    "complementary_yes_no_is_one_bernoulli_target": true,
+    "complete_mutually_exclusive_exhaustive_set_is_one_multiclass_target": true,
+    "distinct_partial_or_scalar_payout_functions_each_own_target": true,
+    "forbid_token_count_sample_inflation": true,
+    "forbid_token_or_component_weight_inflation": true
+  },
+  "baseline_convention": {
+    "market_baseline_source": "authoritative_quote_checkpoint",
+    "baseline_price": "quote_checkpoint_at_that_time",
+    "missing_or_stale_policy": "explicit_excluded",
+    "forbid_future_quote_backfill": true
+  },
+  "weight_policy": {
+    "primary_aggregation": "equal_weight_over_canonical_targets_within_forecast_episode_x_resolution_cluster",
+    "cluster_total_weight": "1",
+    "cluster_total_weight_scope": "per_resolution_cluster_per_horizon_time_block",
+    "duplicate_episode_policy": "frozen_episode_weight_policy",
+    "alternative_weight_source": "challenger_only"
+  },
+  "split_policy": {
+    "assignment_time": "when_resolution_outcome_unknown",
+    "splits": [
+      "train",
+      "validation",
+      "forward_holdout"
+    ],
+    "cluster_never_spans_splits": true,
+    "invalidate_metric_run_on": [
+      "holdout_unsealed",
+      "holdout_regrouped",
+      "strategy_changed",
+      "metric_policy_changed",
+      "label_policy_changed"
+    ]
+  },
+  "bootstrap_policy": {
+    "sampling_unit": "resolution_cluster",
+    "time_block_stratification": true,
+    "seed": "fixed",
+    "outputs": [
+      "point_estimate",
+      "ci_95",
+      "n_eff"
+    ],
+    "ci_percentiles": [
+      "0.025",
+      "0.975"
+    ],
+    "forbid_raw_market_count_significance": true,
+    "n_eff_formula": "n_eff = total^2 / sum_c n_c^2 (Kish effective sample size under perfect within-cluster correlation; equals the number of equal-sized clusters; always in [1, n_clusters])"
+  },
+  "metric_policy": {
+    "bernoulli_epsilon": "0.001",
+    "primary_guardrail_layers": {
+      "prediction": {
+        "primary": {
+          "bernoulli": "bernoulli_brier",
+          "multiclass": "multiclass_brier",
+          "mean_only": "mean_squared_payout_loss"
+        },
+        "guardrail": {
+          "bernoulli_tail": "bernoulli_log_loss_tail_guardrail"
+        }
+      },
+      "selection": {
+        "metrics": [
+          "opportunity_coverage",
+          "no_action_regret",
+          "selection_triage_auc"
+        ]
+      },
+      "edge": {
+        "metrics": [
+          "edge_bucket_monotonicity",
+          "blind_to_decision_delay_erosion"
+        ]
+      },
+      "portfolio": {
+        "inputs": [
+          "trading_pnl",
+          "operating_cost"
+        ],
+        "outputs": [
+          "system_net",
+          "drawdown",
+          "cvar",
+          "capital_days"
+        ],
+        "incomplete_period_or_ledger": "not_evaluable",
+        "no_zero_fill": true
+      },
+      "execution": {
+        "outputs": [
+          "fill_count",
+          "partial_count",
+          "reject_count",
+          "fee_total",
+          "slippage"
+        ]
+      }
+    },
+    "delta_loss_convention": "delta_loss = loss_candidate - loss_baseline",
+    "delta_loss_direction": "lower_is_better",
+    "output_sets": [
+      "full_forecast_set",
+      "selected_action_set"
+    ]
+  },
+  "promotion_policy": {
+    "capital_promotion": "always_fail_closed",
+    "authorized_capital": "0",
+    "strategy_approval_scope": "future_shadow_episodes_only",
+    "no_writeback_to_historical_cohort_or_assignment": true,
+    "promotion_requires": {
+      "single_completed_metric_run": true,
+      "uncontaminated_forward_holdout": true,
+      "p3_evidence_manifest": true,
+      "from_and_to": true
+    },
+    "reject_on": [
+      "objective_changed",
+      "multiple_factors_changed_simultaneously",
+      "train_or_validation_only_result",
+      "inadmissible_label",
+      "holdout_tampered"
+    ],
+    "hard_guardrail_failure": "reject",
+    "low_power": "continue_shadow_without_approval"
+  },
+  "properness_policy": {
+    "proper_loss_eligible_states": [
+      "final_admissible"
+    ],
+    "disputed_and_excluded_still_reported": {
+      "cohort": true,
+      "selection": true,
+      "edge": true,
+      "execution": true,
+      "ledger": true,
+      "economic_cashflow": true
+    }
+  },
+  "content_hash": "a7d89c1150b702cdad00686391d1e93271b98d29c3dac28c704c5a9ba9d143f2"
+}

@@ -1,0 +1,61 @@
+{
+  "name": "bernoulli",
+  "scenario_kind": "bernoulli",
+  "description": "Complementary YES/NO Bernoulli target: blind distribution over the YES probability, market baseline, final_admissible label, golden Brier and log loss.",
+  "contract_spec": {
+    "contract_key": "bernoulli_demo",
+    "resolution_states": [
+      "YES",
+      "NO"
+    ],
+    "h_c": {
+      "w0": "YES",
+      "w1": "NO"
+    }
+  },
+  "tokens": [
+    {
+      "token_key": "yes",
+      "side": "YES",
+      "payout_ir": {
+        "YES": "1",
+        "NO": "0"
+      }
+    },
+    {
+      "token_key": "no",
+      "side": "NO",
+      "payout_ir": {
+        "YES": "0",
+        "NO": "1"
+      }
+    }
+  ],
+  "blind_submission": {
+    "probs": {
+      "YES": "0.7",
+      "NO": "0.3"
+    },
+    "bernoulli_p_yes": "0.7"
+  },
+  "market_baseline": {
+    "baseline_price_yes": "0.65",
+    "quote_checkpoint": "2026-08-01T00:00:00Z",
+    "stale_before": "2026-08-01T00:15:00Z"
+  },
+  "label": {
+    "resolution_state": "YES",
+    "state": "final_admissible",
+    "actual_cashflow": {
+      "yes": "1",
+      "no": "0"
+    }
+  },
+  "golden": {
+    "brier": "0.09",
+    "brier_note": "brier = (0.7 - 1)^2 = 0.09",
+    "log_loss": "0.356674943939",
+    "log_loss_note": "log_loss = -ln(0.7) = 0.3566749439387324... rounded to 12 places"
+  },
+  "content_hash": "a81b781260388e92f08ee54a902304ffca510cce71c616e5126302f10cc87f2a"
+}

@@ -108,6 +108,11 @@ from app.models.trading import (  # noqa: E402,F401
     StrategyObjectiveContract,
     StrategyVersion,
     TransactionalOutbox,
+    AccountRiskCurrent,
+    LatestChainSummary,
+    OpsHealthCurrent,
+    PipelineFunnelHourly,
+    ProviderCostDaily,
 )
 
 __all__ = [
@@ -205,4 +210,9 @@ __all__ = [
     "TransactionalOutbox",
     "OutboxDeliveryHistory",
     "JobCompletion",
+    "OpsHealthCurrent",
+    "PipelineFunnelHourly",
+    "AccountRiskCurrent",
+    "ProviderCostDaily",
+    "LatestChainSummary",
 ]

@@ -44,6 +44,18 @@ from app.schemas.trading.execution import (
     PositionUpdateInput,
     ShadowFillInput,
 )
+from app.schemas.trading.settlement import (
+    ClusterInput,
+    LabelRevisionInput,
+    ScoreTargetInput,
+)
+from app.schemas.trading.evaluation import (
+    ExperimentInput,
+    MetricRunInput,
+    PromotionDecisionInput,
+    ReplayRunInput,
+    ScoreObservationInput,
+)
 
 __all__ = [
     "ContractSpecInput",
@@ -74,4 +86,14 @@ __all__ = [
     "UnderwritingInput",
     "ShadowFillInput",
     "PositionUpdateInput",
+    # settlement (WP-04)
+    "LabelRevisionInput",
+    "ClusterInput",
+    "ScoreTargetInput",
+    # evaluation (WP-04)
+    "ScoreObservationInput",
+    "ExperimentInput",
+    "MetricRunInput",
+    "PromotionDecisionInput",
+    "ReplayRunInput",
 ]

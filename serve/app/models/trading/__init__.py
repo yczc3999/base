@@ -116,6 +116,33 @@ from app.models.trading.vault import (
     SecretVaultEntry,
     SecretVaultVersion,
 )
+from app.models.trading.settlement import (
+    ResolutionCluster,
+    ResolutionClusterMembership,
+    ResolutionLabel,
+    ScoreTarget,
+    ScoreTargetMembership,
+)
+from app.models.trading.evaluation import (
+    AblationRun,
+    ChallengerVariant,
+    ErrorReview,
+    Experiment,
+    ExperimentVariant,
+    MetricRun,
+    PromotionDecision,
+    ScoreObservation,
+)
+from app.models.trading.audit import (
+    ReplayRun,
+)
+from app.models.trading.projection import (
+    AccountRiskCurrent,
+    LatestChainSummary,
+    OpsHealthCurrent,
+    PipelineFunnelHourly,
+    ProviderCostDaily,
+)
 
 __all__ = [
     # artifact
@@ -217,4 +244,27 @@ __all__ = [
     "TransactionalOutbox",
     "OutboxDeliveryHistory",
     "JobCompletion",
+    # settlement (WP-04)
+    "ResolutionLabel",
+    "ResolutionCluster",
+    "ResolutionClusterMembership",
+    "ScoreTarget",
+    "ScoreTargetMembership",
+    # evaluation (WP-04)
+    "ScoreObservation",
+    "Experiment",
+    "ExperimentVariant",
+    "ChallengerVariant",
+    "MetricRun",
+    "ErrorReview",
+    "AblationRun",
+    "PromotionDecision",
+    # audit (WP-04)
+    "ReplayRun",
+    # read projections (WP-04)
+    "OpsHealthCurrent",
+    "PipelineFunnelHourly",
+    "AccountRiskCurrent",
+    "ProviderCostDaily",
+    "LatestChainSummary",
 ]
