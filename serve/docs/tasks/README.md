@@ -7,15 +7,15 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-01C` |
+| Task | `WP-02` |
 | 状态 | `READY` |
-| 任务文档 | [`wp-01c-contract-component-cohort-screening.md`](wp-01c-contract-component-cohort-screening.md) |
-| 交付 manifest | `serve/docs/manifests/wp-01c-contract-component-cohort-screening.md`（完成时创建） |
-| 前置实现 | `WP-01B` 已接受；head=`b1000011` |
-| 前置审查 | 70 wire + 30 Universe/migration/book/replay；paced perf PASS；933 trading；1144 full；无 P0/P1 |
-| 本任务范围 | 0012/0013、contract/payout、local component/world schema、prospective cohort、G0/R0、opportunity/G1/G2、component episode/R1 |
-| 内部 checkpoint | A semantics/0012 → B cohort+policy/G0/R0 → C workflow/G1/G2/episode/R1/0013 → D replay/perf；中间不等待、不拆 manifest |
-| 后续 | 验收后进入 `WP-02` minimal cognition + AI observability |
+| 任务文档 | [`wp-02-minimal-cognition-ai-observability.md`](wp-02-minimal-cognition-ai-observability.md) |
+| 交付 manifest | `serve/docs/manifests/wp-02-minimal-cognition-ai-observability.md` |
+| 前置实现 | `WP-01C` 已接受；head=`b1000013` |
+| 前置审查 | 98 定向、1242 full；真 PG performance hard assertions PASS；无剩余 P0/P1 |
+| 本任务范围 | 0020/0021、prior/evidence、G4–G6、Q/U/projection、immutable blind commit、AI invocation/gateway/observability |
+| 内部 checkpoint | A cognition facts/0020 → B AI facts+gateway/0021 → C 四角色 workflow/replay/perf；中间不等待、不拆 manifest |
+| 后续 | 验收后进入 `WP-03` market-relative decision、portfolio 与 shadow execution |
 
 ## 固定交接协议
 
@@ -60,4 +60,4 @@
 | `WP-01A-02a` | SUPERSEDED | — | 未实施；已合并进 `WP-01A-02`，避免微任务交接 |
 | `WP-01A-02` | DONE | ACCEPTED | 审查者直接关闭 10 类 P1；35/7/48/29 定向，833 trading，1044 full；固定 migration DDL、DB immutability、UoW/Outbox crash/idempotency/transport 边界全过；manifest SHA 一致 |
 | `WP-01B` | DONE | ACCEPTED | 70 wire + 30 真 PG/replay；paced 1k/s×60s、5k/s×10s 均过；933 trading、1144 full；四链 frame、lease/fence resume、epoch barrier、raw evidence/replay 全关；manifest SHA `06b01cdd…` |
-| `WP-01C` | READY | — | 当前任务：`wp-01c-contract-component-cohort-screening.md` |
+| `WP-01C` | DONE | ACCEPTED | 98 定向、1242 full；50k enrollment+R0=8.714s，完整 pipeline=144.99/s 持续 67.046s；Gate policy exact binding、contract/component/cohort/episode DB 不变量与 replay 全过；manifest SHA `4a17a08a…` |

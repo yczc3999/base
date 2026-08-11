@@ -29,6 +29,32 @@ from app.models.trading.market_stream import (
     PMSourceEventBatch,
     PMSourceEventIndex,
 )
+from app.models.trading.cohort import (
+    AuditSample,
+    EvaluationCohort,
+    ScreeningEpisode,
+    UniverseMembership,
+)
+from app.models.trading.semantics import (
+    ContractSnapshot,
+    ContractSpec,
+    ForecastComponent,
+    ForecastComponentContractSpec,
+    ForecastComponentVersion,
+    PayoutFunction,
+    PortfolioDependencyEdge,
+    WorldSchemaVersion,
+)
+from app.models.trading.workflow import (
+    DecisionOpportunity,
+    DecisionOpportunityMarket,
+    EpisodeContractSpec,
+    EpisodeMembership,
+    ForecastEpisode,
+    GateDecision,
+    InformationSnapshot,
+    InformationSnapshotItem,
+)
 from app.models.trading.control import (
     CapitalPermissionManifest,
     ExecutionSpecVersion,
@@ -76,6 +102,29 @@ __all__ = [
     "PMBookLevel",
     "PMBookCurrent",
     "PMQuoteBinding",
+    # semantics
+    "ContractSnapshot",
+    "ContractSpec",
+    "PayoutFunction",
+    "ForecastComponent",
+    "ForecastComponentVersion",
+    "ForecastComponentContractSpec",
+    "WorldSchemaVersion",
+    "PortfolioDependencyEdge",
+    # cohort
+    "EvaluationCohort",
+    "UniverseMembership",
+    "ScreeningEpisode",
+    "AuditSample",
+    # workflow
+    "DecisionOpportunity",
+    "DecisionOpportunityMarket",
+    "ForecastEpisode",
+    "EpisodeContractSpec",
+    "EpisodeMembership",
+    "InformationSnapshot",
+    "InformationSnapshotItem",
+    "GateDecision",
     # control
     "RuntimeConfigVersion",
     "StrategyObjectiveContract",

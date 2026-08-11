@@ -1,0 +1,34 @@
+{
+  "counterexamples": {
+    "missing_conditional_state": {
+      "if_then_yes": {
+        "NO": "0",
+        "YES": "1"
+      }
+    }
+  },
+  "name": "conditional",
+  "resolution_states": [
+    "YES",
+    "NO",
+    "PARTIAL"
+  ],
+  "tokens": {
+    "if_then_no": {
+      "outcome_index": 1,
+      "payout": {
+        "NO": "1",
+        "PARTIAL": "0.5",
+        "YES": "0"
+      }
+    },
+    "if_then_yes": {
+      "outcome_index": 0,
+      "payout": {
+        "NO": "0",
+        "PARTIAL": "0.5",
+        "YES": "1"
+      }
+    }
+  }
+}

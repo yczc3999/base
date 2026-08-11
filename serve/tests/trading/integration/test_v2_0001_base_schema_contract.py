@@ -43,8 +43,8 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 FIXTURE_SQL = SERVE_DIR / "tests/trading/fixtures/base_legacy_schema.sql"
 BASELINE_REVISION = "cdabba1e3903"
-# WP-01B 新增 v2_0011 后 head 变为 b1000011；v2_0001 的 Base 兼容合同行为不变。
-HEAD_REVISION = "b1000011"
+# WP-01B 新增 v2_0011 后 head 变为 b1000013；v2_0001 的 Base 兼容合同行为不变。
+HEAD_REVISION = "b1000013"
 
 ADMIN_URL_ENV = "V2_TEST_ADMIN_DATABASE_URL"
 TEMP_PREFIX = "pm_v2_test_"

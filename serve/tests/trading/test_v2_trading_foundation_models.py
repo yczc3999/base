@@ -41,8 +41,8 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_36_trading_tables():
-    """20 foundation + 9 market master（0010）+ 7 market stream（0011）。"""
+def test_exactly_56_trading_tables():
+    """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+ 12 cohort/episode（0013）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -55,6 +55,13 @@ def test_exactly_36_trading_tables():
         "pm_market_current",
         "pm_connection_epochs", "pm_source_event_batches", "pm_source_event_index",
         "pm_book_checkpoints", "pm_book_levels", "pm_book_current", "pm_quote_bindings",
+        "contract_snapshots", "contract_specs", "payout_functions", "forecast_components",
+        "world_schema_versions", "forecast_component_versions", "forecast_component_contract_specs",
+        "portfolio_dependency_edges",
+        "evaluation_cohorts", "universe_memberships", "screening_episodes", "audit_samples",
+        "decision_opportunities", "decision_opportunity_markets", "episode_memberships",
+        "forecast_episodes", "episode_contract_specs", "information_snapshots",
+        "information_snapshot_items", "gate_decisions",
     }
 
 
@@ -175,16 +182,31 @@ def test_release_manifests_pins_four_version_fks():
         assert col in TRADING["release_manifests"].c
 
 
-def test_policy_type_scopes_unique_triple():
+def test_policy_type_scopes_unique_per_type():
+    """WP-01C 强化：一个 policy type 只能映射一个合法 scope（禁 fallback）。"""
     uq = _uniques("policy_type_scopes")
-    assert any({c.name for c in u.columns} == {"policy_type", "scope_type", "scope_key"}
-               for u in uq)
+    assert any({c.name for c in u.columns} == {"policy_type"} for u in uq)
+    assert "ck_policy_type_scopes_scope_type_known" in _checks("policy_type_scopes")
 
 
 def test_policy_freezes_pins_content_hash_and_release():
     assert "policy_content_hash" in TRADING["policy_freezes"].c
-    assert _fk_targets("policy_freezes") == ["trading.release_manifests.id"]
+    assert _fk_targets("policy_freezes") == [
+        "trading.policy_type_scopes.policy_type",
+        "trading.policy_type_scopes.scope_type",
+        "trading.release_manifests.id",
+    ]
     assert "ck_policy_freezes_status_known" in _checks("policy_freezes")
+    # WP-01C 强化：exact type/scope/version + frozen_at
+    assert "policy_type" in TRADING["policy_freezes"].c
+    assert "scope_type" in TRADING["policy_freezes"].c
+    assert "policy_version" in TRADING["policy_freezes"].c
+    assert "frozen_at" in TRADING["policy_freezes"].c
+    assert "uq_policy_freezes_type_scope_version" in {u.name for u in _uniques("policy_freezes")}
+    uq = next(u for u in _uniques("policy_freezes") if u.name == "uq_policy_freezes_type_scope_version")
+    assert [c.name for c in uq.columns] == [
+        "policy_type", "scope_type", "scope_key", "policy_version",
+    ]
 
 
 def test_vault_no_plaintext_fields():

@@ -29,9 +29,9 @@ from sqlalchemy.pool import NullPool
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 BASELINE_REVISION = "cdabba1e3903"
-# v2_0001 / v2_0002 / v2_0010 / v2_0011（WP-01A/01B）加入后 head 变为 b1000011；探针
+# v2_0001 / v2_0002 / v2_0010 / v2_0011（WP-01A/01B）加入后 head 变为 b1000013；探针
 # revision 须挂在它之下，否则形成多 head 使 `upgrade head` 歧义。
-HEAD_REVISION = "b1000011"
+HEAD_REVISION = "b1000013"
 
 # 并发探针 revision：在持锁 migration 内制造稳定重叠窗口。无全局 advisory
 # lock 时两进程会同时看到 baseline，其中一个必然在 CREATE TABLE 冲突；有锁时
@@ -41,7 +41,7 @@ LOCK_PROBE_REVISION_SRC = '''"""advisory lock serialization probe"""
 from alembic import op
 
 revision = "c0000001"
-down_revision = "b1000011"
+down_revision = "b1000013"
 branch_labels = None
 depends_on = None
 
@@ -62,7 +62,7 @@ SUCCESS_REVISION_SRC = '''"""successful first half of whole-run rollback probe""
 from alembic import op
 
 revision = "f0000001"
-down_revision = "b1000011"
+down_revision = "b1000013"
 branch_labels = None
 depends_on = None
 

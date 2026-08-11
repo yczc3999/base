@@ -16,10 +16,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.schema import ForeignKey, Index
+from sqlalchemy.schema import ForeignKey, ForeignKeyConstraint, Index
 
 from app.models.trading.constants import TRADING_SCHEMA
 from app.models.trading.mixins import (
@@ -28,7 +29,12 @@ from app.models.trading.mixins import (
     TimestampMixin,
     TradingBase,
 )
-from app.models.trading.types import base_unit_type, external_id_type, sha256_type
+from app.models.trading.types import (
+    base_unit_type,
+    external_id_type,
+    sha256_type,
+    utc_timestamp_type,
+)
 
 # 受控状态集合（不创建 PG ENUM；用 text + CHECK）。
 _CTRL_STATUS = ("draft", "active", "retired", "rejected")
@@ -225,13 +231,19 @@ class ReleaseManifest(TradingBase, BigIntIdentityMixin, TimestampMixin):
 
 
 class PolicyTypeScope(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
-    """policy 类型 → scope 映射；三元组唯一。"""
+    """policy 类型 → 唯一合法 scope 映射（WP-01C 强化：一个 type 一个 scope，禁 fallback）。"""
 
     __tablename__ = "policy_type_scopes"
     __table_args__ = (
+        UniqueConstraint("policy_type", name="uq_policy_type_scopes_type"),
         UniqueConstraint(
-            "policy_type", "scope_type", "scope_key",
-            name="uq_policy_type_scopes_triple",
+            "policy_type", "scope_type",
+            name="uq_policy_type_scopes_type_scope",
+        ),
+        CheckConstraint(
+            "scope_type IN ('strategy','cohort','component_version','episode_submission',"
+            " 'execution_spec','promotion')",
+            name="ck_policy_type_scopes_scope_type_known",
         ),
         {"schema": TRADING_SCHEMA},
     )
@@ -242,21 +254,43 @@ class PolicyTypeScope(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
 
 
 class PolicyFreeze(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
-    """policy 冻结：引用精确 content hash + release，不读运行中 latest。"""
+    """policy 冻结：exact type/scope/version + content hash + release（WP-01C 强化）。"""
 
     __tablename__ = "policy_freezes"
     __table_args__ = (
+        UniqueConstraint(
+            "policy_type", "scope_type", "scope_key", "policy_version",
+            name="uq_policy_freezes_type_scope_version",
+        ),
         CheckConstraint(
             "status IN ('frozen','released')",
             name="ck_policy_freezes_status_known",
         ),
+        CheckConstraint(
+            "scope_type IN ('strategy','cohort','component_version','episode_submission',"
+            " 'execution_spec','promotion')",
+            name="ck_policy_freezes_scope_type_known",
+        ),
+        CheckConstraint("policy_version >= 0", name="ck_policy_freezes_version_nonneg"),
+        ForeignKeyConstraint(
+            ["policy_type", "scope_type"],
+            ["trading.policy_type_scopes.policy_type", "trading.policy_type_scopes.scope_type"],
+            name="fk_policy_freezes_policy_scope",
+        ),
         {"schema": TRADING_SCHEMA},
     )
 
+    policy_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope_key: Mapped[str] = mapped_column(external_id_type(), nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False)
     policy_content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     release_manifest_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.release_manifests.id", name="fk_policy_freezes_release"),
         nullable=False,
+    )
+    frozen_at: Mapped[datetime] = mapped_column(
+        utc_timestamp_type(), nullable=False, server_default=func.now()
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="frozen")
