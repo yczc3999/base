@@ -44,6 +44,7 @@ LABEL_ALLOWLIST = frozenset({
     "method",
     "status_class",
     "mode",
+    "endpoint",  # WP-07A Admin Read：只含 v2/<domain>，不含业务 ID
 })
 
 # 业务标签子串：任何标签含其一即拒绝
@@ -260,3 +261,24 @@ def execution_latency_histogram(
         buckets,
         catalog=catalog,
     )
+
+
+# =====================================================================
+# WP-07A —— Admin Read API 观测（label 只含 endpoint/result，不含业务 ID）
+# =====================================================================
+
+_ADMIN_QUERY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+_ADMIN_BYTES_BUCKETS = (128, 512, 1024, 4096, 16_384, 65_536, 200_000, 1_048_576)
+
+ADMIN_QUERY_SECONDS = make_histogram(
+    "pm_admin_query_seconds",
+    "V2 Admin read query latency seconds (label: endpoint, result)",
+    ("endpoint", "result"),
+    _ADMIN_QUERY_BUCKETS,
+)
+ADMIN_RESPONSE_BYTES = make_histogram(
+    "pm_admin_response_bytes",
+    "V2 Admin read response size bytes (label: endpoint, result)",
+    ("endpoint", "result"),
+    _ADMIN_BYTES_BUCKETS,
+)

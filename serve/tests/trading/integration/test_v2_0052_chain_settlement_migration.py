@@ -27,7 +27,8 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 V51 = "b1000051"
 V52 = "b1000052"
-HEAD_REVISION = V52
+V70 = "b1000070"
+HEAD_REVISION = V70
 
 NEW_TABLES = [
     "contract_registry",

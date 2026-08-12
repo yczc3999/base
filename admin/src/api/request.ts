@@ -145,3 +145,35 @@ export function post<T = any>(url: string, data?: any, options?: RequestOptions)
 }
 
 export default instance
+
+// =====================================================================
+// WP-07A —— V2 Admin Read typed request（复用同一 axios instance/refresh，
+// 支持 AbortSignal；不吞 401/403/contract errors，交给 query hooks）。
+// =====================================================================
+
+
+export interface V2RequestConfig {
+  url: string
+  params?: Record<string, unknown>
+  signal?: AbortSignal
+}
+
+/** 解析统一 ApiResponse envelope；code≠0 抛错（保留 http status 语义供 query 处理）。 */
+export async function requestV2<T>(config: V2RequestConfig): Promise<T> {
+  const response = await instance({
+    method: 'GET',
+    url: config.url,
+    params: config.params,
+    signal: config.signal,
+  })
+  const body = response.data as ApiResponse<T>
+  if (body && typeof body === 'object' && 'code' in body) {
+    if (body.code !== 0) {
+      const err: Error & { code?: number } = new Error(body.msg || 'request_failed')
+      err.code = body.code
+      throw err
+    }
+    return body.data
+  }
+  return response.data as T
+}

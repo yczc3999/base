@@ -1,7 +1,7 @@
 <template>
   <header class="header">
     <div class="header-left">
-      <button class="toggle-btn" @click="appStore.toggleSidebar" :aria-label="appStore.sidebarCollapsed ? '展开菜单' : '折叠菜单'">
+      <button class="toggle-btn" :aria-label="appStore.sidebarCollapsed ? '展开菜单' : '折叠菜单'" @click="appStore.toggleSidebar">
         <PanelLeftClose v-if="appStore.sidebarCollapsed" :size="18" />
         <PanelLeftOpen v-else :size="18" />
       </button>

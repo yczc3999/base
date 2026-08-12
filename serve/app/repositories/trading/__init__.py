@@ -12,6 +12,7 @@ from app.repositories.trading.market import MarketRepository
 from app.repositories.trading.market_stream import MarketStreamRepository
 from app.repositories.trading.semantics import SemanticsRepository
 from app.repositories.trading.workflow import WorkflowRepository
+from app.repositories.trading.admin_read import AdminReadRepository
 from app.repositories.trading.settlement import (
     ChainOperationRepository,
     ContractRegistryRepository,
@@ -44,4 +45,6 @@ __all__ = [
     "ContractRegistryRepository",
     "ChainOperationRepository",
     "SettlementObservationRepository",
+    # WP-07A
+    "AdminReadRepository",
 ]

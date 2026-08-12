@@ -46,7 +46,7 @@ from app.controllers.admin import import_api as admin_import
 from app.controllers.admin import session as admin_session
 from app.controllers.admin import cache as admin_cache
 from app.controllers.admin import trash as admin_trash
-from app.controllers.admin import trading as admin_trading
+from app.controllers.admin.trading.router import router as admin_trading_router
 from app.controllers import dict as dict_public
 
 
@@ -215,7 +215,38 @@ app.include_router(admin_import.router, prefix="/api/admin")
 app.include_router(admin_session.router, prefix="/api/admin")
 app.include_router(admin_cache.router, prefix="/api/admin")
 app.include_router(admin_trash.router, prefix="/api/admin")
-app.include_router(admin_trading.router, prefix="/api/admin")  # /api/admin/trading/runtime
+app.include_router(admin_trading_router, prefix="/api/admin")
+
+@app.middleware("http")
+async def _admin_read_observe(request, call_next):
+    """记录 pm_admin_query_seconds / pm_admin_response_bytes（WP-07A；label endpoint/result）。"""
+    if request.url.path.startswith("/api/admin/v2/"):
+        import time
+
+        from app.observability.metrics import ADMIN_QUERY_SECONDS, ADMIN_RESPONSE_BYTES
+
+        started = time.perf_counter()
+        response = await call_next(request)
+        elapsed = time.perf_counter() - started
+        endpoint = _v2_endpoint_label(request.url.path)
+        result = "ok" if response.status_code < 400 else "error"
+        ADMIN_QUERY_SECONDS.labels(endpoint=endpoint, result=result).observe(elapsed)
+        size = len(response.body) if hasattr(response, "body") and response.body else 0
+        ADMIN_RESPONSE_BYTES.labels(endpoint=endpoint, result=result).observe(size)
+        return response
+    return await call_next(request)
+
+
+def _v2_endpoint_label(path: str) -> str:
+    """/api/admin/v2/<seg>/... → v2/<seg>（label 只含 endpoint，不含业务 ID）。"""
+    marker = "/api/admin/v2/"
+    idx = path.find(marker)
+    if idx < 0:
+        return "non-v2"
+    rest = path[idx + len(marker):]
+    seg = rest.split("/")[0] if rest else ""
+    return f"v2/{seg}" if seg else "v2"
+  # /api/admin/trading/runtime + /api/admin/v2/*
 app.include_router(web_seo.router)  # /sitemap.xml /robots.txt /{key}.txt 根路径
 
 # 隐私文件代理 + 数据字典公开端点（不走 /api/admin 前缀）

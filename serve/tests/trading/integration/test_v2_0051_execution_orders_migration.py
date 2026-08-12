@@ -19,7 +19,8 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 V50 = "b1000050"
 V51 = "b1000051"
 V52 = "b1000052"
-HEAD_REVISION = V52
+V70 = "b1000070"
+HEAD_REVISION = V70
 
 NEW_TABLES = [
     "execution_authorization_envelopes",

@@ -142,3 +142,5 @@ __all__ = [
     "market_is_eligible",
     "market_normalized_content",
 ]
+
+from app.logics.trading.admin_read import AdminReadLogic

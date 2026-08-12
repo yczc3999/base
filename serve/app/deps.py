@@ -133,3 +133,35 @@ def require_perms(*perms: str):
         raise BizError("无权限", 403)
 
     return _check_perms
+
+
+def require_all_perms(*perms: str):
+    """
+    权限校验依赖工厂（WP-07A）：AND 语义 —— 必须同时具备全部权限。
+
+    用法：
+        Depends(require_all_perms("v2:artifact:read"))
+        Depends(require_all_perms("v2:artifact:read", "v2:ai:artifact"))  # 两者都要
+
+    与 ``require_perms``（OR 语义）互不改变；超级管理员按 Base 规则绕过。
+    """
+    async def _check_perms(
+        auth: AuthInfo = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
+    ):
+        if auth.is_super_admin:
+            return auth
+
+        from app.logics.admin_user import admin_user_logic
+
+        user_perms = await admin_user_logic.get_user_perms(db, auth.user_id)
+        user_set = set(user_perms)
+
+        # 必须同时具备全部权限（AND）
+        missing = [p for p in perms if p not in user_set]
+        if missing:
+            raise BizError("无权限", 403)
+
+        return auth
+
+    return _check_perms

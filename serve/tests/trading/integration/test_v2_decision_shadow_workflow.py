@@ -80,7 +80,7 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 # WP-05 后 head=b1000052；本测试用 live ORM/repo（executions 含 account_id 列），
 # 必须在 head schema 上跑，否则 UndefinedColumnError。
-HEAD = "b1000052"
+HEAD = "b1000070"
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 CUTOFF = FIXED + timedelta(days=2)

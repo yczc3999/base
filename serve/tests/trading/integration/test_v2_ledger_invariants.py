@@ -30,6 +30,7 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 # 必须在 head schema 上跑，否则 UndefinedColumnError。
 V31 = "b1000051"
 V52 = "b1000052"
+V70 = "b1000070"
 
 
 def _run(cmd, revision, db_url):

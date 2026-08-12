@@ -345,13 +345,23 @@ def test_orjson_importable_from_requirements():
 
 def test_web_seo_and_trading_routers_registered():
     """trading router 与 web_seo router 均包含；health/metrics 在第一个 include 之前。"""
-    from app.controllers.admin import trading as admin_trading
+    from app.controllers.admin.trading.router import router as admin_trading_router
     from app.controllers.web import seo as web_seo
     from fastapi.routing import APIRoute
 
-    router_paths = [r.path for r in admin_trading.router.routes]
+    def _paths(router):
+        """惰性 include 的 _IncludedRouter 递归展开；仅收集 APIRoute path。"""
+        out = []
+        for r in router.routes:
+            if isinstance(r, APIRoute):
+                out.append(r.path)
+            elif hasattr(r, "original_router"):
+                out.extend(_paths(r.original_router))
+        return out
+
+    router_paths = _paths(admin_trading_router)
     assert "/trading/runtime" in router_paths
-    seo_paths = [r.path for r in web_seo.router.routes]
+    seo_paths = [r.path for r in web_seo.router.routes if isinstance(r, APIRoute)]
     assert "/{name}" in seo_paths
 
     # app.routes 中 health/metrics 作为独立 APIRoute 在第一个 _IncludedRouter 之前
