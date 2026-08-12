@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05：✅ COMPLETE**；`WP-06` ⏳ pending。
+> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05 / WP-06：✅ COMPLETE**；`WP-07A` ⏳ pending。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -42,7 +42,7 @@
 | WP-03 | 0030/0031 decision/portfolio/shadow execution/ledger | ✅ DONE，审查通过 | `wp-03-market-relative-decision-shadow-ledger.md` | `996869e25bf818d0fe58b2463a6784a477f43c15b508fa1ec78d0e28621822b5` | 2026-08-11 |
 | WP-04 | 0040/0041 label/evaluation/replay/promotion/read projections | ✅ DONE，审查通过 | `wp-04-learning-evaluation-read-projections.md` | `c22daa477f748354538c484fff5957e237a0f03db39907c2767580e957bf638a` | 2026-08-11 |
 | WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ✅ DONE，审查通过 | `wp-05-execution-readiness-private-clob.md` | `04e365b4b1c18dc529dd2f6aa73c0cccf29c6a6cab5487787776f74a9bdc2fc9` | 2026-08-11 |
-| WP-06 | 0052 Polygon/relayer/settlement | ⏳ pending | — | — | — |
+| WP-06 | 0052 Polygon/relayer/settlement | ✅ DONE | `wp-06-polygon-relayer-settlement.md` | `18c0a510c15fdb23e134232443b293b309d9896ad2ca8b23731ae2199a5841d8` | 2026-08-11 |
 | WP-07A | Admin API + frontend types/query scaffolding | ⏳ pending | — | — | — |
 | WP-07B | 14 菜单页、5 详情页与交互 | ⏳ pending | — | — | — |
 | WP-08 | 0090 分区/归档/perf harness/alerts/soak | ⏳ pending | — | — | — |

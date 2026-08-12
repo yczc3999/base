@@ -8,7 +8,7 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-06` |
-| 状态 | `READY` |
+| 状态 | `DONE（待审）` |
 | 任务文档 | [`wp-06-polygon-relayer-settlement.md`](wp-06-polygon-relayer-settlement.md) |
 | 交付 manifest | `serve/docs/manifests/wp-06-polygon-relayer-settlement.md` |
 | 前置实现 | `WP-05` 已接受；head=`b1000051`；manifest SHA=`04e365b4…c2fc9` |
@@ -66,3 +66,4 @@
 | `WP-03` | DONE | ACCEPTED | 审查修复提交 `2a22ff9`；69 unit + 17 真 PG/replay、1255 trading、1466 full，均 0 skip/fail；VAL 206.796/s、TERM 12.0/s 持续 60s；DB-authoritative Q/quote/cost/cap、intent、BUY/SELL ledger、reversal、V1 Gold 边界全关；manifest SHA `996869e2…` |
 | `WP-04` | DONE | ACCEPTED | 审查修复提交 `8ff2067`；63 unit + 57 真 PG/replay、1375 trading、1586 full，均 0 skip/fail；clean perf keyset 100,006 行 p99=3.254ms、scientific replay p99=21.218ms、rebuild hash一致且 lost/dup=0、498.493 q/s；生产 policy、CAS/full cashflow、midpoint/vector exclusion、exact cohort/五层/replay/cursor/DB guard 全关；manifest SHA `c22daa47…` |
 | `WP-05` | DONE | ACCEPTED | 审查修复 `f53888f` + 性能证据 `5588576`；1566 trading、1777 full，均 0 skip/fail；clean perf 3024 intents/60.006s=50.395/s，WS p99=5.185ms、1k reconcile p99=91.043ms、pool peak exec2/recon1、fake/real=4706/0；Vault identity、fund consumption、全副作用 fencing、UNKNOWN 恢复、CONFIRMED trade、heartbeat hard-stop、NegRisk/clock/egress 全关；manifest SHA `04e365b4…c2fc9`；进入 WP-06 |
+| `WP-06` | DONE | 待审 | 实现 `de79edc`；103 定向 + 1669 trading + 1880 full 均 0 skip/fail；clean perf 211.3 ops/s×60s、G2 1000 recovery blind resend=0、pool p95=8.48ms、fake/real=12680/0；registry 双路径 keccak、CONFIRMED≠finality、UNKNOWN 只读恢复、balanced ledger、secret=0 全关；manifest SHA `18c0a510c15f…`；进入 WP-07A |
