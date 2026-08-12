@@ -8,7 +8,7 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-07B` |
-| 状态 | `READY` |
+| 状态 | `DONE（待审）` |
 | 任务文档 | [`wp-07b-admin-pages.md`](wp-07b-admin-pages.md) |
 | 交付 manifest | `serve/docs/manifests/wp-07b-admin-pages.md` |
 | 前置实现 | `WP-07A` 已 ACCEPTED；code commit=`280afcc`；head=`b1000070`；manifest SHA=`881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` |
