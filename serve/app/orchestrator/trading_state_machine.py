@@ -43,6 +43,43 @@ ORDER_TRANSITIONS: dict[str, frozenset[str]] = {
     "RECONCILED": frozenset(),
 }
 
+# WP-06 chain settlement is driven by Evaluation/Reconciliation runtimes, but its
+# transition vocabulary is shared here with every orchestrated producer.  PostgreSQL
+# remains the final CAS authority; this map rejects programming errors before SQL.
+CHAIN_OPERATION_TRANSITIONS: dict[str, frozenset[str]] = {
+    "PREPARED": frozenset({"SUBMITTING"}),
+    "SUBMITTING": frozenset({"UNKNOWN", "RELAYER_NEW", "EXECUTED", "INVALID", "FAILED"}),
+    "UNKNOWN": frozenset({"RELAYER_NEW", "EXECUTED", "INVALID", "FAILED", "REORGED", "SETTLEMENT_CONFLICT", "REVERSED"}),
+    "RELAYER_NEW": frozenset({"EXECUTED", "MINED", "INVALID", "FAILED", "UNKNOWN", "REORGED"}),
+    "EXECUTED": frozenset({"MINED", "INVALID", "FAILED", "UNKNOWN", "REORGED"}),
+    "MINED": frozenset({"RELAYER_CONFIRMED", "MINED_PROVISIONAL", "INVALID", "FAILED", "UNKNOWN", "REORGED"}),
+    "RELAYER_CONFIRMED": frozenset({
+        "MINED_PROVISIONAL", "FINALIZED", "UNKNOWN", "REORGED", "INVALID",
+        "FAILED", "SETTLEMENT_CONFLICT",
+    }),
+    "MINED_PROVISIONAL": frozenset({
+        "FINALIZED", "UNKNOWN", "REORGED", "INVALID", "FAILED",
+        "SETTLEMENT_CONFLICT",
+    }),
+    "FINALIZED": frozenset({"SETTLEMENT_CONFLICT", "REVERSED"}),
+    "REORGED": frozenset({"UNKNOWN"}),
+    "REVERSED": frozenset({"SETTLEMENT_CONFLICT"}),
+    "INVALID": frozenset(),
+    "FAILED": frozenset(),
+    "SETTLEMENT_CONFLICT": frozenset(),
+}
+
+
+def assert_chain_operation_transition(from_status: str, to_status: str) -> None:
+    if from_status not in CHAIN_OPERATION_TRANSITIONS:
+        raise IllegalTransitionError(f"unknown_chain_operation_state:{from_status}")
+    if to_status not in CHAIN_OPERATION_TRANSITIONS:
+        raise IllegalTransitionError(f"unknown_chain_operation_state:{to_status}")
+    if to_status not in CHAIN_OPERATION_TRANSITIONS[from_status]:
+        raise IllegalTransitionError(
+            f"illegal_chain_operation_transition:{from_status}->{to_status}"
+        )
+
 
 def assert_order_transition(from_status: str, to_status: str) -> None:
     """校验订单状态转移；非法/倒退一律拒绝（DB guard 与 Logic 双重校验）。"""

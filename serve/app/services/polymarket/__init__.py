@@ -46,10 +46,28 @@ from app.services.polymarket.user_ws_driver import (
     UserWsMessage,
     UserWsPolicy,
 )
+from app.services.polymarket.geoblock_driver import (
+    GeoblockCheckError,
+    GeoblockDriver,
+    GeoblockResult,
+    fixture_geoblock_transport,
+)
+from app.services.polymarket.polygon_driver import (
+    PolygonDriver,
+    fixture_polygon_transport,
+)
+from app.services.polymarket.relayer_driver import (
+    PreparedRelayerBatch,
+    RelayerDriver,
+    fixture_relayer_transport,
+)
 from app.services.polymarket.service import (
+    ChainMarketWireConfig,
     PolymarketService,
     PrivateMarketWireConfig,
     PublicMarketWireConfig,
+    RelayerVaultRefs,
+    VaultSecretVersionRef,
 )
 
 __all__ = [
@@ -86,4 +104,17 @@ __all__ = [
     "DataApiDriver",
     "DATA_API_BASE_URL",
     "PrivateMarketWireConfig",
+    "ChainMarketWireConfig",
+    "VaultSecretVersionRef",
+    "RelayerVaultRefs",
+    # WP-06 Polygon / Relayer / geoblock
+    "PolygonDriver",
+    "fixture_polygon_transport",
+    "RelayerDriver",
+    "PreparedRelayerBatch",
+    "fixture_relayer_transport",
+    "GeoblockDriver",
+    "GeoblockResult",
+    "GeoblockCheckError",
+    "fixture_geoblock_transport",
 ]

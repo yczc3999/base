@@ -91,13 +91,14 @@ STABILITY_SNAPSHOT_PATH = (
 # WP-05 完成后 head=b1000052；P-stability 在完整 head 上验证（与 ORM metadata 对齐）。
 HEAD = "b1000052"
 
-# 固定时基：落在 20260811 partition 且早于测试运行日（今天 2026-08-11）。
+# 固定时基：落在 20260811 partition，用于所有属于业务身份的事件时间。
 # opportunity/episode 的 opportunity_key 含 triggered_at，故该锚必须固定以保证
-# ``== expected``（冻结 snapshot hash）。book/decision 时间固定到 migration 当前日的下一日；
-# 0011 会建当前日+7日分区，且 stale_at 相对测试执行时仍在未来。
+# ``== expected``（冻结 snapshot hash）。book 采集时间属于可变 freshness 证据，
+# 每个 fixture 捕获一次当前 UTC；生产 DB 仍要求 quote.stale_at > execution.created_at，
+# 但 authorization 业务 hash 只绑定 book/depth/request content hash 与自然身份。
 FIXED = datetime(2026, 8, 11, 3, 4, 5, tzinfo=timezone.utc)
 CUTOFF = FIXED + timedelta(days=2)
-FIXED_BOOK_RECEIVED_AT = FIXED + timedelta(days=1)
+FIXED_BOOK_RECEIVED_AT = FIXED + timedelta(days=1)  # non-runtime helper fallback only
 
 def _seed_book_time(env: dict | None = None) -> datetime:
     """Return the frozen book timestamp used by every replay/fault case."""
@@ -122,7 +123,8 @@ def _refresh_frozen_authorization_hash(actual_hash: str) -> None:
     snapshot["expected_business_hashes"]["authorization_envelope_note"] = (
         "real b1000051 reduce-only envelope; authority/market/envelope v2 binds "
         "natural identity, immutable market facts, neg-risk mode, and the frozen "
-        "official exchange address without surrogate IDs"
+        "official exchange address without surrogate IDs or wall-clock evidence "
+        "timestamps; freshness remains DB-validated"
     )
     change = next(
         row for row in snapshot["hash_change_log"]
@@ -147,9 +149,9 @@ def _refresh_frozen_authorization_hash(actual_hash: str) -> None:
         "new_hash": actual_hash,
         "reason": (
             "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal "
-            "full replays after market preflight bound gamma market ID, condition ID, "
-            "market content hash, neg-risk mode, and the frozen official Standard/"
-            "NegRisk exchange address"
+            "full replays after separating DB-validated quote/balance freshness "
+            "timestamps from immutable book/depth/request content while retaining "
+            "natural market identity, neg-risk mode, and exchange address bindings"
         ),
         "algorithm_code_hash": EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH,
     })
@@ -222,7 +224,9 @@ async def stability_env(temp_pg_db):
         "ledger": LedgerRepository(),
         "forecast": ForecastRepository(),
         "wf": WorkflowRepository(),
-        "book_received_at": FIXED_BOOK_RECEIVED_AT,
+        # Capture once so every stage/restart in this test sees the same valid
+        # evidence instant.  Second-level precision also matches provider facts.
+        "book_received_at": datetime.now(timezone.utc).replace(microsecond=0),
     }
     yield env
     await engine.dispose()

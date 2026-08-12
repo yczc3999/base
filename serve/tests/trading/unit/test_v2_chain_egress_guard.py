@@ -56,9 +56,12 @@ async def test_relayer_driver_default_requires_injected_transport(relayer_driver
     assert driver.transport_calls == 0
     await _assert_tripwire(driver.get_nonce, "0x" + "11" * 20)
     await _assert_tripwire(
-        driver.submit_batch, from_address="0x" + "11" * 20, to_address="0x" + "22" * 20,
-        nonce="1", deposit_wallet="0x" + "22" * 20, calls=[], metadata="m",
-        signature="0x" + "00" * 65,
+        driver.prepare_batch,
+        from_address="0x" + "11" * 20,
+        to_address="0x" + "22" * 20,
+        deposit_wallet="0x" + "22" * 20,
+        calls=[],
+        metadata="m",
     )
     await _assert_tripwire(driver.get_transaction_status, "tx-0001")
     assert driver.transport_calls == 0
@@ -85,3 +88,23 @@ async def test_relayer_driver_rejects_before_client_construction(relayer_driver_
 
 def test_tripwire_reason_constant_frozen() -> None:
     assert REASON_EGRESS_TRIPWIRE == "wire_egress_tripwire"
+
+
+def test_unmarked_injected_callable_is_not_treated_as_fake(
+    polygon_driver_cls, relayer_driver_cls
+) -> None:
+    async def polygon_transport(payload, endpoint):
+        raise AssertionError("must not be called")
+
+    async def relayer_transport(method, path, **kwargs):
+        raise AssertionError("must not be called")
+
+    with pytest.raises(PolymarketError) as polygon_error:
+        polygon_driver_cls(
+            rpc_urls=["https://a.example", "https://b.example", "https://c.example"],
+            transport=polygon_transport,
+        )
+    assert polygon_error.value.reason_code == REASON_EGRESS_TRIPWIRE
+    with pytest.raises(PolymarketError) as relayer_error:
+        relayer_driver_cls(transport=relayer_transport)
+    assert relayer_error.value.reason_code == REASON_EGRESS_TRIPWIRE

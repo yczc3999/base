@@ -328,11 +328,6 @@ class ContractRegistry(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             "chain_id", "kind", "version_no",
             name="uq_contract_registry_chain_kind_version",
         ),
-        UniqueConstraint(
-            "chain_id", "kind", "address",
-            name="uq_contract_registry_chain_kind_addr",
-        ),
-        UniqueConstraint("runtime_keccak", name="uq_contract_registry_runtime_keccak"),
         CheckConstraint(
             "kind IN ('pusd','ctf','deposit_wallet','ctf_adapter_standard','neg_risk_adapter')",
             name="ck_contract_registry_kind_known",
@@ -454,9 +449,41 @@ class ChainOperation(TradingBase, BigIntIdentityMixin, TimestampMixin):
             name="ck_chain_operations_receipt_hash_hex",
         ),
         CheckConstraint(
+            "canonical_block_hash IS NULL OR canonical_block_hash ~ '^0x[0-9a-f]{64}$'",
+            name="ck_chain_operations_canonical_hash_hex",
+        ),
+        CheckConstraint(
+            "finalized_block_hash IS NULL OR finalized_block_hash ~ '^0x[0-9a-f]{64}$'",
+            name="ck_chain_operations_finalized_hash_hex",
+        ),
+        CheckConstraint(
+            "registry_content_hash ~ '^[0-9a-f]{64}$' "
+            "AND registry_bundle_content_hash ~ '^[0-9a-f]{64}$' "
+            "AND registry_evidence_hash ~ '^[0-9a-f]{64}$' "
+            "AND geo_evidence_hash ~ '^[0-9a-f]{64}$' "
+            "AND (balance_evidence_hash IS NULL OR balance_evidence_hash ~ '^[0-9a-f]{64}$') "
+            "AND (settlement_set_key IS NULL OR settlement_set_key ~ '^[0-9a-f]{64}$')",
+            name="ck_chain_operations_evidence_hashes_hex",
+        ),
+        CheckConstraint(
             "(pre_balance IS NULL OR jsonb_typeof(pre_balance) = 'object') AND "
-            "(post_balance IS NULL OR jsonb_typeof(post_balance) = 'object')",
+            "(post_balance IS NULL OR jsonb_typeof(post_balance) = 'object') AND "
+            "jsonb_typeof(registry_bundle) = 'object'",
             name="ck_chain_operations_balances_object",
+        ),
+        CheckConstraint(
+            "(balance_evidence_artifact_id IS NULL) = (balance_evidence_hash IS NULL)",
+            name="ck_chain_operations_balance_artifact_pair",
+        ),
+        CheckConstraint(
+            "length(btrim(geo_source_version)) > 0",
+            name="ck_chain_operations_geo_source_nonempty",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(settlement_allocation) = 'array' "
+            "AND jsonb_array_length(settlement_allocation) > 0 "
+            "AND settlement_allocation_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_chain_operations_allocation_shape",
         ),
         CheckConstraint(
             "NOT economic_effect_applied OR status IN "
@@ -467,9 +494,12 @@ class ChainOperation(TradingBase, BigIntIdentityMixin, TimestampMixin):
             "status <> 'FINALIZED' OR ("
             "transaction_id IS NOT NULL AND transaction_hash IS NOT NULL AND "
             "receipt_block_number IS NOT NULL AND receipt_block_hash IS NOT NULL AND "
-            "finalized_block_number IS NOT NULL AND "
-            "pre_balance IS NOT NULL AND post_balance IS NOT NULL AND "
-            "economic_effect_applied)",
+            "receipt_status IS TRUE AND canonical_block_hash = receipt_block_hash AND "
+            "finalized_block_number IS NOT NULL AND finalized_block_hash IS NOT NULL AND "
+            "finalized_block_number > receipt_block_number AND "
+            "registry_evidence_hash IS NOT NULL AND balance_evidence_hash IS NOT NULL AND "
+            "settlement_set_key IS NOT NULL AND "
+            "pre_balance IS NOT NULL AND post_balance IS NOT NULL)",
             name="ck_chain_operations_finalized_evidence",
         ),
         CheckConstraint(
@@ -510,9 +540,10 @@ class ChainOperation(TradingBase, BigIntIdentityMixin, TimestampMixin):
     )
     wallet_address: Mapped[str] = mapped_column(external_id_type(), nullable=False)
     condition_id: Mapped[str] = mapped_column(String(66, collation="C"), nullable=False)
-    market_id: Mapped[int | None] = mapped_column(
+    market_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.pm_markets.id", name="fk_chain_operations_market"),
+        nullable=False,
     )
     registry_version_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -521,6 +552,7 @@ class ChainOperation(TradingBase, BigIntIdentityMixin, TimestampMixin):
     )
     target_address: Mapped[str] = mapped_column(external_id_type(), nullable=False)
     permission_ref: Mapped[str] = mapped_column(external_id_type(), nullable=False)
+    lease_owner: Mapped[str] = mapped_column(external_id_type(), nullable=False)
     release_manifest_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.release_manifests.id", name="fk_chain_operations_release"),
@@ -550,7 +582,45 @@ class ChainOperation(TradingBase, BigIntIdentityMixin, TimestampMixin):
     transaction_hash: Mapped[str | None] = mapped_column(external_id_type())
     receipt_block_number: Mapped[int | None] = mapped_column(BigInteger)
     receipt_block_hash: Mapped[str | None] = mapped_column(String(66, collation="C"))
+    receipt_status: Mapped[bool | None] = mapped_column(Boolean)
+    canonical_block_hash: Mapped[str | None] = mapped_column(String(66, collation="C"))
     finalized_block_number: Mapped[int | None] = mapped_column(BigInteger)
+    finalized_block_hash: Mapped[str | None] = mapped_column(String(66, collation="C"))
+    registry_content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    registry_bundle: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    registry_bundle_content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    registry_evidence_artifact_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "trading.artifact_objects.id",
+            name="fk_chain_operations_registry_evidence_artifact",
+        ),
+        nullable=False,
+    )
+    registry_evidence_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    geo_evidence_artifact_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "trading.artifact_objects.id",
+            name="fk_chain_operations_geo_evidence_artifact",
+        ),
+        nullable=False,
+    )
+    geo_evidence_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    geo_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    geo_observed_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
+    geo_source_version: Mapped[str] = mapped_column(String(64, collation="C"), nullable=False)
+    balance_evidence_artifact_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "trading.artifact_objects.id",
+            name="fk_chain_operations_balance_evidence_artifact",
+        ),
+    )
+    balance_evidence_hash: Mapped[str | None] = mapped_column(sha256_type())
+    settlement_set_key: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    settlement_allocation: Mapped[list] = mapped_column(JSONB, nullable=False)
+    settlement_allocation_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     pre_balance: Mapped[dict | None] = mapped_column(JSONB)
     post_balance: Mapped[dict | None] = mapped_column(JSONB)
     economic_effect_applied: Mapped[bool] = mapped_column(
@@ -593,7 +663,7 @@ class ChainOperationStateHistory(TradingBase, BigIntIdentityMixin, CreatedAtMixi
             "(transition_from = 'SUBMITTING' AND transition_to IN "
             "('UNKNOWN','RELAYER_NEW','EXECUTED','INVALID','FAILED')) OR "
             "(transition_from = 'UNKNOWN' AND transition_to IN "
-            "('RELAYER_NEW','EXECUTED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR "
+            "('RELAYER_NEW','EXECUTED','INVALID','FAILED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR "
             "(transition_from = 'RELAYER_NEW' AND transition_to IN "
             "('EXECUTED','MINED','INVALID','FAILED','UNKNOWN','REORGED')) OR "
             "(transition_from = 'EXECUTED' AND transition_to IN "
@@ -601,11 +671,12 @@ class ChainOperationStateHistory(TradingBase, BigIntIdentityMixin, CreatedAtMixi
             "(transition_from = 'MINED' AND transition_to IN "
             "('RELAYER_CONFIRMED','MINED_PROVISIONAL','INVALID','FAILED','UNKNOWN','REORGED')) OR "
             "(transition_from = 'RELAYER_CONFIRMED' AND transition_to IN "
-            "('MINED_PROVISIONAL','FINALIZED','UNKNOWN','REORGED')) OR "
+            "('MINED_PROVISIONAL','FINALIZED','INVALID','FAILED','UNKNOWN','REORGED','SETTLEMENT_CONFLICT')) OR "
             "(transition_from = 'MINED_PROVISIONAL' AND transition_to IN "
-            "('FINALIZED','REORGED','UNKNOWN')) OR "
+            "('FINALIZED','INVALID','FAILED','REORGED','UNKNOWN','SETTLEMENT_CONFLICT')) OR "
             "(transition_from = 'FINALIZED' AND transition_to IN "
             "('SETTLEMENT_CONFLICT','REVERSED')) OR "
+            "(transition_from = 'REORGED' AND transition_to = 'UNKNOWN') OR "
             "(transition_from = 'REVERSED' AND transition_to = 'SETTLEMENT_CONFLICT')",
             name="ck_chain_op_state_history_transition_exact",
         ),
@@ -624,6 +695,7 @@ class ChainOperationStateHistory(TradingBase, BigIntIdentityMixin, CreatedAtMixi
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     event_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     event_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    lease_owner: Mapped[str] = mapped_column(external_id_type(), nullable=False)
     fence_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
@@ -634,6 +706,10 @@ class SettlementObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     __table_args__ = (
         UniqueConstraint("observation_key", name="uq_settlement_observations_key"),
         UniqueConstraint("content_hash", name="uq_settlement_observations_hash"),
+        UniqueConstraint(
+            "settlement_set_key", "source_kind",
+            name="uq_settlement_observations_set_source",
+        ),
         CheckConstraint(
             "source_kind IN (" + ",".join(f"'{s}'" for s in SETTLEMENT_SOURCE_KINDS) + ")",
             name="ck_settlement_observations_source_known",
@@ -655,13 +731,40 @@ class SettlementObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="ck_settlement_observations_content_hash_hex",
         ),
         CheckConstraint(
-            "jsonb_typeof(token_set) = 'array'",
+            "jsonb_typeof(token_set) = 'array' AND jsonb_array_length(token_set) = 2",
             name="ck_settlement_observations_token_set",
         ),
         CheckConstraint(
+            "settlement_set_key ~ '^[0-9a-f]{64}$' AND token_set_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_settlement_observations_set_hashes_hex",
+        ),
+        CheckConstraint(
+            "as_of <= received_at AND as_of <= source_cutoff",
+            name="ck_settlement_observations_time_order",
+        ),
+        CheckConstraint(
+            "length(btrim(source_version)) > 0",
+            name="ck_settlement_observations_source_version_nonempty",
+        ),
+        CheckConstraint(
+            "raw_artifact_id IS NOT NULL OR raw_artifact_ref ~ '^[0-9a-f]{64}$'",
+            name="ck_settlement_observations_artifact_ref",
+        ),
+        CheckConstraint(
+            "status <> 'COMPLETE' OR raw_artifact_id IS NOT NULL",
+            name="ck_settlement_observations_complete_artifact",
+        ),
+        CheckConstraint(
             "(source_kind = 'ctf_payout') = "
-            "(numerator IS NOT NULL AND denominator IS NOT NULL)",
+            "(numerator IS NOT NULL AND denominator IS NOT NULL AND payout_vector IS NOT NULL)",
             name="ck_settlement_observations_payout_pair",
+        ),
+        CheckConstraint(
+            "payout_vector IS NULL OR (jsonb_typeof(payout_vector) = 'object' "
+            "AND jsonb_typeof(payout_vector->'numerators') = 'array' "
+            "AND jsonb_array_length(payout_vector->'numerators') = 2 "
+            "AND payout_vector ? 'denominator')",
+            name="ck_settlement_observations_payout_vector",
         ),
         CheckConstraint(
             "(source_kind = 'clob_winner_5050') = "
@@ -678,13 +781,17 @@ class SettlementObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     )
 
     observation_key: Mapped[str] = mapped_column(external_id_type(), nullable=False)
+    settlement_set_key: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     condition_id: Mapped[str] = mapped_column(String(66, collation="C"), nullable=False)
-    market_id: Mapped[int | None] = mapped_column(
+    market_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("trading.pm_markets.id", name="fk_settlement_observations_market"),
+        nullable=False,
     )
     token_set: Mapped[list] = mapped_column(JSONB, nullable=False)
+    token_set_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+    payout_vector: Mapped[dict | None] = mapped_column(JSONB)
     outcome_index: Mapped[str | None] = mapped_column(String(32))
     numerator: Mapped[str | None] = mapped_column(external_id_type())
     denominator: Mapped[str | None] = mapped_column(external_id_type())
@@ -692,9 +799,15 @@ class SettlementObservation(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     is_50_50_outcome: Mapped[bool | None] = mapped_column(Boolean)
     redeemable: Mapped[bool | None] = mapped_column(Boolean)
     label_audit_version: Mapped[str | None] = mapped_column(String(64, collation="C"))
+    source_version: Mapped[str] = mapped_column(String(64, collation="C"), nullable=False)
+    source_cutoff: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
     as_of: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
     received_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
     raw_artifact_ref: Mapped[str | None] = mapped_column(String(64, collation="C"))
+    raw_artifact_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.artifact_objects.id", name="fk_settlement_observations_artifact"),
+    )
     raw_artifact_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB)

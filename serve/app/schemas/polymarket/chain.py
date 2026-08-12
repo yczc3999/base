@@ -14,14 +14,15 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.polymarket.common import PolymarketError
 
-_HEX_QUANTITY_RE = re.compile(r"^0x[0-9a-fA-F]+$")
+_HEX_QUANTITY_RE = re.compile(r"^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$")
 _HEX_DATA_RE = re.compile(r"^0x(?:[0-9a-fA-F]{2})*$")
 _HEX32_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_RELAYER_TRANSACTION_ID_RE = re.compile(r"^[A-Za-z0-9._~-]{1,256}$")
 
 
 def validate_hex_quantity(value: str, *, path: str) -> str:
@@ -52,24 +53,33 @@ def validate_hex32(value: str, *, path: str) -> str:
     return value.lower()
 
 
+def validate_relayer_transaction_id(value: object) -> str:
+    """Strict URL-path-safe Relayer transaction identity."""
+    if not isinstance(value, str) or not _RELAYER_TRANSACTION_ID_RE.fullmatch(value):
+        raise ValueError("relayer_transaction_id_invalid")
+    return value
+
+
 class RpcBlock(BaseModel):
     """``eth_getBlockByNumber`` 结果（minimal：number/hash/timestamp/transactions 计数）。"""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", strict=True, populate_by_name=True)
 
     number: str
     hash: str
     timestamp: str
-    parent_hash: str | None = None
+    parent_hash: str | None = Field(default=None, alias="parentHash")
 
     @field_validator("number", "timestamp")
     @classmethod
     def _qty(cls, v: str) -> str:
         return validate_hex_quantity(v, path="block")
 
-    @field_validator("hash")
+    @field_validator("hash", "parent_hash")
     @classmethod
-    def _hash(cls, v: str) -> str:
+    def _hash(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         return validate_hex32(v, path="block")
 
     @property
@@ -77,10 +87,18 @@ class RpcBlock(BaseModel):
         return int(self.number, 16)
 
 
+class RpcLog(BaseModel):
+    """Receipt log fields relevant to canonical/reorg handling."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    removed: bool = False
+
+
 class RpcReceipt(BaseModel):
     """``eth_getTransactionReceipt`` 结果（strict shape；removed 表示 reorg）。"""
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, strict=True)
 
     transaction_hash: str = Field(alias="transactionHash")
     status: str
@@ -88,7 +106,7 @@ class RpcReceipt(BaseModel):
     block_hash: str = Field(alias="blockHash")
     transaction_index: str = Field(alias="transactionIndex")
     removed: bool = False
-    logs: list = Field(default_factory=list)
+    logs: list[RpcLog] = Field(default_factory=list)
 
     @field_validator("transaction_hash", "block_hash")
     @classmethod
@@ -115,6 +133,10 @@ class RpcReceipt(BaseModel):
     def block_number_int(self) -> int:
         return int(self.block_number, 16)
 
+    @property
+    def has_removed_log(self) -> bool:
+        return self.removed or any(log.removed for log in self.logs)
+
 
 @dataclass(frozen=True)
 class FinalityCheck:
@@ -130,7 +152,7 @@ class FinalityCheck:
 class RpcError(BaseModel):
     """JSON-RPC error 对象（脱敏：code/message 保留，data 丢弃）。"""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", strict=True)
 
     code: int
     message: str
@@ -139,7 +161,7 @@ class RpcError(BaseModel):
 class JsonRpcResponse(BaseModel):
     """JSON-RPC 响应外壳：``jsonrpc=2.0`` + ``id`` 匹配 + result XOR error。"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     jsonrpc: str
     id: int
@@ -153,15 +175,40 @@ class JsonRpcResponse(BaseModel):
             raise ValueError("jsonrpc_version_invalid")
         return v
 
+    @model_validator(mode="before")
+    @classmethod
+    def _result_xor_error(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        if ("result" in value) == ("error" in value):
+            raise ValueError("jsonrpc_result_error_xor_invalid")
+        return value
+
     def ensure_no_error(self, *, path: str) -> None:
         if self.error is not None:
             raise ValueError(f"{path}_rpc_error:{self.error.code}")
 
 
+_RELAYER_STATES = {
+    "STATE_NEW": "NEW",
+    "STATE_EXECUTED": "EXECUTED",
+    "STATE_MINED": "MINED",
+    "STATE_CONFIRMED": "CONFIRMED",
+    "STATE_INVALID": "INVALID",
+    "STATE_FAILED": "FAILED",
+}
+
+
+def normalize_relayer_state(value: object) -> str:
+    if not isinstance(value, str) or value not in _RELAYER_STATES:
+        raise ValueError("relayer_state_invalid")
+    return _RELAYER_STATES[value]
+
+
 class RelayerStatus(BaseModel):
     """``GET /v1/account/transactions/{id}`` 响应。CONFIRMED 只是 Relayer 成功终态。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     transaction_id: str
     transaction_hash: str | None = None
@@ -171,15 +218,38 @@ class RelayerStatus(BaseModel):
     @field_validator("state")
     @classmethod
     def _state(cls, v: str) -> str:
-        allowed = ("NEW", "EXECUTED", "MINED", "CONFIRMED", "INVALID", "FAILED")
-        if v not in allowed:
-            raise ValueError("relayer_state_invalid")
+        normalize_relayer_state(v)
         return v
+
+    @field_validator("transaction_id")
+    @classmethod
+    def _transaction_id(cls, v: str) -> str:
+        return validate_relayer_transaction_id(v)
+
+    @field_validator("transaction_hash")
+    @classmethod
+    def _transaction_hash(cls, v: str | None) -> str | None:
+        if v in (None, ""):
+            return None
+        return validate_hex32(v, path="relayer_transaction")
+
+    @field_validator("error_msg")
+    @classmethod
+    def _redact_error_msg(cls, v: str | None) -> str | None:
+        # Provider text can echo request bodies, endpoint credentials, or keys.
+        # Preserve only presence; raw fixture artifacts remain separately hashed.
+        if v in (None, ""):
+            return None
+        return "provider_error_present"
+
+    @property
+    def normalized_state(self) -> str:
+        return normalize_relayer_state(self.state)
 
     @property
     def is_terminal(self) -> bool:
-        return self.state in ("CONFIRMED", "INVALID", "FAILED")
+        return self.normalized_state in ("CONFIRMED", "INVALID", "FAILED")
 
     @property
     def is_success_terminal(self) -> bool:
-        return self.state == "CONFIRMED"
+        return self.normalized_state == "CONFIRMED"

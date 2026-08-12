@@ -56,6 +56,10 @@ from app.schemas.trading.execution import (
     SubmitOrderInput,
 )
 from app.schemas.trading.settlement import (
+    ChainRecoveryEvidence,
+    ChainRedeemRequest,
+    ChainSettlementEvidenceInput,
+    ChainWireEvidence,
     ClusterInput,
     LabelRevisionInput,
     ScoreTargetInput,
@@ -114,6 +118,11 @@ __all__ = [
     "LabelRevisionInput",
     "ClusterInput",
     "ScoreTargetInput",
+    # WP-06 Polygon/Relayer settlement runtime
+    "ChainRedeemRequest",
+    "ChainWireEvidence",
+    "ChainRecoveryEvidence",
+    "ChainSettlementEvidenceInput",
     # evaluation (WP-04)
     "ScoreObservationInput",
     "ExperimentInput",

@@ -1,162 +1,142 @@
-"""WP-06 Checkpoint D —— chain operation recovery replay（真 PostgreSQL）。
-
-证明：N 个 UNKNOWN/active operation 两次恢复最终状态/hash 全等、blind resend=0；
-restart 从 DB facts 恢复，不调用 AI、不重算 decision、不盲重发。
-"""
-
+"""WP-06 UNKNOWN restart recovery through EvaluationRuntime (zero resend)."""
 from __future__ import annotations
 
-from pathlib import Path
-
+import asyncio
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
-from app.db.uow import UnitOfWork
-from app.logics.trading.settlement import ChainSettlementLogic
-from app.repositories.trading.settlement import ChainOperationRepository
+from app.services.polymarket.relayer_driver import fixture_relayer_transport
+from tests.trading.integration.wp06_runtime_fixture import (
+    build_runtime,
+    query,
+    request,
+    seed_authority,
+    seed_real_position_lineage,
+    seed_settlement,
+    upgrade,
+)
 
-SERVE_DIR = Path(__file__).resolve().parents[3]
-ALEMBIC_DIR = SERVE_DIR / "alembic"
-V52 = "b1000052"
-
-
-def _upgrade(db_url):
-    cfg = Config()
-    cfg.set_main_option("script_location", str(ALEMBIC_DIR))
-    engine = create_engine(db_url, poolclass=NullPool)
-    conn = engine.connect()
-    cfg.attributes["connection"] = conn
+@pytest.mark.anyio
+async def test_1000_unknown_recoveries_twice_are_equal_and_never_resubmit(
+    temp_pg_db, tmp_path
+):
+    """Two 1,000-call restart passes read the same UNKNOWN fact without resend."""
+    url = temp_pg_db.url
+    upgrade(url)
+    ids = seed_authority(url)
+    runtime, store, calls, engine = build_runtime(url, tmp_path / "cas", ids)
+    ids = await seed_real_position_lineage(runtime._sessions, url, ids)
     try:
-        command.upgrade(cfg, V52)
+        await seed_settlement(runtime, store, ids)
+        original_transport = runtime._relayer._transport
+
+        @fixture_relayer_transport
+        async def lose_submit_response(method, path, **kwargs):
+            response = await original_transport(method, path, **kwargs)
+            if path == "/submit":
+                raise asyncio.CancelledError
+            return response
+
+        runtime._relayer._transport = lose_submit_response
+        with pytest.raises(asyncio.CancelledError):
+            await runtime.submit_redeem(request(ids, "unknown"))
+        operation = query(
+            url,
+            "SELECT id,status,body_hash,expected_operation_hash,economic_effect_applied "
+            "FROM trading.chain_operations WHERE operation_key=:key",
+            {"key": request(ids, "unknown").operation_key},
+        )
+        assert len(operation) == 1
+        operation_id = operation[0]["id"]
+        assert operation[0]["status"] == "UNKNOWN"
+        assert operation[0]["economic_effect_applied"] is False
+        assert calls["submit_calls"] == 1
+
+        # With no transaction id/hash, recovery is evidence-only.  It may query
+        # nonce and frozen registry code, but cannot call the write endpoint.
+        first = []
+        for _ in range(1000):
+            first.append(await runtime.recover_chain_operation(
+                operation_id=operation_id, fencing_token=1
+            ))
+        first_fact = query(
+            url,
+            "SELECT status,body_hash,expected_operation_hash,economic_effect_applied "
+            "FROM trading.chain_operations WHERE id=:id",
+            {"id": operation_id},
+        )
+
+        second = []
+        for _ in range(1000):
+            second.append(await runtime.recover_chain_operation(
+                operation_id=operation_id, fencing_token=1
+            ))
+        second_fact = query(
+            url,
+            "SELECT status,body_hash,expected_operation_hash,economic_effect_applied "
+            "FROM trading.chain_operations WHERE id=:id",
+            {"id": operation_id},
+        )
+
+        assert second == first
+        assert first_fact == second_fact == [{
+            "status": "UNKNOWN",
+            "body_hash": operation[0]["body_hash"],
+            "expected_operation_hash": operation[0]["expected_operation_hash"],
+            "economic_effect_applied": False,
+        }]
+        assert calls["submit_calls"] == 1
+        assert not query(url, "SELECT id FROM trading.ledger_transactions WHERE kind='SETTLEMENT'")
+        assert not query(
+            url,
+            "SELECT id FROM trading.transactional_outbox "
+            "WHERE topic='chain.settlement.finalized'",
+        )
+        # One stable natural-key recovery event proves duplicate observations have
+        # effect=0 even across two restart-equivalent passes.
+        events = query(
+            url,
+            "SELECT event_key FROM trading.workflow_events "
+            "WHERE event_type='CHAIN_RECOVERY_OBSERVATION'",
+        )
+        assert len(events) == 1
     finally:
-        conn.close()
-        engine.dispose()
-
-
-def _async_url(db_url: str) -> str:
-    return db_url.replace("postgresql+psycopg:///", "postgresql+asyncpg:///")
-
-
-def _seed_operations(db_url, n: int):
-    """批量插入 UNKNOWN operations（replica 绕过 FK）。"""
-    engine = create_engine(db_url)
-    try:
-        with engine.begin() as c:
-            c.execute(text("SET LOCAL session_replication_role = replica"))
-            for i in range(n):
-                c.execute(
-                    text(
-                        "INSERT INTO trading.chain_operations "
-                        "(operation_key, idempotency_key, economic_hash, operation_type, "
-                        " chain_id, account_id, wallet_address, condition_id, registry_version_id, "
-                        " target_address, permission_ref, release_manifest_id, "
-                        " capital_permission_manifest_id, fencing_token, amount_base_units, "
-                        " calldata, calldata_keccak, body_hash, call_set_hash, "
-                        " expected_operation_hash, preflight_hash1, preflight_hash2, status) "
-                        "VALUES (:op, :idem, :eh, 'REDEEM', 137, 1, :wallet, :cond, 1, "
-                        " :target, 'perm/v1', 900001, 900002, 1, 0, :cd, :ch, :bh, :csh, "
-                        " :eoh, :p1, :p2, 'UNKNOWN')"
-                    ),
-                    {
-                        "op": f"op-{i:06d}", "idem": f"idem-{i:06d}", "eh": f"{i:064x}",
-                        "wallet": "0x" + f"{i:040x}",
-                        "cond": "0x" + f"{i:064x}",
-                        "target": "0xAdA100Db00Ca00073811820692005400218FcE1f",
-                        "cd": "0x" + f"{i:080x}", "ch": f"{i:064x}", "bh": f"{i:064x}",
-                        "csh": f"{i:064x}", "eoh": f"{i:064x}", "p1": f"{i:064x}",
-                        "p2": f"{i:064x}",
-                    },
-                )
-    finally:
-        engine.dispose()
-
-
-def _query(db_url, sql):
-    engine = create_engine(db_url)
-    try:
-        with engine.connect() as c:
-            return c.execute(text(sql)).fetchall()
-    finally:
-        engine.dispose()
+        await engine.dispose()
 
 
 @pytest.mark.anyio
-async def test_recovery_1000_unknown_twice_equal_and_no_blind_resend(temp_pg_db):
+async def test_runtime_scheduler_recovers_persisted_unknown_from_db(temp_pg_db, tmp_path):
+    """A new runtime instance discovers UNKNOWN from DB and still never submits."""
     url = temp_pg_db.url
-    _upgrade(url)
-    N = 1000
-    _seed_operations(url, N)
-    async_engine = create_async_engine(_async_url(url), pool_size=4, max_overflow=0)
-    sessions = async_sessionmaker(async_engine, expire_on_commit=False)
-    logic = ChainSettlementLogic(chain_operations=ChainOperationRepository(),
-                                 chain_id=137)
-    chain_ops = ChainOperationRepository()
+    upgrade(url)
+    ids = seed_authority(url)
+    runtime, store, calls, engine = build_runtime(url, tmp_path / "cas-a", ids)
+    ids = await seed_real_position_lineage(runtime._sessions, url, ids)
+    await seed_settlement(runtime, store, ids)
+    original = runtime._relayer._transport
 
-    # 第一次恢复：全部 UNKNOWN → 只读证据快照
-    first = {}
+    @fixture_relayer_transport
+    async def lost(method, path, **kwargs):
+        response = await original(method, path, **kwargs)
+        if path == "/submit":
+            raise asyncio.CancelledError
+        return response
+
+    runtime._relayer._transport = lost
     try:
-        async with UnitOfWork(sessions) as uow:
-            ops = await chain_ops.list_recoverable(uow.session, limit=N)
-            assert len(ops) == N
-            for op in ops:
-                r = await logic.recover_unknown(uow, op["id"])
-                first[op["id"]] = r
+        with pytest.raises(asyncio.CancelledError):
+            await runtime.submit_redeem(request(ids, "restart"))
+        assert calls["submit_calls"] == 1
     finally:
-        await async_engine.dispose()
+        await engine.dispose()
 
-    # 第二次恢复：结果 hash 全等、blind resend 恒 False
-    async_engine2 = create_async_engine(_async_url(url), pool_size=4, max_overflow=0)
-    sessions2 = async_sessionmaker(async_engine2, expire_on_commit=False)
+    restarted, _, restarted_calls, restarted_engine = build_runtime(
+        url, tmp_path / "cas-b", ids
+    )
     try:
-        async with UnitOfWork(sessions2) as uow:
-            ops = await chain_ops.list_recoverable(uow.session, limit=N)
-            for op in ops:
-                r = await logic.recover_unknown(uow, op["id"])
-                assert r["blind_resend"] is False
-                assert r == first[op["id"]], f"recovery drift on op {op['id']}"
+        recovered = await restarted.recover_chain_operations(limit=10)
+        assert len(recovered) == 1
+        assert recovered[0]["status"] == "UNKNOWN"
+        assert restarted_calls["submit_calls"] == 0
+        assert query(url, "SELECT status FROM trading.chain_operations") == [{"status": "UNKNOWN"}]
     finally:
-        await async_engine2.dispose()
-
-    # 无权威失败/不存在证据 → real resend 计数为 0（无 blind resend）
-    # 证据字段在恢复中不被改动（只读）；operation 状态仍 UNKNOWN
-    unknown = _query(url, "SELECT count(*) FROM trading.chain_operations WHERE status='UNKNOWN'")
-    assert unknown == [(N,)]
-
-
-@pytest.mark.anyio
-async def test_recovery_restart_resumes_from_db_facts(temp_pg_db):
-    """restart 从 transaction/nonce/receipt/finalized block/balance 恢复，无 AI/重算。"""
-    url = temp_pg_db.url
-    _upgrade(url)
-    _seed_operations(url, 5)
-    async_engine = create_async_engine(_async_url(url), pool_size=2, max_overflow=0)
-    sessions = async_sessionmaker(async_engine, expire_on_commit=False)
-    chain_ops = ChainOperationRepository()
-    # 给一条 operation 补齐证据（模拟已发起的网络调用后 restart）
-    engine = create_engine(url)
-    try:
-        with engine.begin() as c:
-            c.execute(text(
-                "UPDATE trading.chain_operations SET transaction_id='tx-1', "
-                "transaction_hash=:th, relayer_nonce='7' WHERE operation_key='op-000000'"
-            ), {"th": "0x" + "1" * 64})
-    finally:
-        engine.dispose()
-    try:
-        async with UnitOfWork(sessions) as uow:
-            ops = await chain_ops.list_recoverable(uow.session, limit=5)
-            by_key = {op["operation_key"]: op for op in ops}
-            resumed = by_key["op-000000"]
-            assert resumed["transaction_id"] == "tx-1"
-            assert resumed["relayer_nonce"] == "7"
-            r = await ChainSettlementLogic(chain_operations=chain_ops).recover_unknown(
-                uow, resumed["id"]
-            )
-            assert r["evidence"]["has_transaction_id"] is True
-            assert r["blind_resend"] is False
-    finally:
-        await async_engine.dispose()
+        await restarted_engine.dispose()

@@ -1,176 +1,284 @@
-"""WP-06 Checkpoint C —— PolygonDriver 单元测试（fake transport + golden，无 DB/网络）。
-
-证明：eth_chainId 返回 0x89；eth_getCode 满长字节 keccak 与 registry 全长一致；storage
-slot 解析 EIP-1967 implementation / Beacon；eth_call 返回 32-byte；receipt 严格校验
-（status/blockNumber/blockHash/removed）；finality_check 在 finalized.number >
-receipt.blockNumber 时通过、否则 fail-closed；JSON-RPC id/error/quantity 严格。
-"""
-
+"""PolygonDriver strict/finality/registry unit conformance (fixture transport only)."""
 from __future__ import annotations
+
+import asyncio
+import json
+import traceback
 
 import pytest
 
 from app.schemas.polymarket.common import PolymarketError
-from app.services.polymarket.polygon_driver import PolygonDriver
-
-from tests.trading.fixtures.p6_settlement.p6_helpers import (
-    code_keccak,
-    frozen_fixture,
-    slot32,
+from app.services.polymarket.polygon_driver import (
+    PolygonDriver,
+    fixture_polygon_transport,
 )
+from tests.trading.fixtures.p6_settlement.p6_helpers import code_keccak, frozen_fixture
 
 GOLDEN = frozen_fixture("polygon_rpc_golden")
 REGISTRY = frozen_fixture("contract_registry")
+URLS = ["https://rpc-a.example", "https://rpc-b.example", "https://rpc-c.example"]
+NODE = dict(zip(URLS, GOLDEN["rpc_nodes"], strict=True))
 
 
 def _norm(value):
-    """把 hex 参数统一小写（Ethereum 地址/hex quantity 大小写不敏感）。"""
     if isinstance(value, str) and value.startswith("0x"):
         return value.lower()
     if isinstance(value, list):
-        return [_norm(v) for v in value]
+        return [_norm(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _norm(item) for key, item in value.items()}
     return value
 
 
-_RECEIPT_BY_HASH = {
-    "0x" + "12" * 32: "eth_getTransactionReceipt_confirmed",
-    "0x" + "34" * 32: "eth_getTransactionReceipt_failed",
-}
+def _key(method: str, params: list) -> str:
+    for key, request in GOLDEN["requests"].items():
+        if request["method"] == method and _norm(request["params"]) == _norm(params):
+            return key
+    raise AssertionError(f"unfrozen RPC request: {method} {params}")
 
 
-def _response_for(method: str, params: list) -> dict:
-    """从 golden 的 requests/responses 按 method+params 查找响应（大小写不敏感）。"""
-    if method == "eth_getTransactionReceipt" and params:
-        key = _RECEIPT_BY_HASH.get(params[0])
-        if key:
-            return GOLDEN["responses"][key]["node-a"]
-    if method == "eth_getBlockByNumber":
-        tag = params[0]
-        if tag == "finalized":
-            return GOLDEN["responses"]["eth_getBlockByNumber_finalized"]["node-a"]
-        # canonical block：receipt 所在高度的 block hash 必须等于 receipt.blockHash
-        return {"result": {"number": tag, "hash": "0x" + "ef" * 32,
-                           "timestamp": "0x0", "transactions": []}}
-    for key, req in GOLDEN["requests"].items():
-        if req["method"] == method and _norm(req["params"]) == _norm(params):
-            return GOLDEN["responses"][key]["node-a"]
-    raise KeyError(f"no golden response for {method} {params}")
-
-
-def _make_fake_transport():
+def make_transport():
     calls = []
 
+    @fixture_polygon_transport
     async def transport(payload: dict, endpoint: str) -> dict:
-        calls.append((payload["method"], payload["params"]))
-        resp = _response_for(payload["method"], payload["params"])
-        return {"jsonrpc": "2.0", "id": payload["id"], "result": resp["result"]}
+        calls.append((endpoint, payload["method"], payload["params"]))
+        result = GOLDEN["responses"][_key(payload["method"], payload["params"])][NODE[endpoint]]["result"]
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": result}
 
     return transport, calls
 
 
-def _driver(transport):
-    return PolygonDriver(
-        rpc_urls=["https://rpc-a.example", "https://rpc-b.example", "https://rpc-c.example"],
-        transport=transport,
-    )
+def driver(transport) -> PolygonDriver:
+    return PolygonDriver(rpc_urls=URLS, transport=transport)
 
 
-async def test_eth_chain_id() -> None:
-    transport, calls = _make_fake_transport()
-    driver = _driver(transport)
-    chain_id = await driver.eth_chain_id()
-    assert chain_id == "0x89"
-    assert int(chain_id, 16) == 137
-    assert calls == [("eth_chainId", [])]
-    assert driver.transport_calls == 1 and driver.fake_calls == 1 and driver.real_calls == 0
+async def test_chain_id_and_real_full_code() -> None:
+    transport, calls = make_transport()
+    d = driver(transport)
+    assert await d.eth_chain_id() == "0x89"
+    pusd = next(item for item in REGISTRY["entries"] if item["name"] == "pusd")
+    code = await d.eth_get_code(pusd["address"], block_tag=hex(91842167))
+    assert code_keccak(code) == pusd["runtime_keccak"]
+    assert d.fixture_only and d.fake_calls == 2 and d.real_calls == 0
 
 
-async def test_eth_get_code_matches_registry_keccak() -> None:
-    transport, _ = _make_fake_transport()
-    driver = _driver(transport)
-    entry = {e["name"]: e for e in REGISTRY["entries"]}["pusd"]
-    code = await driver.eth_get_code(entry["address"], block_tag=hex(91842167))
-    assert code_keccak(code) == entry["runtime_keccak"]
+async def test_all_registry_paths_verify_against_three_origins() -> None:
+    transport, _ = make_transport()
+    d = driver(transport)
+    for entry in REGISTRY["entries"]:
+        evidence = await d.verify_registry_entry(entry)
+        assert evidence["runtime_keccak"] == entry["runtime_keccak"]
+        if entry["proxy_kind"] == "eip1967":
+            assert evidence["resolved_code_keccak"] == entry["resolved_code_keccak"]
 
 
-async def test_eth_get_storage_at_implementation_slot() -> None:
-    transport, _ = _make_fake_transport()
-    driver = _driver(transport)
-    entry = {e["name"]: e for e in REGISTRY["entries"]}["deposit_wallet"]
-    slot = GOLDEN["eip1967_implementation_slot"]
-    value = await driver.eth_get_storage_at(entry["address"], slot, block_tag=hex(91842167))
-    assert value == slot32(entry["resolved_implementation_or_beacon"])
+async def test_registry_empty_or_implementation_drift_rejected() -> None:
+    transport, _ = make_transport()
+    d = driver(transport)
+    entry = dict(next(item for item in REGISTRY["entries"] if item["name"] == "pusd"))
+    entry["resolved_code_keccak"] = "0x" + "00" * 32
+    with pytest.raises(PolymarketError, match="registry_runtime_code_drift"):
+        await d.verify_registry_entry(entry)
 
 
-async def test_eth_call_beacon_implementation() -> None:
-    transport, _ = _make_fake_transport()
-    driver = _driver(transport)
-    entry = {e["name"]: e for e in REGISTRY["entries"]}["ctf_adapter_standard"]
-    impl_call = GOLDEN["responses"]["eth_call_beacon_implementation"]["node-a"]["result"]
-    value = await driver.eth_call(
-        to=entry["beacon_address"], data="0x5c60da1b", block_tag=hex(91842167)
-    )
-    assert value == impl_call == slot32(entry["beacon_implementation"])
-
-
-async def test_eth_get_transaction_receipt_validation() -> None:
-    transport, _ = _make_fake_transport()
-    driver = _driver(transport)
-    confirmed = await driver.eth_get_transaction_receipt("0x" + "12" * 32)
-    assert confirmed.success is True
-    assert confirmed.block_number_int > 0
-    # 无 golden 时 transport 抛 KeyError → rpc_transport_failure
-    with pytest.raises(PolymarketError, match="rpc_transport_failure"):
-        await driver.eth_get_transaction_receipt("0x" + "99" * 32)
-
-
-async def test_finality_check_passes_when_finalized_after_receipt() -> None:
-    transport, _ = _make_fake_transport()
-    driver = _driver(transport)
-    # finalized block = snapshot+64 > receipt block = snapshot-32 → passes
-    check = await driver.finality_check("0x" + "12" * 32)
+async def test_finality_is_bound_to_transaction_canonical_block_and_three_origins() -> None:
+    transport, calls = make_transport()
+    d = driver(transport)
+    check = await d.finality_check("0x" + "12" * 32)
+    assert check.receipt.transaction_hash == "0x" + "12" * 32
+    assert check.canonical_block_hash == check.receipt.block_hash
     assert check.finalized_after_receipt is True
-    assert check.receipt.success is True
+    assert len(calls) == 9
 
 
-async def test_finality_check_fails_when_receipt_failed() -> None:
-    # 覆写 transport 使该 tx 返回 failed receipt
-    async def transport(payload: dict, endpoint: str) -> dict:
-        if payload["method"] == "eth_getTransactionReceipt":
-            resp = GOLDEN["responses"]["eth_getTransactionReceipt_failed"]["node-a"]
-        else:
-            resp = _response_for(payload["method"], payload["params"])
-        return {"jsonrpc": "2.0", "id": payload["id"], "result": resp["result"]}
-
-    driver = _driver(transport)
+async def test_receipt_failed_and_removed_log_rejected() -> None:
+    transport, _ = make_transport()
+    d = driver(transport)
     with pytest.raises(PolymarketError, match="finality_receipt_failed"):
-        await driver.finality_check("0x" + "34" * 32)
+        await d.finality_check("0x" + "34" * 32)
+
+    base = GOLDEN["responses"]["eth_getTransactionReceipt_confirmed"]["node-a"]["result"]
+
+    @fixture_polygon_transport
+    async def removed(payload, endpoint):
+        if payload["method"] == "eth_getTransactionReceipt":
+            result = {**base, "logs": [{"removed": True}]}
+        else:
+            result = GOLDEN["responses"][_key(payload["method"], payload["params"])][NODE[endpoint]]["result"]
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": result}
+
+    with pytest.raises(PolymarketError, match="finality_receipt_removed"):
+        await driver(removed).finality_check("0x" + "12" * 32)
 
 
-async def test_jsonrpc_id_mismatch_rejected() -> None:
-    async def transport(payload: dict, endpoint: str) -> dict:
-        resp = _response_for(payload["method"], payload["params"])
-        return {"jsonrpc": "2.0", "id": payload["id"] + 999, "result": resp["result"]}
+async def test_receipt_transaction_hash_mismatch_rejected() -> None:
+    base = GOLDEN["responses"]["eth_getTransactionReceipt_confirmed"]["node-a"]["result"]
 
-    driver = _driver(transport)
+    @fixture_polygon_transport
+    async def transport(payload, endpoint):
+        result = {**base, "transactionHash": "0x" + "99" * 32}
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": result}
+
+    with pytest.raises(PolymarketError, match="receipt_transaction_hash_mismatch"):
+        await driver(transport).eth_get_transaction_receipt("0x" + "12" * 32)
+
+
+async def test_consensus_mismatch_rejected() -> None:
+    transport, _ = make_transport()
+
+    @fixture_polygon_transport
+    async def disagree(payload, endpoint):
+        raw = await transport(payload, endpoint)
+        if endpoint == URLS[-1] and payload["method"] == "eth_chainId":
+            raw["result"] = "0x1"
+        return raw
+
+    with pytest.raises(PolymarketError, match="rpc_three_origin_consensus_mismatch"):
+        await driver(disagree).eth_chain_id(consensus=True)
+
+
+async def test_jsonrpc_id_xor_error_and_canonical_quantity_strict() -> None:
+    @fixture_polygon_transport
+    async def bad_id(payload, endpoint):
+        return {"jsonrpc": "2.0", "id": payload["id"] + 1, "result": "0x89"}
+
     with pytest.raises(PolymarketError, match="rpc_response_id_mismatch"):
-        await driver.eth_chain_id()
+        await driver(bad_id).eth_chain_id()
+
+    @fixture_polygon_transport
+    async def leaked_error(payload, endpoint):
+        return {"jsonrpc": "2.0", "id": payload["id"], "error": {"code": -1, "message": "TOKEN=secret"}}
+
+    with pytest.raises(PolymarketError) as error:
+        await driver(leaked_error).eth_chain_id()
+    assert error.value.reason_code == "rpc_error:-1"
+    assert "secret" not in str(error.value) and error.value.detail is None
+
+    @fixture_polygon_transport
+    async def leading_zero(payload, endpoint):
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": "0x089"}
+
+    with pytest.raises(PolymarketError, match="quantity_invalid"):
+        await driver(leading_zero).eth_chain_id()
+
+    @fixture_polygon_transport
+    async def coerced_id(payload, endpoint):
+        return {"jsonrpc": "2.0", "id": str(payload["id"]), "result": "0x89"}
+
+    with pytest.raises(PolymarketError, match="rpc_response_malformed"):
+        await driver(coerced_id).eth_chain_id()
+
+    receipt = GOLDEN["responses"]["eth_getTransactionReceipt_confirmed"]["node-a"]["result"]
+
+    @fixture_polygon_transport
+    async def coerced_removed(payload, endpoint):
+        return {
+            "jsonrpc": "2.0", "id": payload["id"],
+            "result": {**receipt, "logs": [{"removed": "false"}]},
+        }
+
+    with pytest.raises(PolymarketError, match="receipt_malformed"):
+        await driver(coerced_removed).eth_get_transaction_receipt("0x" + "12" * 32)
 
 
-async def test_jsonrpc_error_surfaces() -> None:
-    async def transport(payload: dict, endpoint: str) -> dict:
-        return {"jsonrpc": "2.0", "id": payload["id"], "error": {"code": -32601, "message": "method not found"}}
+async def test_erc20_erc1155_balance_and_approval_decoding() -> None:
+    @fixture_polygon_transport
+    def transport(payload, endpoint):  # synchronous fixture transport is supported
+        data = payload["params"][0]["data"]
+        value = 1 if data.startswith("0xe985e9c5") else 123
+        return {"jsonrpc": "2.0", "id": payload["id"], "result": "0x" + value.to_bytes(32, "big").hex()}
 
-    driver = _driver(transport)
-    with pytest.raises(PolymarketError, match="rpc_error"):
-        await driver.eth_chain_id()
+    d = driver(transport)
+    token = "0x" + "11" * 20
+    owner = "0x" + "22" * 20
+    operator = "0x" + "33" * 20
+    assert await d.erc20_balance_of(token, owner) == 123
+    assert await d.erc1155_balance_of(token, owner, "42") == 123
+    assert await d.erc1155_is_approved_for_all(token, owner, operator) is True
 
 
-async def test_quantity_strict_validation() -> None:
-    async def transport(payload: dict, endpoint: str) -> dict:
-        # 返回非法 quantity（无 0x 前缀）
-        return {"jsonrpc": "2.0", "id": payload["id"], "result": "89"}
+async def test_transport_exception_is_sanitized_without_traceback_secret() -> None:
+    @fixture_polygon_transport
+    async def leaking_transport(payload, endpoint):
+        raise RuntimeError("TOPSECRET endpoint=https://user:pass@example.invalid key=abc")
 
-    driver = _driver(transport)
-    with pytest.raises(PolymarketError, match="eth_chainId"):
-        await driver.eth_chain_id()
+    d = driver(leaking_transport)
+    try:
+        await d.eth_chain_id()
+    except PolymarketError as exc:
+        rendered = "".join(traceback.format_exception(exc))
+        assert exc.reason_code == "rpc_transport_failure"
+        assert "TOPSECRET" not in rendered
+        assert "user:pass" not in rendered
+        assert exc.__cause__ is None and exc.__suppress_context__ is True
+    else:
+        raise AssertionError("expected sanitized transport failure")
+
+
+async def test_real_deployed_wallet_beacon_registry_kind_verifies_independently() -> None:
+    transport, _ = make_transport()
+    proof = next(
+        item for item in REGISTRY["entries"] if item["name"] == "deposit_wallet"
+    )["extra"]["factory_beacon_evidence"]
+    entry = {
+        "address": proof["deployed_wallet_sample"],
+        "chain_id": 137,
+        "proxy_kind": "beacon",
+        "runtime_keccak": proof["deployed_wallet_runtime_keccak"],
+        "resolved_implementation_or_beacon": proof["beacon"],
+        "resolved_code_keccak": proof["beacon_implementation_code_keccak"],
+        "snapshot_block_number": GOLDEN["snapshot_block_number"],
+        "snapshot_block_hash": GOLDEN["snapshot_block_hash"],
+        "extra": {
+            "beacon_slot": GOLDEN["eip1967_beacon_slot"],
+            "beacon_runtime_keccak": proof["beacon_runtime_keccak"],
+            "beacon_implementation": proof["beacon_implementation"],
+        },
+    }
+    evidence = await driver(transport).verify_registry_entry(entry)
+    assert evidence["beacon"] == proof["beacon"]
+    assert evidence["implementation"] == proof["beacon_implementation"]
+    assert evidence["resolved_code_keccak"] == proof["beacon_implementation_code_keccak"]
+
+
+@pytest.mark.parametrize("bad_tag", ["safe", "0x00", "0x01", 1, True])
+async def test_rpc_block_tags_are_canonical_and_strict(bad_tag) -> None:
+    transport, calls = make_transport()
+    d = driver(transport)
+    with pytest.raises(PolymarketError, match="quantity_invalid"):
+        await d.eth_get_code("0x" + "11" * 20, block_tag=bad_tag)
+    assert calls == []
+
+
+@pytest.mark.parametrize("bad_token_id", [True, -1, 1 << 256, "-1", "1.0"])
+async def test_erc1155_token_id_is_uint256_not_coerced_bool(bad_token_id) -> None:
+    transport, calls = make_transport()
+    with pytest.raises(PolymarketError, match="token_id_invalid"):
+        await driver(transport).erc1155_balance_of(
+            "0x" + "11" * 20, "0x" + "22" * 20, bad_token_id
+        )
+    assert calls == []
+
+
+async def test_cancelled_transport_propagates_but_timeout_is_sanitized() -> None:
+    @fixture_polygon_transport
+    async def cancelled(payload, endpoint):
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await driver(cancelled).eth_chain_id()
+
+    @fixture_polygon_transport
+    async def timed_out(payload, endpoint):
+        raise TimeoutError("TOPSECRET timeout endpoint")
+
+    try:
+        await driver(timed_out).eth_chain_id()
+    except PolymarketError as exc:
+        rendered = "".join(traceback.format_exception(exc))
+        assert exc.reason_code == "rpc_transport_failure"
+        assert "TOPSECRET" not in rendered
+        assert exc.__suppress_context__ is True
+    else:
+        raise AssertionError("expected sanitized timeout")

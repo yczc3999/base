@@ -8,14 +8,20 @@ registry / active operation / chain facts 任一整次拒绝）、registry 发�
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from alembic import command, util
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+from app.repositories.trading.settlement import (
+    ChainOperationRepository,
+    SettlementObservationRepository,
+)
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
@@ -42,7 +48,10 @@ _NEW_TRIGGERS = (
 )
 
 # 冻结 fixture registry entry content_hash（downgrade 非 fixture 校验白名单）
-FIXTURE_PUSD_HASH = "05b16a969afb53ba80bb7fb179f940e3a0945e2bd61076bc5cdd1d461364b1ee"
+FIXTURE_PUSD_HASH = "2a45596924268153acef218ee104ed69f355399701725f88aea967438f91bd4d"
+FIXTURE_CTF_HASH = "6fe9adbfbb71a1d191341218da25185e0871a61b76df2758b0873d884f87cc5b"
+FIXTURE_DEPOSIT_HASH = "774caf5580ff19b5fefbf7fd8236885e353f4ac15803449d921aaa2a02d9511f"
+FIXTURE_STANDARD_HASH = "9668ef928815b964220d02ef2562f2cf5713e9f06bf7c475b0011bae89af8741"
 SNAPSHOT_BLOCK = 91842167
 SNAPSHOT_BLOCK_HASH = "16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f"
 
@@ -151,44 +160,188 @@ def _seed_fixture_registry(db_url, *, kind="pusd", content_hash=FIXTURE_PUSD_HAS
                     " runtime_keccak, resolved_implementation_or_beacon, resolved_code_keccak, "
                     " snapshot_block_number, snapshot_block_hash, source_url, retrieved_at, "
                     " content_hash, status) "
-                    "VALUES ('polygon-mainnet-v1', :kind, 1, 137, "
-                    " '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB', 'none', "
+                    "VALUES ('polygon-mainnet-v1', :kind, 1, 137, :address, 'none', "
                     " :rk, NULL, :rk, 91842167, :bh, "
                     " 'https://docs.polymarket.com/resources/contracts', now(), "
                     " :ch, 'ACTIVE') RETURNING id"
                 ),
-                {"kind": kind, "rk": "0x" + "a" * 64, "bh": "0x" + SNAPSHOT_BLOCK_HASH,
+                {"kind": kind,
+                 "address": ("0xAdA100Db00Ca00073811820692005400218FcE1f"
+                             if kind == "ctf_adapter_standard"
+                             else "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"),
+                 "rk": "0x" + "a" * 64, "bh": "0x" + SNAPSHOT_BLOCK_HASH,
                  "ch": content_hash},
             ).scalar_one()
     finally:
         engine.dispose()
 
 
-def _seed_operation(db_url, *, status="PREPARED"):
-    """用 session_replication_role=replica 绕过深层 FK，插入一条 chain_operation。"""
+def _seed_operation(
+    db_url, *, status="PREPARED", seed_dependencies=True, geo_allowed=True,
+    geo_age_seconds=0, geo_hash=None,
+):
+    """Insert one operation against an exact DB-authoritative fixture boundary."""
+    if seed_dependencies:
+        _seed_operation_dependencies(db_url)
     engine = create_engine(db_url)
     try:
         with engine.begin() as c:
-            c.execute(text("SET LOCAL session_replication_role = replica"))
             return c.execute(
                 text(
                     "INSERT INTO trading.chain_operations "
                     "(operation_key, idempotency_key, economic_hash, operation_type, "
-                    " chain_id, account_id, wallet_address, condition_id, registry_version_id, "
-                    " target_address, permission_ref, release_manifest_id, "
+                    " chain_id, account_id, wallet_address, condition_id, market_id, registry_version_id, "
+                    " target_address, permission_ref, lease_owner, release_manifest_id, "
                     " capital_permission_manifest_id, fencing_token, amount_base_units, "
                     " calldata, calldata_keccak, body_hash, call_set_hash, "
-                    " expected_operation_hash, preflight_hash1, preflight_hash2) "
-                    "VALUES (:op, :idem, :eh, 'REDEEM', 137, 1, :wallet, :cond, 1, "
-                    " :target, 'perm/v1', 900001, 900002, 1, 0, :cd, :ch, :bh, :csh, "
-                    " :eoh, :p1, :p2) RETURNING id"
+                    " expected_operation_hash, preflight_hash1, preflight_hash2, "
+                    " registry_content_hash, registry_bundle, registry_bundle_content_hash, "
+                    " registry_evidence_artifact_id, registry_evidence_hash, geo_evidence_artifact_id,"
+                    " geo_evidence_hash,geo_allowed,geo_observed_at,geo_source_version,settlement_set_key, "
+                    " settlement_allocation, settlement_allocation_hash, pre_balance) "
+                    "VALUES (:op, :idem, :eh, 'REDEEM', 137, 1, :wallet, :cond, 1, 1, "
+                    " :target, :perm, 'worker-a', 900001, 900002, 1, 0, :cd, :ch, :bh, :csh, "
+                    " :eoh, :p1, :p2, :registry_content, CAST(:bundle AS jsonb), "
+                    " encode(sha256(convert_to(CAST(:bundle AS jsonb)::text,'UTF8')),'hex'), "
+                    " 900010, :reg_hash, 900012, :geo_hash, :geo_allowed,"
+                    " now()-make_interval(secs=>:geo_age), 'geoblock/v1',"
+                    " :setkey, CAST(:allocation AS jsonb), :allocation_hash, "
+                    " CAST(:pre_balance AS jsonb)) RETURNING id"
                 ),
                 {"op": status.lower() + "-op", "idem": status.lower() + "-idem",
                  "eh": "e" * 64, "wallet": "0x" + "11" * 20, "cond": "0x" + "22" * 32,
                  "target": "0xAdA100Db00Ca00073811820692005400218FcE1f",
                  "cd": "0x" + "33" * 40, "ch": "c" * 64, "bh": "b" * 64,
-                 "csh": "d" * 64, "eoh": "f" * 64, "p1": "a" * 64, "p2": "b" * 64},
+                 "csh": "d" * 64, "eoh": "f" * 64, "p1": "a" * 64, "p2": "b" * 64,
+                 "perm": "d" * 64, "registry_content": FIXTURE_STANDARD_HASH,
+                 "reg_hash": "6" * 64,
+                 "geo_hash": geo_hash or "4" * 64, "geo_allowed": geo_allowed,
+                 "geo_age": geo_age_seconds,
+                 "setkey": "9" * 64,
+                 "allocation": '[{"portfolio_namespace":"ns-a","token_id":"token-yes",'
+                               '"quantity_base_units":"1","expected_cash_base_units":"1"}]',
+                 "allocation_hash": "7" * 64,
+                 "pre_balance": '{"pusd":"100","tokens":{"token-yes":"1","token-no":"0"}}',
+                 "bundle": '{"pusd":"' + FIXTURE_PUSD_HASH + '","ctf":"' + FIXTURE_CTF_HASH
+                           + '","deposit_wallet":"' + FIXTURE_DEPOSIT_HASH
+                           + '","ctf_adapter_standard":"' + FIXTURE_STANDARD_HASH + '"}'},
             ).scalar_one()
+    finally:
+        engine.dispose()
+
+
+def _seed_operation_dependencies(
+    db_url, *, capability='{"chain_settlement":"FAKE_CONFORMANCE"}'
+):
+    engine = create_engine(db_url)
+    try:
+        with engine.begin() as c:
+            c.execute(text("SET LOCAL session_replication_role = replica"))
+            c.execute(text(
+                "INSERT INTO trading.runtime_config_versions(id,config_key,version_no,content,"
+                "schema_version,content_hash,status) VALUES(100,'cfg',1,'{}',1,repeat('a',64),'active')"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.strategy_versions(id,strategy_key,version_no,content,"
+                "schema_version,content_hash,status) VALUES(101,'s',1,'{}',1,repeat('b',64),'active')"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.execution_spec_versions(id,spec_key,version_no,content,"
+                "schema_version,content_hash,status) VALUES(102,'e',1,'{}',1,repeat('c',64),'active')"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.capital_permission_manifests(id,name,mode,capability,limits,"
+                "evaluation_capital,authorized_capital,kill_switch,content_hash,status) VALUES"
+                "(900002,'p','shadow',CAST(:capability AS jsonb),'{}',"
+                "0,0,false,repeat('d',64),'active')"
+            ), {"capability": capability})
+            c.execute(text(
+                "INSERT INTO trading.release_manifests(id,release_name,config_version_id,"
+                "strategy_version_id,execution_spec_version_id,capital_permission_manifest_id,"
+                "git_sha,image_digest,db_revision,total_hash,status) VALUES"
+                "(900001,'r',100,101,102,900002,repeat('e',64),'img','b1000052',repeat('f',64),'active')"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.pm_markets(id,gamma_market_id,condition_id,closed,accepting_orders,neg_risk) "
+                "VALUES(1,'m1',:cond,true,false,false)"
+            ), {"cond": "0x" + "22" * 32})
+            c.execute(text(
+                "INSERT INTO trading.pm_tokens(id,token_id,market_id,outcome_index) VALUES"
+                "(1,'token-yes',1,0),(2,'token-no',1,1)"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.artifact_objects(id,sha256,original_size,stored_size,mime,"
+                "compression,storage_driver,storage_version,locator) VALUES"
+                "(900010,repeat('6',64),1,1,'application/json','none','local','cas/v1',"
+                "'cas/v1/sha256/66/66/'||repeat('6',64)||'.raw'),"
+                "(900012,repeat('4',64),1,1,'application/json','none','local','cas/v1',"
+                "'cas/v1/sha256/44/44/'||repeat('4',64)||'.raw')"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.pm_accounts(id,account_key,provider,chain_id,identity_type,"
+                "funder_address,maker_address,signing_identity,wallet_type,signature_type,"
+                "release_manifest_id,capital_permission_manifest_id,network_mode,status) VALUES"
+                "(1,'a','polymarket',137,'FIXTURE_ONLY',:wallet,:wallet,:signer,"
+                "'deposit_wallet','3',900001,900002,'fixture','active')"
+            ), {"wallet": "0x" + "11" * 20, "signer": "0x" + "33" * 20})
+            c.execute(text(
+                "INSERT INTO trading.execution_leases(account_id,lease_role,owner,lease_until,fencing_token) "
+                "VALUES(1,'EXECUTION','worker-a',now()+interval '1 hour',1)"
+            ))
+            c.execute(text(
+                "INSERT INTO trading.positions(portfolio_namespace,contract_spec_id,token_id,market_id,"
+                "quantity,cost_basis,account_id) VALUES('ns-a',777,1,1,1,1,1)"
+            ))
+            registry_rows = (
+                ("pusd", FIXTURE_PUSD_HASH, "0x" + "41" * 20),
+                ("ctf", FIXTURE_CTF_HASH, "0x" + "42" * 20),
+                ("deposit_wallet", FIXTURE_DEPOSIT_HASH, "0x" + "43" * 20),
+            )
+            for kind, content_hash, address in registry_rows:
+                c.execute(text(
+                    "INSERT INTO trading.contract_registry(registry_version,kind,version_no,chain_id,"
+                    "address,proxy_kind,runtime_keccak,resolved_code_keccak,snapshot_block_number,"
+                    "snapshot_block_hash,source_url,retrieved_at,content_hash,status) VALUES"
+                    "('polygon-mainnet-v1',:kind,1,137,:address,'none',:runtime,:runtime,91842167,"
+                    ":block_hash,'fixture',now(),:content_hash,'ACTIVE')"
+                ), {"kind": kind, "address": address, "runtime": "0x" + "4" * 64,
+                    "block_hash": "0x" + SNAPSHOT_BLOCK_HASH, "content_hash": content_hash})
+            kinds = (
+                "gamma_clob_closed", "ctf_payout", "data_api_redeemable",
+                "clob_winner_5050", "label_audit",
+            )
+            for i, kind in enumerate(kinds):
+                c.execute(text(
+                    "INSERT INTO trading.artifact_objects(id,sha256,original_size,stored_size,mime,"
+                    "compression,storage_driver,storage_version,locator) VALUES"
+                    "(:id,:sha,1,1,'application/json','none','local','cas/v1',:locator)"
+                ), {"id": 900020 + i, "sha": f"{200+i:064x}",
+                    "locator": f"cas/v1/sha256/00/00/{200+i:064x}.raw"})
+                c.execute(
+                    text(
+                        "INSERT INTO trading.settlement_observations("
+                        "observation_key,settlement_set_key,source_kind,condition_id,market_id,"
+                        "token_set,token_set_hash,payout_vector,outcome_index,numerator,denominator,"
+                        "winner,is_50_50_outcome,redeemable,label_audit_version,source_version,"
+                        "source_cutoff,as_of,received_at,raw_artifact_ref,raw_artifact_id,raw_artifact_hash,"
+                        "content_hash,status) VALUES(:key,:setkey,:kind,:condition,1,"
+                        "'[\"token-yes\",\"token-no\"]',:tsh,CAST(:pv AS jsonb),:idx,:num,:den,"
+                        ":winner,:fifty,:redeem,:label,:version,now(),now(),now(),:raw,"
+                        ":artifact_id,:rawh,:ch,'COMPLETE')"
+                    ),
+                    {"key": f"preflight-{kind}", "setkey": "9" * 64, "kind": kind,
+                     "condition": "0x" + "22" * 32, "tsh": "8" * 64,
+                     "pv": '{"numerators":["1","0"],"denominator":"1"}' if kind == "ctf_payout" else None,
+                     "idx": "YES" if kind == "ctf_payout" else None,
+                     "num": "1" if kind == "ctf_payout" else None,
+                     "den": "1" if kind == "ctf_payout" else None,
+                     "winner": "YES" if kind == "clob_winner_5050" else None,
+                     "fifty": False if kind == "clob_winner_5050" else None,
+                     "redeem": True if kind == "data_api_redeemable" else None,
+                     "label": "label/v1" if kind == "label_audit" else None,
+                     "version": f"{kind}/v1", "raw": f"{100+i:064x}", "artifact_id": 900020 + i,
+                     "rawh": f"{200+i:064x}", "ch": f"{300+i:064x}"},
+                )
     finally:
         engine.dispose()
 
@@ -267,7 +420,7 @@ def test_downgrade_fail_closed_non_fixture_registry(temp_pg_db):
 def test_downgrade_fail_closed_active_operation_and_chain_facts(temp_pg_db):
     url = temp_pg_db.url
     _run(command.upgrade, V52, url)
-    _seed_fixture_registry(url)
+    _seed_fixture_registry(url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH)
     _seed_operation(url, status="UNKNOWN")
     with pytest.raises(Exception, match="v2_wp06_chain_settlement"):
         _run(command.downgrade, V51, url)
@@ -280,13 +433,8 @@ def test_downgrade_fail_closed_active_operation_and_chain_facts(temp_pg_db):
             c.execute(text("SET LOCAL session_replication_role = replica"))
             c.execute(
                 text(
-                    "UPDATE trading.chain_operations SET status='FINALIZED', "
-                    "transaction_id='tx-1', transaction_hash=:th, "
-                    "receipt_block_number=91842135, receipt_block_hash=:bh, "
-                    "finalized_block_number=91842199, pre_balance='{}'::jsonb, "
-                    "post_balance='{}'::jsonb, economic_effect_applied=true WHERE id=1"
+                    "UPDATE trading.chain_operations SET status='FAILED' WHERE id=1"
                 ),
-                {"th": "0x" + "1" * 64, "bh": "0x" + "2" * 64},
             )
     finally:
         engine.dispose()
@@ -297,14 +445,16 @@ def test_downgrade_fail_closed_active_operation_and_chain_facts(temp_pg_db):
     _execute(
         url,
         "INSERT INTO trading.settlement_observations "
-        "(observation_key, source_kind, condition_id, token_set, outcome_index, "
+        "(observation_key, settlement_set_key, source_kind, condition_id, market_id, "
+        " token_set, token_set_hash, outcome_index, "
         " numerator, denominator, winner, is_50_50_outcome, redeemable, "
-        " label_audit_version, as_of, received_at, raw_artifact_ref, "
+        " label_audit_version, source_version, source_cutoff, as_of, received_at, raw_artifact_ref, "
         " raw_artifact_hash, content_hash, status) "
-        "VALUES ('obs-downgrade', 'gamma_clob_closed', :cond2, "
-        " '[\"1\",\"2\"]'::jsonb, 'YES', NULL, NULL, NULL, NULL, NULL, NULL, "
-        " now(), now(), NULL, :rh, :ch, 'PENDING')",
-        {"cond2": "0x" + "5" * 64, "rh": "a" * 64, "ch": "b" * 64},
+        "VALUES ('obs-downgrade', :setkey, 'gamma_clob_closed', :cond2, 1, "
+        " '[\"token-yes\",\"token-no\"]'::jsonb, :tsh, 'YES', NULL, NULL, NULL, NULL, NULL, NULL, "
+        " 'gamma/v1', now(), now(), now(), :raw, :rh, :ch, 'PENDING')",
+        {"cond2": "0x" + "5" * 64, "setkey": "1" * 64, "tsh": "2" * 64,
+         "raw": "3" * 64, "rh": "a" * 64, "ch": "b" * 64},
     )
     with pytest.raises(Exception, match="v2_wp06_chain_settlement"):
         _run(command.downgrade, V51, url)
@@ -363,7 +513,7 @@ def test_registry_guards(temp_pg_db):
 def test_operation_state_machine_cas(temp_pg_db):
     url = temp_pg_db.url
     _run(command.upgrade, V52, url)
-    _seed_fixture_registry(url)
+    _seed_fixture_registry(url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH)
     op_id = _seed_operation(url, status="PREPARED")
 
     # PREPARED → SUBMITTING 合法，CAS 推进 aggregate
@@ -371,8 +521,8 @@ def test_operation_state_machine_cas(temp_pg_db):
         url,
         "INSERT INTO trading.chain_operation_state_history "
         "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-        " event_payload, event_hash, fence_token) "
-        "VALUES (:oid, 0, 'PREPARED', 'SUBMITTING', 'SUBMITTING', '{}'::jsonb, :eh, 1)",
+        " event_payload, event_hash, lease_owner, fence_token) "
+        "VALUES (:oid, 0, 'PREPARED', 'SUBMITTING', 'SUBMITTING', '{}'::jsonb, :eh, 'worker-a', 1)",
         {"oid": op_id, "eh": "1" * 64},
     )
     status = _query(url, "SELECT status FROM trading.chain_operations WHERE id=:oid",
@@ -385,8 +535,8 @@ def test_operation_state_machine_cas(temp_pg_db):
             url,
             "INSERT INTO trading.chain_operation_state_history "
             "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-            " event_payload, event_hash, fence_token) "
-            "VALUES (:oid, 1, 'PREPARED', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 1)",
+            " event_payload, event_hash, lease_owner, fence_token) "
+            "VALUES (:oid, 1, 'PREPARED', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 'worker-a', 1)",
             {"oid": op_id, "eh": "2" * 64},
         )
 
@@ -396,8 +546,8 @@ def test_operation_state_machine_cas(temp_pg_db):
             url,
             "INSERT INTO trading.chain_operation_state_history "
             "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-            " event_payload, event_hash, fence_token) "
-            "VALUES (:oid, 1, 'SUBMITTING', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 99)",
+            " event_payload, event_hash, lease_owner, fence_token) "
+            "VALUES (:oid, 1, 'SUBMITTING', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 'worker-a', 99)",
             {"oid": op_id, "eh": "3" * 64},
         )
 
@@ -407,13 +557,13 @@ def test_operation_state_machine_cas(temp_pg_db):
             url,
             "INSERT INTO trading.chain_operation_state_history "
             "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-            " event_payload, event_hash, fence_token) "
-            "VALUES (:oid, 1, 'SUBMITTING', 'PREPARED', 'PREPARED', '{}'::jsonb, :eh, 1)",
+            " event_payload, event_hash, lease_owner, fence_token) "
+            "VALUES (:oid, 1, 'SUBMITTING', 'PREPARED', 'PREPARED', '{}'::jsonb, :eh, 'worker-a', 1)",
             {"oid": op_id, "eh": "4" * 64},
         )
 
     # 直接 UPDATE status 走同一转移表（无 GUC 绕过）
-    with pytest.raises(Exception, match="v2_chain_operation_transition_invalid"):
+    with pytest.raises(Exception, match="v2_chain_operation_status_requires_history"):
         _execute(url, "UPDATE trading.chain_operations SET status='FINALIZED' WHERE id=:oid",
                  {"oid": op_id})
 
@@ -422,8 +572,8 @@ def test_operation_state_machine_cas(temp_pg_db):
         url,
         "INSERT INTO trading.chain_operation_state_history "
         "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-        " event_payload, event_hash, fence_token) "
-        "VALUES (:oid, 1, 'SUBMITTING', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 1)",
+        " event_payload, event_hash, lease_owner, fence_token) "
+        "VALUES (:oid, 1, 'SUBMITTING', 'UNKNOWN', 'UNKNOWN', '{}'::jsonb, :eh, 'worker-a', 1)",
         {"oid": op_id, "eh": "5" * 64},
     )
 
@@ -433,16 +583,51 @@ def test_operation_state_machine_cas(temp_pg_db):
             url,
             "INSERT INTO trading.chain_operation_state_history "
             "(operation_id, sequence_no, transition_from, transition_to, event_type, "
-            " event_payload, event_hash, fence_token) "
-            "VALUES (:oid, 2, 'UNKNOWN', 'FINALIZED', 'FINALIZED', '{}'::jsonb, :eh, 1)",
+            " event_payload, event_hash, lease_owner, fence_token) "
+            "VALUES (:oid, 2, 'UNKNOWN', 'FINALIZED', 'FINALIZED', '{}'::jsonb, :eh, 'worker-a', 1)",
             {"oid": op_id, "eh": "6" * 64},
         )
+
+    # restart takeover：creation fence 保持 1，当前合法 lease 可用更高 fence 恢复。
+    _execute(
+        url,
+        "UPDATE trading.execution_leases SET owner='worker-b',fencing_token=2,"
+        "lease_until=now()+interval '1 hour' WHERE account_id=1 AND lease_role='EXECUTION'",
+    )
+    _execute(
+        url,
+        "INSERT INTO trading.chain_operation_state_history "
+        "(operation_id,sequence_no,transition_from,transition_to,event_type,event_payload,"
+        "event_hash,lease_owner,fence_token) VALUES"
+        "(:oid,2,'UNKNOWN','REORGED','REORGED','{}',:eh,'worker-b',2)",
+        {"oid": op_id, "eh": "7" * 64},
+    )
+    _execute(
+        url,
+        "INSERT INTO trading.chain_operation_state_history "
+        "(operation_id,sequence_no,transition_from,transition_to,event_type,event_payload,"
+        "event_hash,lease_owner,fence_token) VALUES"
+        "(:oid,3,'REORGED','UNKNOWN','UNKNOWN','{}',:eh,'worker-b',2)",
+        {"oid": op_id, "eh": "8" * 64},
+    )
+    _execute(
+        url,
+        "INSERT INTO trading.chain_operation_state_history "
+        "(operation_id,sequence_no,transition_from,transition_to,event_type,event_payload,"
+        "event_hash,lease_owner,fence_token) VALUES"
+        "(:oid,4,'UNKNOWN','FAILED','FAILED','{}',:eh,'worker-b',2)",
+        {"oid": op_id, "eh": "9" * 64},
+    )
+    assert _query(url, "SELECT status FROM trading.chain_operations WHERE id=:oid",
+                  {"oid": op_id}) == [("FAILED",)]
 
 
 def _obs_params(kind: str, i: int) -> dict:
     """按 source kind 返回满足 pair CHECK 的字段（ctf_payout 必填 numerator/denominator 等）。"""
     return {
-        "k": f"obs-{i}-{kind}", "kind": kind, "ts": '["1","2"]',
+        "k": f"obs-{i}-{kind}", "setkey": "9" * 64, "kind": kind,
+        "ts": '["token-yes","token-no"]', "tsh": "8" * 64,
+        "pv": '{"numerators":["1","0"],"denominator":"1"}' if kind == "ctf_payout" else None,
         "idx": "YES" if kind != "label_audit" else None,
         "num": "1" if kind == "ctf_payout" else None,
         "den": "1" if kind == "ctf_payout" else None,
@@ -450,18 +635,21 @@ def _obs_params(kind: str, i: int) -> dict:
         "iso": False if kind == "clob_winner_5050" else None,
         "red": True if kind == "data_api_redeemable" else None,
         "lav": "p4/v1" if kind == "label_audit" else None,
-        "raw": f"raw-{i}", "rawh": f"{i:064x}", "ch": f"{i:064x}",
+        "sv": f"{kind}/v1", "raw": f"{100+i:064x}",
+        "aid": 910000 + i, "rawh": f"{i:064x}", "ch": f"{i:064x}",
     }
 
 
 _OBS_SQL = (
     "INSERT INTO trading.settlement_observations "
-    "(observation_key, source_kind, condition_id, token_set, outcome_index, "
+    "(observation_key, settlement_set_key, source_kind, condition_id, market_id, "
+    " token_set, token_set_hash, payout_vector, outcome_index, "
     " numerator, denominator, winner, is_50_50_outcome, redeemable, "
-    " label_audit_version, as_of, received_at, raw_artifact_ref, "
-    " raw_artifact_hash, content_hash, status) "
-    "VALUES (:k, :kind, :cond, CAST(:ts AS jsonb), :idx, :num, :den, :win, :iso, "
-    " :red, :lav, :asof, :asof, :raw, :rawh, :ch, :st)"
+    " label_audit_version, source_version, source_cutoff, as_of, received_at, raw_artifact_ref, "
+    " raw_artifact_id, raw_artifact_hash, content_hash, status) "
+    "VALUES (:k, :setkey, :kind, :cond, 2, CAST(:ts AS jsonb), :tsh, CAST(:pv AS jsonb), "
+    " :idx, :num, :den, :win, :iso, :red, :lav, :sv, :asof, :asof, :asof, "
+    " :raw, :aid, :rawh, :ch, :st)"
 )
 
 
@@ -469,6 +657,25 @@ def test_settlement_observation_complete_set_deferred(temp_pg_db):
     url = temp_pg_db.url
     _run(command.upgrade, V52, url)
     cond = "0x" + "44" * 32
+    _execute(
+        url,
+        "INSERT INTO trading.pm_markets(id,gamma_market_id,condition_id,neg_risk) "
+        "VALUES(2,'obs-market',:cond,false)",
+        {"cond": cond},
+    )
+    _execute(
+        url,
+        "INSERT INTO trading.pm_tokens(id,token_id,market_id,outcome_index) VALUES"
+        "(20,'token-yes',2,0),(21,'token-no',2,1)",
+    )
+    _execute(
+        url,
+        "INSERT INTO trading.artifact_objects(id,sha256,original_size,stored_size,mime,"
+        "compression,storage_driver,storage_version,locator) "
+        "SELECT 910000+i,lpad(i::text,64,'0'),1,1,'application/json','none','local',"
+        "'cas/v1','cas/v1/sha256/00/00/'||lpad(i::text,64,'0')||'.raw' "
+        "FROM generate_series(0,4) i",
+    )
 
     # 只插入 2 种并标记 COMPLETE → 提交时 deferred trigger 拒绝（五元组缺失）
     engine = create_engine(url)
@@ -501,3 +708,193 @@ def test_settlement_observation_complete_set_deferred(temp_pg_db):
     count = _query(url, "SELECT count(*) FROM trading.settlement_observations WHERE condition_id=:c",
                    {"c": cond})
     assert count == [(5,)]
+
+
+def test_direct_operation_preflight_requires_fake_capability(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_fixture_registry(url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH)
+    _seed_operation_dependencies(url, capability="{}")
+    with pytest.raises(Exception, match="v2_chain_operation_preflight_invalid"):
+        _seed_operation(url, seed_dependencies=False)
+
+
+def test_direct_operation_preflight_requires_fresh_allowed_geo_artifact(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_fixture_registry(url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH)
+    _seed_operation_dependencies(url)
+    for override in (
+        {"geo_allowed": False},
+        {"geo_age_seconds": 31},
+        {"geo_hash": "3" * 64},
+    ):
+        with pytest.raises(Exception, match="v2_chain_operation_geo_evidence_invalid"):
+            _seed_operation(url, seed_dependencies=False, **override)
+
+
+def test_finalized_without_atomic_economic_facts_rejected(temp_pg_db):
+    """FINALIZED state alone cannot manufacture the economic-effect flag."""
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_fixture_registry(url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH)
+    op_id = _seed_operation(url)
+    _execute(
+        url,
+        "INSERT INTO trading.artifact_objects(id,sha256,original_size,stored_size,mime,"
+        "compression,storage_driver,storage_version,locator) VALUES"
+        "(900011,repeat('5',64),1,1,'application/json','none','local','cas/v1',"
+        "'cas/v1/sha256/55/55/'||repeat('5',64)||'.raw')",
+    )
+    _execute(
+        url,
+        "UPDATE trading.chain_operations SET transaction_id='tx-1',transaction_hash=:tx,"
+        "receipt_block_number=100,receipt_block_hash=:receipt,receipt_status=true,"
+        "canonical_block_hash=:receipt,finalized_block_number=101,finalized_block_hash=:finalized,"
+        "balance_evidence_artifact_id=900011,balance_evidence_hash=repeat('5',64),"
+        "post_balance='{\"pusd\":\"101\",\"tokens\":{\"token-yes\":\"0\","
+        "\"token-no\":\"0\"}}' WHERE id=:oid",
+        {"oid": op_id, "tx": "0x" + "1" * 64, "receipt": "0x" + "2" * 64,
+         "finalized": "0x" + "3" * 64},
+    )
+    transitions = (
+        ("PREPARED", "SUBMITTING"),
+        ("SUBMITTING", "EXECUTED"),
+        ("EXECUTED", "MINED"),
+        ("MINED", "RELAYER_CONFIRMED"),
+        ("RELAYER_CONFIRMED", "MINED_PROVISIONAL"),
+    )
+    for seq, (source, target) in enumerate(transitions):
+        _execute(
+            url,
+            "INSERT INTO trading.chain_operation_state_history(operation_id,sequence_no,"
+            "transition_from,transition_to,event_type,event_payload,event_hash,lease_owner,fence_token)"
+            "VALUES(:oid,:seq,:source,:target,:target,'{}',:hash,'worker-a',1)",
+            {"oid": op_id, "seq": seq, "source": source, "target": target,
+             "hash": f"{seq + 1:064x}"},
+        )
+    with pytest.raises(Exception, match="v2_chain_operation_finality_effect_incomplete"):
+        _execute(
+            url,
+            "INSERT INTO trading.chain_operation_state_history(operation_id,sequence_no,"
+            "transition_from,transition_to,event_type,event_payload,event_hash,lease_owner,fence_token)"
+            "VALUES(:oid,5,'MINED_PROVISIONAL','FINALIZED','FINALIZED','{}',repeat('f',64),"
+            "'worker-a',1)",
+            {"oid": op_id},
+        )
+    assert _query(url, "SELECT status,economic_effect_applied FROM trading.chain_operations "
+                       "WHERE id=:oid", {"oid": op_id}) == [("MINED_PROVISIONAL", False)]
+
+
+@pytest.mark.asyncio
+async def test_repository_idempotency_exact_retry_and_conflict(temp_pg_db):
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_operation_dependencies(url)
+    async_url = url.replace("postgresql+psycopg:///", "postgresql+asyncpg:///")
+    engine = create_async_engine(async_url)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    chain = ChainOperationRepository()
+    observations = SettlementObservationRepository()
+    now = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    row = {
+        "observation_key": "repo-idempotent-observation",
+        "settlement_set_key": "4" * 64,
+        "source_kind": "gamma_clob_closed",
+        "condition_id": "0x" + "22" * 32,
+        "market_id": 1,
+        "token_set": ["token-yes", "token-no"],
+        "token_set_hash": "3" * 64,
+        "source_version": "gamma/v1",
+        "source_cutoff": now,
+        "as_of": now,
+        "received_at": now,
+        "raw_artifact_ref": "2" * 64,
+        "raw_artifact_hash": "1" * 64,
+        "content_hash": "0" * 64,
+        "payload": {"closed": True},
+        "status": "PENDING",
+    }
+    try:
+        async with sessions.begin() as session:
+            assert await chain.claim_idempotency(session, key="chain-k", owner="owner-a") is True
+            assert await chain.claim_idempotency(session, key="chain-k", owner="owner-a") is False
+            with pytest.raises(RuntimeError, match="owner_conflict"):
+                await chain.claim_idempotency(session, key="chain-k", owner="owner-b")
+            assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+            first = await observations.insert_observation(session, row)
+            assert await observations.insert_observation(session, row) == first
+            with pytest.raises(RuntimeError, match="observation_idempotency_conflict"):
+                await observations.insert_observation(session, {**row, "source_version": "gamma/v2"})
+            assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_recovery_context_uses_frozen_operation_and_current_fence_only(temp_pg_db):
+    """Sent-operation recovery survives policy/registry rollover under a new lease fence."""
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_fixture_registry(
+        url, kind="ctf_adapter_standard", content_hash=FIXTURE_STANDARD_HASH
+    )
+    operation_id = _seed_operation(url)
+
+    # Model the state that makes *new* signing fail closed after the operation was
+    # prepared: policy killed, registry no longer active and reconciliation open.
+    # Recovery must nevertheless retain the frozen operation facts and only require
+    # the current unexpired execution fence; it performs authoritative reads, never a
+    # second submission.
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("SET LOCAL session_replication_role = replica"))
+            connection.execute(text(
+                "UPDATE trading.capital_permission_manifests SET kill_switch=true "
+                "WHERE id=900002"
+            ))
+            connection.execute(text(
+                "UPDATE trading.contract_registry SET status='SUPERSEDED' "
+                "WHERE kind='ctf_adapter_standard'"
+            ))
+            connection.execute(text(
+                "INSERT INTO trading.account_reconciliations("
+                "reconciliation_key,account_id,trigger_reason,ws_watermark,rest_page_cursor,"
+                "rest_page_hash,unknown_queries,input_manifest_hash,differences,fencing_token,status) "
+                "VALUES('recovery-open',1,'restart',0,'{}',repeat('a',64),'{}',"
+                "repeat('b',64),'[]',2,'RECONCILING')"
+            ))
+            connection.execute(text(
+                "UPDATE trading.execution_leases SET owner='worker-b',fencing_token=2,"
+                "lease_until=now()+interval '1 hour' "
+                "WHERE account_id=1 AND lease_role='EXECUTION'"
+            ))
+    finally:
+        engine.dispose()
+
+    async_url = url.replace("postgresql+psycopg:///", "postgresql+asyncpg:///")
+    async_engine = create_async_engine(async_url)
+    sessions = async_sessionmaker(async_engine, expire_on_commit=False)
+    repository = ChainOperationRepository()
+    try:
+        async with sessions.begin() as session:
+            assert await repository.load_recovery_context(
+                session,
+                operation_id=operation_id,
+                lease_owner="worker-a",
+                fencing_token=1,
+            ) is None
+            context = await repository.load_recovery_context(
+                session,
+                operation_id=operation_id,
+                lease_owner="worker-b",
+                fencing_token=2,
+            )
+            assert context is not None
+            assert context["registry_bundle_content_hash"]
+            assert context["registry_evidence_artifact_id"] == 900010
+            assert context["current_lease_owner"] == "worker-b"
+            assert context["current_lease_fencing_token"] == 2
+    finally:
+        await async_engine.dispose()

@@ -36,6 +36,11 @@ EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH = canonical_hash({
     "market_schema": "execution-preflight-market/v2",
     "envelope_schema": "execution-authorization-envelope/v2",
     "identity": "natural-keys/content-hashes",
+    # Freshness is enforced from the authoritative DB rows on every envelope
+    # create/submit.  Wall-clock observation metadata is deliberately not part
+    # of the replay identity: the same immutable book/balance fact collected at
+    # a later valid instant must not change the business authorization hash.
+    "volatile_evidence_times": "validated-but-not-hashed",
 })
 
 # Polygon CLOB verifying contracts frozen by the WP-05 readiness specification.
@@ -900,6 +905,49 @@ class PrivateExecutionLogic:
                 {"account": account_id},
             )
         ).mappings().all()
+        # Keep the signing identity independent of database wall-clock time.
+        # ``checkpoint_received_at``, ``as_of``, ``stale_at`` and
+        # ``observed_at`` are still read above and enforced by the DB lifecycle
+        # guards (and re-read before submit); they are freshness metadata, not
+        # the immutable economic fact.  The checkpoint/depth/request hashes and
+        # all natural market/asset identities remain bound.
+        stable_quotes = [
+            {
+                key: row.get(key)
+                for key in (
+                    "token_id",
+                    "checkpoint_book_hash",
+                    "best_bid",
+                    "best_ask",
+                    "price_convention",
+                    "tick_size",
+                    "min_order_size",
+                    "validity",
+                    "depth_hash",
+                    "gamma_market_id",
+                    "condition_id",
+                    "market_content_hash",
+                    "neg_risk",
+                )
+            }
+            for row in quotes
+        ]
+        stable_funds = [
+            {
+                key: row.get(key)
+                for key in (
+                    "asset_key",
+                    "confirmed",
+                    "provider_reserved",
+                    "local_reserved",
+                    "available",
+                    "reconcile_watermark",
+                    "source_request_hash",
+                    "source_completeness",
+                )
+            }
+            for row in funds
+        ]
         second = {
             "schema": "execution-preflight-market/v2",
             "algorithm_code_hash": EXECUTION_AUTHORIZATION_HASH_ALGORITHM_CODE_HASH,
@@ -908,7 +956,7 @@ class PrivateExecutionLogic:
                 "intent_hash": intent["intent_hash"],
             },
             "legs": [dict(row) for row in legs],
-            "quotes": [dict(row) for row in quotes],
+            "quotes": stable_quotes,
             "reservation": {
                 key: reservation.get(key) for key in (
                     "reservation_key", "idempotency_key", "asset_key", "amount",
@@ -916,7 +964,7 @@ class PrivateExecutionLogic:
                 )
             },
             "positions": [dict(row) for row in stable_positions],
-            "funds": [dict(row) for row in funds],
+            "funds": stable_funds,
         }
         return self._canonical(first), self._canonical(second)
 

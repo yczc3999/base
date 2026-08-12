@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import Any
 
 from app.db.uow import UnitOfWork
-from app.logics.trading.settlement import SettlementLogic
-from app.schemas.trading.settlement import LabelRevisionInput
+from app.logics.trading.settlement import ChainSettlementLogic, SettlementLogic
+from app.schemas.trading.settlement import ChainSettlementEvidenceInput, LabelRevisionInput
 
 
 @dataclass(frozen=True)
@@ -30,8 +30,13 @@ class HandlerResult:
 class SettlementHandler:
     """解析 settlement event 并调用 SettlementLogic；一个 event 一次 UoW。"""
 
-    def __init__(self, logic: SettlementLogic) -> None:
+    def __init__(
+        self,
+        logic: SettlementLogic,
+        chain_logic: ChainSettlementLogic | None = None,
+    ) -> None:
         self._logic = logic
+        self._chain = chain_logic
 
     async def handle(
         self, uow: UnitOfWork, event: SettlementEvent
@@ -78,4 +83,11 @@ class SettlementHandler:
         if kind == "check_split_integrity":
             result = await self._logic.check_split_integrity(uow)
             return HandlerResult(result.ok, result, result.reason)
+        if kind == "chain_record_evidence":
+            if self._chain is None or event.payload is None:
+                return HandlerResult(False, reason="chain_settlement_logic_required")
+            set_key = await self._chain.record_settlement_evidence(
+                uow, evidence=ChainSettlementEvidenceInput(**event.payload)
+            )
+            return HandlerResult(True, {"settlement_set_key": set_key})
         raise ValueError(f"settlement_event_unknown:{kind}")

@@ -1,97 +1,178 @@
 {
-  "content_hash": "f980b9850f92c8cbf2c376ada564d6ee85cb57403df1ab65c09b2ea0e9e252da",
   "registry_version": "polygon-mainnet-v1",
   "chain_id": 137,
   "snapshot_block_number": 91842167,
   "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
   "active_only": true,
+  "source_rpc_origins": 3,
   "entries": [
     {
       "name": "pusd",
       "address": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
-      "proxy_kind": "none",
-      "runtime_keccak": "0x60a9ef7d9c9a5660ec8dd3bf9c2fab670b837f6205052e058820e5391eedafd0",
-      "resolved_implementation_or_beacon": null,
-      "resolved_code_keccak": "0x60a9ef7d9c9a5660ec8dd3bf9c2fab670b837f6205052e058820e5391eedafd0",
+      "proxy_kind": "eip1967",
+      "runtime_keccak": "0xaaa52c8cc8a0e3fd27ce756cc6b4e70c51423e9b597b11f32d3e49f8b1fc890d",
+      "resolved_implementation_or_beacon": "0x6bbcef9f7ef3b6c592c99e0f206a0de94ad0925f",
+      "resolved_code_keccak": "0x932c9369433b333d6d97d99b7731885751862aa3502122786d24174a9fd8e58e",
       "registry_version": "polygon-mainnet-v1",
       "chain_id": 137,
       "snapshot_block_number": 91842167,
       "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
       "source_url": "https://docs.polymarket.com/resources/contracts",
-      "retrieved_at": "2026-08-11T00:00:00Z",
+      "retrieved_at": "2026-08-11T23:10:00Z",
       "approved": true,
-      "hash": "05b16a969afb53ba80bb7fb179f940e3a0945e2bd61076bc5cdd1d461364b1ee"
+      "extra": {
+        "source_endpoint_origin_sha256": {
+          "node-a": "87ba65b118a1da8374dfd8de2f38249aea8d25ef505bc82f80c52a1b03cb2e2b",
+          "node-b": "91a6797ffd81b59b66efeb88010e732535111dd6158819c0555386cb84067d78",
+          "node-c": "fd9dbb00daaf592e045a7dc0b4903b5acaa517a07ad7d786e5b7bb4bf6314095"
+        },
+        "source_response_sha256": {
+          "node-a": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9",
+          "node-b": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9",
+          "node-c": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9"
+        },
+        "runtime_code_bytes": 61,
+        "runtime_code_sha256": "c5731b62fc7c36236463af8d362688e37c08823abcda35d71ad7d1220eebf578",
+        "implementation_slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+        "implementation_code_bytes": 6953,
+        "implementation_code_sha256": "298755c7d79fe93cede550cc844be094d62f7c778c86a3871e5c2fe6622f1b01"
+      },
+      "hash": "2a45596924268153acef218ee104ed69f355399701725f88aea967438f91bd4d"
     },
     {
       "name": "ctf",
       "address": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
       "proxy_kind": "none",
-      "runtime_keccak": "0x26f17c52ebbb5c8ae097c001b8848e1bc304f8cad2b0a7f7086a91ee6b470ec2",
+      "runtime_keccak": "0xbe524e094025c2a1122ccfbe3264e29fe662d7e0ae518b6926135c814405eceb",
       "resolved_implementation_or_beacon": null,
-      "resolved_code_keccak": "0x26f17c52ebbb5c8ae097c001b8848e1bc304f8cad2b0a7f7086a91ee6b470ec2",
+      "resolved_code_keccak": "0xbe524e094025c2a1122ccfbe3264e29fe662d7e0ae518b6926135c814405eceb",
       "registry_version": "polygon-mainnet-v1",
       "chain_id": 137,
       "snapshot_block_number": 91842167,
       "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
       "source_url": "https://docs.polymarket.com/resources/contracts",
-      "retrieved_at": "2026-08-11T00:00:00Z",
+      "retrieved_at": "2026-08-11T23:10:00Z",
       "approved": true,
-      "hash": "f25d24c2df397567350d284cb29352b4c6d80aad5b2c1d27e96f0218f87f62d1"
+      "extra": {
+        "source_endpoint_origin_sha256": {
+          "node-a": "87ba65b118a1da8374dfd8de2f38249aea8d25ef505bc82f80c52a1b03cb2e2b",
+          "node-b": "91a6797ffd81b59b66efeb88010e732535111dd6158819c0555386cb84067d78",
+          "node-c": "fd9dbb00daaf592e045a7dc0b4903b5acaa517a07ad7d786e5b7bb4bf6314095"
+        },
+        "source_response_sha256": {
+          "node-a": "3c3957c88de31f84e9c63aa0a5e2218d85bd70ba541cdd992b95f43611f55a3c",
+          "node-b": "3c3957c88de31f84e9c63aa0a5e2218d85bd70ba541cdd992b95f43611f55a3c",
+          "node-c": "3c3957c88de31f84e9c63aa0a5e2218d85bd70ba541cdd992b95f43611f55a3c"
+        },
+        "runtime_code_bytes": 15007,
+        "runtime_code_sha256": "984de1496ba73cea948f777d72201b9418041dce65551bff0b4d62101d2acd62"
+      },
+      "hash": "6fe9adbfbb71a1d191341218da25185e0871a61b76df2758b0873d884f87cc5b"
     },
     {
       "name": "deposit_wallet",
       "address": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
       "proxy_kind": "eip1967",
-      "runtime_keccak": "0xf77074ecc001916523bf17dcebcea3b67ece1cd82c76d7befe74ea83f221c84c",
-      "resolved_implementation_or_beacon": "0xadd0cbabe3539abae38b0177142f5ad8e34f086d",
-      "resolved_code_keccak": "0x0553942b38248e38ccd782a7965faa62817a6c3e5c5bbd181a3fd990ce1b4dd6",
+      "runtime_keccak": "0xaaa52c8cc8a0e3fd27ce756cc6b4e70c51423e9b597b11f32d3e49f8b1fc890d",
+      "resolved_implementation_or_beacon": "0x528cc05efac2b0d255e423272187efd41248abd7",
+      "resolved_code_keccak": "0xe6424f1008e46b4b657efacf9500ea7747cbbf3055d9d76459253ac2884793d2",
       "registry_version": "polygon-mainnet-v1",
       "chain_id": 137,
       "snapshot_block_number": 91842167,
       "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
       "source_url": "https://docs.polymarket.com/resources/contracts",
-      "retrieved_at": "2026-08-11T00:00:00Z",
+      "retrieved_at": "2026-08-11T23:10:00Z",
       "approved": true,
-      "eip1967_implementation_slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
-      "hash": "741c1e6bd40254f51cd9265629c4e74195976b2fe2119656d9d3c278104c3c4e"
+      "extra": {
+        "source_endpoint_origin_sha256": {
+          "node-a": "87ba65b118a1da8374dfd8de2f38249aea8d25ef505bc82f80c52a1b03cb2e2b",
+          "node-b": "91a6797ffd81b59b66efeb88010e732535111dd6158819c0555386cb84067d78",
+          "node-c": "fd9dbb00daaf592e045a7dc0b4903b5acaa517a07ad7d786e5b7bb4bf6314095"
+        },
+        "source_response_sha256": {
+          "node-a": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9",
+          "node-b": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9",
+          "node-c": "658a598d9204b0b48f0c63b68ce4434443fa01ffad85307054dcd8b8ddf9dce9"
+        },
+        "runtime_code_bytes": 61,
+        "runtime_code_sha256": "c5731b62fc7c36236463af8d362688e37c08823abcda35d71ad7d1220eebf578",
+        "implementation_slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+        "implementation_code_bytes": 9250,
+        "implementation_code_sha256": "f8af214d0c540f34a34dd9039c1e7cb95137bd7653de1e8722f8804fcde6518d",
+        "factory_beacon_evidence": {
+          "selector": "0x49493a4d",
+          "beacon": "0x7a18edfe055488a3128f01f563e5b479d92ffc3a",
+          "deployed_wallet_sample": "0x11d88a677a745b28d6c4c4978ee2a139887e5dcb",
+          "deployed_wallet_runtime_keccak": "0xb32311a28f07d5500467500e3fad5ba2414ec3adcdfbba32da92bce758a71ca5",
+          "beacon_slot": "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50",
+          "beacon_runtime_keccak": "0xf87b06a1302051471df08ff79a938757509569e16b7a7efa55a3ea7b29b0b9d1",
+          "beacon_implementation": "0xf7f27c29e60fe6325bef8da7f93250353d2e3294",
+          "beacon_implementation_code_keccak": "0xf5c1072460e64902af84d35f5bb1d0a15d80a88c5827b831a977fbc5a0684b96",
+          "three_origin_agreement": true
+        }
+      },
+      "hash": "774caf5580ff19b5fefbf7fd8236885e353f4ac15803449d921aaa2a02d9511f"
     },
     {
       "name": "ctf_adapter_standard",
       "address": "0xAdA100Db00Ca00073811820692005400218FcE1f",
-      "proxy_kind": "beacon",
-      "runtime_keccak": "0xec675c0e66e3c2a5f0b4e05fa09c4ff70a6b37a16ca94b3b2219056a640c39e3",
-      "resolved_implementation_or_beacon": "0x21fd277f6d86b1e653baafd92574cc8679d89a7a",
-      "resolved_code_keccak": "0x84593d480ae3cc1cd4004af88404c49fb499692c459321787d55ba53c100e8f3",
+      "proxy_kind": "none",
+      "runtime_keccak": "0x93b965351d01c1a128821ac79fc98a18105daefb46bda0d1e5b52306d713aa4f",
+      "resolved_implementation_or_beacon": null,
+      "resolved_code_keccak": "0x93b965351d01c1a128821ac79fc98a18105daefb46bda0d1e5b52306d713aa4f",
       "registry_version": "polygon-mainnet-v1",
       "chain_id": 137,
       "snapshot_block_number": 91842167,
       "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
       "source_url": "https://docs.polymarket.com/resources/contracts",
-      "retrieved_at": "2026-08-11T00:00:00Z",
+      "retrieved_at": "2026-08-11T23:10:00Z",
       "approved": true,
-      "beacon_address": "0x21fd277f6d86b1e653baafd92574cc8679d89a7a",
-      "beacon_runtime_keccak": "0x202e6d57545ceb00f9850fb24ca0412b96bb9a6e3d200cf0a489fbaca8435452",
-      "beacon_implementation": "0x2fb65a8f0de7094793b302009353fee276108fd8",
-      "beacon_implementation_code_keccak": "0x84593d480ae3cc1cd4004af88404c49fb499692c459321787d55ba53c100e8f3",
-      "eip1967_beacon_slot": "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50",
-      "hash": "5cb33f788431d4ca478a318c97c516c5b27350da25de4b4df2abd80087d12c4a"
+      "extra": {
+        "source_endpoint_origin_sha256": {
+          "node-a": "87ba65b118a1da8374dfd8de2f38249aea8d25ef505bc82f80c52a1b03cb2e2b",
+          "node-b": "91a6797ffd81b59b66efeb88010e732535111dd6158819c0555386cb84067d78",
+          "node-c": "fd9dbb00daaf592e045a7dc0b4903b5acaa517a07ad7d786e5b7bb4bf6314095"
+        },
+        "source_response_sha256": {
+          "node-a": "ad85b05b1928de3ec128ee15b502df9e6c3bd6acbd6ed52f8ed5dd37a7d329a8",
+          "node-b": "ad85b05b1928de3ec128ee15b502df9e6c3bd6acbd6ed52f8ed5dd37a7d329a8",
+          "node-c": "ad85b05b1928de3ec128ee15b502df9e6c3bd6acbd6ed52f8ed5dd37a7d329a8"
+        },
+        "runtime_code_bytes": 11096,
+        "runtime_code_sha256": "ec449de1c76bdfb37002c02a53e6caf5201602177dd9f45001c168b12fd3c115"
+      },
+      "hash": "9668ef928815b964220d02ef2562f2cf5713e9f06bf7c475b0011bae89af8741"
     },
     {
       "name": "neg_risk_adapter",
       "address": "0xadA2005600Dec949baf300f4C6120000bDB6eAab",
-      "proxy_kind": "eip1967",
-      "runtime_keccak": "0x67a10358a07ffe6d24c37a8c2dce3b6216b01521dc10ad10812fb0a40b337a2a",
-      "resolved_implementation_or_beacon": "0xb54db5561fe18b2ea739f6cb5cb1e55a856c92ed",
-      "resolved_code_keccak": "0xeeb8c0a3a64d44ca2c3afae8919c87cf6bf18b8a6cb1794a40564d26e988c228",
+      "proxy_kind": "none",
+      "runtime_keccak": "0x3b892c7c2f80e7af69f28faf72a51c2d793f6b79b96011bdf0a1996319fcbe5b",
+      "resolved_implementation_or_beacon": null,
+      "resolved_code_keccak": "0x3b892c7c2f80e7af69f28faf72a51c2d793f6b79b96011bdf0a1996319fcbe5b",
       "registry_version": "polygon-mainnet-v1",
       "chain_id": 137,
       "snapshot_block_number": 91842167,
       "snapshot_block_hash": "0x16d35ed4cc72f20c141efcc38d8c0362d4ba95482f3aa96071e85fd06857a47f",
       "source_url": "https://docs.polymarket.com/resources/contracts",
-      "retrieved_at": "2026-08-11T00:00:00Z",
+      "retrieved_at": "2026-08-11T23:10:00Z",
       "approved": true,
-      "eip1967_implementation_slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
-      "hash": "e8c8d66d337340814f5fa3046caf354100457c021d7718e21cd7b58a56b9886d"
+      "extra": {
+        "source_endpoint_origin_sha256": {
+          "node-a": "87ba65b118a1da8374dfd8de2f38249aea8d25ef505bc82f80c52a1b03cb2e2b",
+          "node-b": "91a6797ffd81b59b66efeb88010e732535111dd6158819c0555386cb84067d78",
+          "node-c": "fd9dbb00daaf592e045a7dc0b4903b5acaa517a07ad7d786e5b7bb4bf6314095"
+        },
+        "source_response_sha256": {
+          "node-a": "4119f6b6c0422d1a4ccdf4e447ca854d2c0e9e6b006a5042c556247b855111eb",
+          "node-b": "4119f6b6c0422d1a4ccdf4e447ca854d2c0e9e6b006a5042c556247b855111eb",
+          "node-c": "4119f6b6c0422d1a4ccdf4e447ca854d2c0e9e6b006a5042c556247b855111eb"
+        },
+        "runtime_code_bytes": 13890,
+        "runtime_code_sha256": "2be5a818814f7968324ebb75bb82af23decdf0736292685bc987dbe442c3de07"
+      },
+      "hash": "97376e86cad7664dd9b745188ed06ca7fc45965966f61ce407146902380954c7"
     }
-  ]
+  ],
+  "content_hash": "5c0731e770060502febd0b1963da9de2084ff169efb00b92e0a4bef24cc826d8"
 }

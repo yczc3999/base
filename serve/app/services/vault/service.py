@@ -54,6 +54,47 @@ class VaultService:
         self._runtime_identity = runtime_identity.strip()
         self._failure_audit_sink = failure_audit
 
+    @property
+    def durable_failure_audit_configured(self) -> bool:
+        """Whether rejected/failed reads have an independent durable audit sink."""
+        return self._failure_audit_sink is not None or callable(
+            getattr(self._repo, "insert_durable_failure_event", None)
+        )
+
+    async def audit_consumer_failure(
+        self,
+        *,
+        entry_id: int,
+        version_id: int | None,
+        identity: str,
+        purpose: str,
+        reason: str,
+    ) -> None:
+        """Durably audit failure after decryption but before a secret is usable.
+
+        Consumers use this for strict credential decoding/identity validation errors.
+        The event is deliberately bounded and never accepts exception text or plaintext.
+        """
+        if not self.durable_failure_audit_configured:
+            raise VaultCryptoError("vault_durable_failure_audit_required")
+        safe_reason = str(reason)
+        if (
+            not safe_reason
+            or len(safe_reason) > 64
+            or any(not (char.isascii() and (char.isalnum() or char in "_-")) for char in safe_reason)
+        ):
+            raise ValueError("vault_consumer_failure_reason_invalid")
+        await self._emit_failure_audit({
+            "operation": "read",
+            "entry_id": int(entry_id),
+            "secret_version_id": version_id,
+            "identity": identity,
+            "purpose": purpose,
+            "key_version": None,
+            "result": "READ_FAILED",
+            "reason": safe_reason,
+        })
+
     @staticmethod
     def _aad_context(
         *,

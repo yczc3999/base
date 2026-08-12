@@ -11,6 +11,7 @@ VOID/PARTIAL 是 resolution state；``OTHER`` 必须可判定；``UNKNOWN`` 不�
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
 
 ALLOWED_KNOWN_STATES = frozenset(
@@ -73,6 +74,7 @@ def apply_payout_lookup(ir: dict[str, Any], resolution_state: str) -> Decimal:
 # calldata 为确定性 hex（Solidity ABI），与 p6 relayer golden 全等；caller 不可覆盖。
 # ======================================================================
 
+from eth_abi import encode as _abi_encode
 from eth_utils import keccak as _keccak
 
 
@@ -81,10 +83,28 @@ def function_selector(signature: str) -> str:
     return "0x" + _keccak(signature.encode()).hex()[:8]
 
 
+_SELECTOR_RE = re.compile(r"^0x[0-9a-fA-F]{8}$")
+
+
+def _official_selector(signature: str, override: str | None) -> str:
+    expected = function_selector(signature)
+    if override is None:
+        return expected
+    if not isinstance(override, str) or not _SELECTOR_RE.fullmatch(override):
+        raise ValueError("payout_selector_override_invalid")
+    if override.lower() != expected:
+        raise ValueError("payout_selector_override_forbidden")
+    return expected
+
+
 def _addr_arg(address: str) -> str:
     """32-byte 左填充地址参数。"""
-    if not address.startswith("0x") or len(address) != 42:
+    if not isinstance(address, str) or not address.startswith("0x") or len(address) != 42:
         raise ValueError(f"payout_address_invalid:{address!r}")
+    try:
+        bytes.fromhex(address[2:])
+    except ValueError as exc:
+        raise ValueError(f"payout_address_invalid:{address!r}") from exc
     return address[2:].rjust(64, "0")
 
 
@@ -94,11 +114,27 @@ def _uint_arg(value: int | str) -> str:
         raise ValueError("payout_uint_bool_forbidden")
     if isinstance(value, float):
         raise ValueError("payout_uint_float_forbidden")
+    if not isinstance(value, (int, str)):
+        raise ValueError("payout_uint_invalid")
     if isinstance(value, str):
-        value = int(value, 16) if value.startswith("0x") else int(value)
+        try:
+            value = int(value, 16) if value.startswith("0x") else int(value)
+        except ValueError as exc:
+            raise ValueError("payout_uint_invalid") from exc
     if value < 0:
         raise ValueError("payout_uint_negative")
+    if value >= 1 << 256:
+        raise ValueError("payout_uint_overflow")
     return format(int(value), "064x")
+
+
+def _bytes32_arg(value: str, *, path: str) -> bytes:
+    if not isinstance(value, str) or not value.startswith("0x") or len(value) != 66:
+        raise ValueError(f"payout_{path}_invalid")
+    try:
+        return bytes.fromhex(value[2:])
+    except ValueError as exc:
+        raise ValueError(f"payout_{path}_invalid") from exc
 
 
 def build_split_calldata(
@@ -111,26 +147,26 @@ def build_split_calldata(
     selector_override: str | None = None,
 ) -> str:
     """``splitPosition(address,bytes32,bytes32,uint256[],uint256)``。"""
-    selector = selector_override or function_selector(
-        "splitPosition(address,bytes32,bytes32,uint256[],uint256)"
+    selector = _official_selector(
+        "splitPosition(address,bytes32,bytes32,uint256[],uint256)", selector_override
     )
-    if len(condition_id) != 66 or not condition_id.startswith("0x"):
-        raise ValueError("payout_condition_invalid")
-    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
-        raise ValueError("payout_parent_invalid")
+    condition = _bytes32_arg(condition_id, path="condition")
+    parent = _bytes32_arg(parent_collection_id, path="parent")
+    _addr_arg(collateral_address)
     if not partition:
         raise ValueError("payout_partition_empty")
-    partition_args = "".join(_uint_arg(p) for p in partition)
-    return (
-        selector
-        + _addr_arg(collateral_address)
-        + condition_id[2:]
-        + parent_collection_id[2:]
-        + "0000000000000000000000000000000000000000000000000000000000000040"
-        + _uint_arg(len(partition))
-        + partition_args
-        + _uint_arg(amount_base_units)
+    values = [_uint_value(item) for item in partition]
+    encoded = _abi_encode(
+        ["address", "bytes32", "bytes32", "uint256[]", "uint256"],
+        [
+            collateral_address,
+            parent,
+            condition,
+            values,
+            _uint_value(amount_base_units),
+        ],
     )
+    return selector + encoded.hex()
 
 
 def build_merge_calldata(
@@ -143,26 +179,26 @@ def build_merge_calldata(
     selector_override: str | None = None,
 ) -> str:
     """``mergePositions(address,bytes32,bytes32,uint256[],uint256)``。"""
-    selector = selector_override or function_selector(
-        "mergePositions(address,bytes32,bytes32,uint256[],uint256)"
+    selector = _official_selector(
+        "mergePositions(address,bytes32,bytes32,uint256[],uint256)", selector_override
     )
-    if len(condition_id) != 66 or not condition_id.startswith("0x"):
-        raise ValueError("payout_condition_invalid")
-    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
-        raise ValueError("payout_parent_invalid")
+    condition = _bytes32_arg(condition_id, path="condition")
+    parent = _bytes32_arg(parent_collection_id, path="parent")
+    _addr_arg(collateral_address)
     if not partition:
         raise ValueError("payout_partition_empty")
-    partition_args = "".join(_uint_arg(p) for p in partition)
-    return (
-        selector
-        + _addr_arg(collateral_address)
-        + condition_id[2:]
-        + parent_collection_id[2:]
-        + "0000000000000000000000000000000000000000000000000000000000000040"
-        + _uint_arg(len(partition))
-        + partition_args
-        + _uint_arg(amount_base_units)
+    values = [_uint_value(item) for item in partition]
+    encoded = _abi_encode(
+        ["address", "bytes32", "bytes32", "uint256[]", "uint256"],
+        [
+            collateral_address,
+            parent,
+            condition,
+            values,
+            _uint_value(amount_base_units),
+        ],
     )
+    return selector + encoded.hex()
 
 
 def build_redeem_calldata(
@@ -174,25 +210,31 @@ def build_redeem_calldata(
     selector_override: str | None = None,
 ) -> str:
     """``redeemPositions(address,bytes32,bytes32,uint256[])``（redeem 无 amount）。"""
-    selector = selector_override or function_selector(
-        "redeemPositions(address,bytes32,bytes32,uint256[])"
+    selector = _official_selector(
+        "redeemPositions(address,bytes32,bytes32,uint256[])", selector_override
     )
-    if len(condition_id) != 66 or not condition_id.startswith("0x"):
-        raise ValueError("payout_condition_invalid")
-    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
-        raise ValueError("payout_parent_invalid")
+    condition = _bytes32_arg(condition_id, path="condition")
+    parent = _bytes32_arg(parent_collection_id, path="parent")
+    _addr_arg(collateral_address)
     if not partition:
         raise ValueError("payout_partition_empty")
-    partition_args = "".join(_uint_arg(p) for p in partition)
-    return (
-        selector
-        + _addr_arg(collateral_address)
-        + condition_id[2:]
-        + parent_collection_id[2:]
-        + "0000000000000000000000000000000000000000000000000000000000000020"
-        + _uint_arg(len(partition))
-        + partition_args
+    values = [_uint_value(item) for item in partition]
+    encoded = _abi_encode(
+        ["address", "bytes32", "bytes32", "uint256[]"],
+        [
+            collateral_address,
+            parent,
+            condition,
+            values,
+        ],
     )
+    return selector + encoded.hex()
+
+
+def _uint_value(value: int | str) -> int:
+    """Return a validated uint256 value used by the canonical ABI encoder."""
+    encoded = _uint_arg(value)
+    return int(encoded, 16)
 
 
 def verify_payout_consistency(

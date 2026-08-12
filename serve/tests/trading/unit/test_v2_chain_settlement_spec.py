@@ -215,7 +215,9 @@ def test_relayer_wire_golden() -> None:
     assert golden["eip712"]["domain"]["name"] == "DepositWallet"
     assert golden["eip712"]["domain"]["version"] == "1"
     assert golden["eip712"]["domain"]["chainId"] == CHAIN_ID
-    assert golden["eip712"]["domain"]["verifyingContract"] == DEPOSIT_WALLET
+    # EIP-712 verifies the derived Deposit Wallet instance; submit ``to`` is the factory.
+    assert golden["eip712"]["domain"]["verifyingContract"] == golden["signer"]["deposit_wallet"]
+    assert golden["submit"]["body"]["to"].lower() == DEPOSIT_WALLET.lower()
     assert golden["eip712"]["primary_type"] == "Batch"
 
 

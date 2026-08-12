@@ -22,13 +22,30 @@ from runtimes.trading.execution import UserWsExecutionRuntime
 class ReconciliationRuntime:
     """No network in a transaction; completion is fenced after all facts are applied."""
 
-    def __init__(self, sessions_factory: Any, audit: AuditRepository | None = None) -> None:
+    def __init__(
+        self,
+        sessions_factory: Any,
+        audit: AuditRepository | None = None,
+        *,
+        chain_runtime: Any | None = None,
+    ) -> None:
         self._sessions = sessions_factory
         self._audit = audit or AuditRepository()
         self._logic = ReconciliationLogic(
             ExecutionRepository(), LedgerRepository(), self._audit,
         )
         self._ws_apply = UserWsExecutionRuntime(sessions_factory, self._audit)
+        self._chain_runtime = chain_runtime
+
+    async def recover_chain_operations(self, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Startup reconciliation hook for persisted chain operations.
+
+        The delegated EvaluationRuntime performs only status/nonce/RPC/balance reads;
+        it has no prepare/sign/submit path, so restart recovery is zero-resend.
+        """
+        if self._chain_runtime is None:
+            raise RuntimeError("chain_recovery_runtime_missing")
+        return await self._chain_runtime.recover_chain_operations(limit=limit)
 
     async def reconcile(
         self,

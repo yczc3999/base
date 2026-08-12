@@ -553,27 +553,13 @@ class SettlementLogic:
 # ======================================================================
 # WP-06 Checkpoint C —— chain settlement logic（Polygon/Relayer/CTF 结算闭环）
 #
-# - ``assess_settlement``：五类 source exact set 一致才 admissible；缺项/冲突 →
-#   ``SETTLEMENT_CONFLICT``，G8/score/learning/redeem/ledger effect=0。
-# - ``prepare_redeem``：两次 preflight 全等后创建 REDEEM operation（fake-only、
-#   authorized_capital=0、registry 版本/chain/code exact 复核）。
-# - ``apply_finality``：FINALIZED 在同一 UoW 写 execution/position/balanced ledger/
-#   audit；effect 只产生一次（idempotent）。
-# - ``recover_unknown``：UNKNOWN 只读恢复（relayer transaction/nonce/receipt/finalized
-#   block/pre-post balance），绝不盲重发。
+# This layer owns the authority gates and deterministic state transitions.  It
+# never performs provider I/O: runtimes bracket every call with separate UoWs.
 # ======================================================================
 
-from app.domain.trading.hashing import canonical_bytes, canonical_hash
-from app.domain.trading.payout import (
-    build_redeem_calldata,
-    function_selector,
-    verify_payout_consistency,
-)
-from app.models.trading.settlement import (
-    CHAIN_OPERATION_ACTIVE_STATES,
-    CHAIN_OPERATION_STATES,
-    SETTLEMENT_SOURCE_KINDS,
-)
+from app.domain.trading.payout import build_redeem_calldata, verify_payout_consistency
+from app.outbox.contracts import create_envelope
+from app.outbox.repository import OutboxRepository
 from app.repositories.trading.audit import AuditRepository
 from app.repositories.trading.execution import ExecutionRepository
 from app.repositories.trading.ledger import LedgerRepository
@@ -581,13 +567,26 @@ from app.repositories.trading.settlement import (
     ChainOperationRepository,
     ContractRegistryRepository,
     SettlementObservationRepository,
-    SettlementRepository,
+)
+from app.schemas.trading.settlement import (
+    CHAIN_OPERATION_STATES,
+    SETTLEMENT_SOURCE_KINDS,
+    ChainRecoveryEvidence,
+    ChainRedeemRequest,
+    ChainSettlementEvidenceInput,
+    ChainWireEvidence,
+)
+
+CHAIN_OPERATION_ACTIVE_STATES = frozenset(
+    state
+    for state in CHAIN_OPERATION_STATES
+    if state not in {"FINALIZED", "INVALID", "FAILED", "SETTLEMENT_CONFLICT", "REVERSED"}
 )
 
 
 @dataclass(frozen=True)
 class SettlementAssessment:
-    """五元组 exact set 核验结果。admissible=True 才允许 redeem/ledger。"""
+    """The coherent, exact five-source settlement cut."""
 
     admissible: bool
     conflict_reason: str | None = None
@@ -595,21 +594,90 @@ class SettlementAssessment:
     is_50_50: bool | None = None
     payout_numerator: str | None = None
     payout_denominator: str | None = None
+    payout_numerators: tuple[str, ...] = ()
+    token_set: tuple[str, ...] = ()
+    market_id: int | None = None
+    as_of: datetime | None = None
+    settlement_set_key: str | None = None
     present_kinds: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RedeemPreflight:
+    """Non-secret DB authority material safe to carry across the read boundary."""
+
+    request: ChainRedeemRequest
+    authority_hash: str
+    account_key: str
+    wallet_address: str
+    signing_identity: str
+    registry_id: int
+    registry_kind: str
+    registry_version: str
+    registry_content_hash: str
+    registry_address: str
+    registry_snapshot_block_number: int
+    registry_runtime_keccak: str
+    registry_resolved_address: str | None
+    registry_resolved_code_keccak: str
+    registry_proxy_kind: str
+    registry_snapshot_block_hash: str
+    registry_extra: dict[str, Any]
+    registry_bundle: tuple[dict[str, Any], ...]
+    registry_bundle_hash: str
+    pusd_address: str
+    ctf_address: str
+    deposit_wallet_address: str
+    release_manifest_id: int
+    release_name: str
+    release_total_hash: str
+    permission_manifest_id: int
+    permission_ref: str
+    market_key: str
+    market_content_hash: str
+    market_version_no: int
+    market_version_hash: str
+    token_set: tuple[str, ...]
+    settlement_set_key: str
+    calldata: str
+    calls: tuple[dict[str, str], ...]
 
 
 @dataclass(frozen=True)
 class PreparedOperation:
     operation_id: int
     operation_key: str
+    account_id: int
+    fencing_token: int
     economic_hash: str
     expected_operation_hash: str
     calldata: str
     body_hash: str
+    nonce: str
+    deadline: datetime
+    # Only the transaction that inserted the operation owns the single transport
+    # boundary. Exact idempotent contenders receive the frozen row for recovery.
+    transport_owner: bool = True
 
 
 class ChainSettlementLogic:
-    """Polygon/Relayer/CTF 结算与兑换（fake-only；require injected wire）。"""
+    """DB-authoritative fake-conformance settlement state machine.
+
+    There are three explicit phases:
+
+    * :meth:`preflight_redeem` reads and hashes locked DB authority facts;
+    * :meth:`prepare_redeem` repeats the preflight and persists the exact opaque
+      wire hash before changing the operation to ``SUBMITTING``;
+    * :meth:`apply_submit_outcome` / :meth:`apply_recovery` append provider
+      observations after network calls have completed outside the UoW.
+    """
+
+    _CHAIN_ID = 137
+    _DEPOSIT_WALLET = "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07"
+    _CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+    _PUSD = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+    _PARENT = "0x" + "00" * 32
+    _PARTITION = ("1", "2")
 
     def __init__(
         self,
@@ -617,362 +685,1742 @@ class ChainSettlementLogic:
         chain_operations: ChainOperationRepository | None = None,
         registry_repo: ContractRegistryRepository | None = None,
         observations: SettlementObservationRepository | None = None,
-        settlement: SettlementRepository | None = None,
         audit: AuditRepository | None = None,
         execution: ExecutionRepository | None = None,
         ledger: LedgerRepository | None = None,
+        outbox: OutboxRepository | None = None,
         chain_id: int = 137,
         registry_version: str = "polygon-mainnet-v1",
-        adapter_standard: str = "0xAdA100Db00Ca00073811820692005400218FcE1f",
-        adapter_neg_risk: str = "0xadA2005600Dec949baf300f4C6120000bDB6eAab",
-        pusd: str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
-        ctf: str = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
-        deposit_wallet: str = "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
-        parent_collection_id: str = "0x" + "00" * 32,
-        partition: tuple[str, ...] = ("1", "2"),
-        pusd_base_units_per_pair: int = 1_000_000,
+        deposit_wallet: str = _DEPOSIT_WALLET,
+        pusd: str = _PUSD,
+        ctf: str = _CTF,
+        parent_collection_id: str = _PARENT,
+        partition: tuple[str, ...] = _PARTITION,
     ) -> None:
+        if int(chain_id) != self._CHAIN_ID:
+            raise ValueError("chain_settlement_chain_id_unsupported")
         self.chain_operations = chain_operations or ChainOperationRepository()
         self.registry_repo = registry_repo or ContractRegistryRepository()
         self.observations = observations or SettlementObservationRepository()
-        self.settlement = settlement or SettlementRepository()
         self.audit = audit or AuditRepository()
         self.execution = execution or ExecutionRepository()
         self.ledger = ledger or LedgerRepository()
-        self.chain_id = chain_id
+        self.outbox = outbox or OutboxRepository()
+        self.chain_id = int(chain_id)
         self.registry_version = registry_version
-        self.adapter_standard = adapter_standard
-        self.adapter_neg_risk = adapter_neg_risk
+        self.deposit_wallet = deposit_wallet
         self.pusd = pusd
         self.ctf = ctf
-        self.deposit_wallet = deposit_wallet
         self.parent_collection_id = parent_collection_id
         self.partition = tuple(partition)
-        self.pusd_base_units_per_pair = pusd_base_units_per_pair
 
-    # ---------------- settlement assessment ----------------
+    # ---------------- exact five-source assessment ----------------
 
-    async def assess_settlement(self, uow: UnitOfWork, condition_id: str
-                                ) -> SettlementAssessment:
-        """五元组 exact set 核验：缺一项或 payout/winner/token/cutoff 冲突 effect=0。"""
-        rows = await self.observations.get_observations(uow.session, condition_id)
-        by_kind: dict[str, dict] = {}
+    async def assess_settlement(
+        self,
+        uow: UnitOfWork,
+        condition_id: str,
+        *,
+        market_id: int | None = None,
+    ) -> SettlementAssessment:
+        loader = getattr(self.observations, "get_complete_set", None)
+        if callable(loader):
+            if market_id is None:
+                raise RuntimeError("settlement_market_id_required")
+            rows = await loader(uow.session, condition_id=condition_id, market_id=market_id)
+        else:
+            rows = await self.observations.get_observations(uow.session, condition_id)
+
+        # Only COMPLETE observations are settlement authority.  PENDING history is
+        # retained but may neither create duplicates nor complete an evidence cut.
+        rows = [row for row in rows if row.get("status") == "COMPLETE"]
+        by_kind: dict[str, dict[str, Any]] = {}
         for row in rows:
-            kind = row["source_kind"]
+            kind = str(row.get("source_kind"))
             if kind in by_kind:
-                return SettlementAssessment(False, "duplicate_source_kind",
-                                            present_kinds=tuple(sorted(by_kind)))
+                return SettlementAssessment(
+                    False, "duplicate_source_kind", present_kinds=tuple(sorted(by_kind))
+                )
             by_kind[kind] = row
         present = tuple(sorted(by_kind))
-        if set(present) != set(SETTLEMENT_SOURCE_KINDS):
-            return SettlementAssessment(False, f"incomplete_source_set:{present}",
-                                        present_kinds=present)
-        # 任一 source status=CONFLICT → conflict
-        if any(r["status"] == "CONFLICT" for r in rows):
+        required = set(SETTLEMENT_SOURCE_KINDS)
+        if set(present) != required:
+            return SettlementAssessment(
+                False, f"incomplete_source_set:{present}", present_kinds=present
+            )
+        if any(row.get("status") == "CONFLICT" for row in rows):
             return SettlementAssessment(False, "source_conflict", present_kinds=present)
+
+        # All five facts must describe one immutable cut, market and exact token set.
+        cutoffs = {row.get("as_of") for row in rows}
+        token_sets = {
+            tuple(str(token).lower() for token in (row.get("token_set") or []))
+            for row in rows
+        }
+        conditions = {str(row.get("condition_id")).lower() for row in rows}
+        markets = {row.get("market_id") for row in rows}
+        if len(cutoffs) != 1 or None in cutoffs:
+            return SettlementAssessment(False, "source_cutoff_conflict", present_kinds=present)
+        if len(token_sets) != 1 or not next(iter(token_sets)):
+            return SettlementAssessment(False, "source_token_set_conflict", present_kinds=present)
+        if conditions != {condition_id.lower()}:
+            return SettlementAssessment(False, "source_condition_conflict", present_kinds=present)
+        if len(markets) != 1 or None in markets or (market_id is not None and markets != {market_id}):
+            return SettlementAssessment(False, "source_market_conflict", present_kinds=present)
+
         payout = by_kind["ctf_payout"]
         winner = by_kind["clob_winner_5050"]
         data = by_kind["data_api_redeemable"]
         gamma = by_kind["gamma_clob_closed"]
         label = by_kind["label_audit"]
-        # Gamma/CLOB 必须 closed && !acceptingOrders（记录于 observation payload）
         gamma_payload = gamma.get("payload") or {}
-        if not (gamma_payload.get("closed") is True
-                and gamma_payload.get("accepting_orders") is False):
+        label_payload = label.get("payload") or {}
+        if not (
+            gamma_payload.get("closed") is True
+            and gamma_payload.get("accepting_orders") is False
+        ):
             return SettlementAssessment(False, "market_not_closed", present_kinds=present)
-        # Data API redeemable 必须 true
         if data.get("redeemable") is not True:
             return SettlementAssessment(False, "not_redeemable", present_kinds=present)
-        # label audit 必须 final_admissible（记录于 observation payload）
-        label_payload = label.get("payload") or {}
-        if label_payload.get("status") != "final_admissible":
+        if (
+            label_payload.get("status") != "final_admissible"
+            or not label.get("label_audit_version")
+        ):
             return SettlementAssessment(False, "label_not_final", present_kinds=present)
-        # CTF payout 与 CLOB winner/50-50 一致性
+
         outcome = payout.get("outcome_index")
         numerator = payout.get("numerator")
         denominator = payout.get("denominator")
-        if not (outcome and numerator and denominator):
+        payout_vector = payout.get("payout_vector") or {}
+        numerators = payout_vector.get("numerators")
+        vector_denominator = payout_vector.get("denominator")
+        if (
+            outcome is None or numerator is None or denominator is None
+            or not isinstance(numerators, list) or len(numerators) != 2
+            or str(vector_denominator) != str(denominator)
+        ):
             return SettlementAssessment(False, "payout_incomplete", present_kinds=present)
-        consistent = verify_payout_consistency(
-            ctf_payout_outcome=outcome, ctf_numerator=numerator,
-            ctf_denominator=denominator,
+        try:
+            rates = self._normalized_payout_rates(numerators, str(denominator))
+        except RuntimeError:
+            return SettlementAssessment(False, "payout_vector_invalid", present_kinds=present)
+        if not verify_payout_consistency(
+            ctf_payout_outcome=str(outcome),
+            ctf_numerator=str(numerator),
+            ctf_denominator=str(denominator),
             clob_winner=winner.get("winner"),
             clob_is_50_50=winner.get("is_50_50_outcome"),
-        )
-        if not consistent:
+        ):
             return SettlementAssessment(False, "payout_winner_conflict", present_kinds=present)
+        expected_winner = (
+            ("YES", False) if rates == (Decimal(1), Decimal(0)) else
+            ("NO", False) if rates == (Decimal(0), Decimal(1)) else
+            (None, True) if rates == (Decimal("0.5"), Decimal("0.5")) else
+            (None, None)
+        )
+        if expected_winner[1] is None or (
+            winner.get("winner"), winner.get("is_50_50_outcome")
+        ) != expected_winner:
+            return SettlementAssessment(False, "payout_winner_vector_conflict", present_kinds=present)
+        label_rates = label_payload.get("token_cashflow_rates")
+        if not isinstance(label_rates, list) or len(label_rates) != 2:
+            return SettlementAssessment(False, "label_cashflow_missing", present_kinds=present)
+        try:
+            if tuple(_decimal(value, "label_cashflow") for value in label_rates) != rates:
+                return SettlementAssessment(False, "label_cashflow_conflict", present_kinds=present)
+        except Exception:
+            return SettlementAssessment(False, "label_cashflow_invalid", present_kinds=present)
+
         return SettlementAssessment(
-            admissible=True,
+            True,
             winner=winner.get("winner"),
             is_50_50=winner.get("is_50_50_outcome"),
-            payout_numerator=numerator,
-            payout_denominator=denominator,
+            payout_numerator=str(numerator),
+            payout_denominator=str(denominator),
+            payout_numerators=tuple(str(value) for value in numerators),
+            token_set=next(iter(token_sets)),
+            market_id=next(iter(markets)),
+            as_of=next(iter(cutoffs)),
+            settlement_set_key=str(rows[0]["settlement_set_key"]),
             present_kinds=present,
         )
 
-    # ---------------- redeem preparation ----------------
-
-    async def _verify_registry(self, uow: UnitOfWork, *, kind: str,
-                               expected_content_hash: str) -> dict:
-        """registry 版本/chain/code exact 复核（启动与每次 operation 前）。"""
-        entry = await self.registry_repo.get_active(
-            uow.session, chain_id=self.chain_id, kind=kind
+    async def record_settlement_evidence(
+        self,
+        uow: UnitOfWork,
+        *,
+        evidence: ChainSettlementEvidenceInput,
+    ) -> str:
+        """Validate provider observations against DB facts and append one exact set."""
+        market = (
+            await uow.session.execute(
+                text(
+                    "SELECT m.id, m.gamma_market_id, m.condition_id, m.content_hash, "
+                    "m.closed, m.accepting_orders, mv.version_no AS market_version_no, "
+                    "mv.normalized_hash AS market_version_hash "
+                    "FROM trading.pm_markets m LEFT JOIN LATERAL ("
+                    " SELECT version_no, normalized_hash FROM trading.pm_market_versions "
+                    " WHERE market_id=m.id ORDER BY version_no DESC LIMIT 1) mv ON true "
+                    "WHERE m.id=:market FOR UPDATE OF m"
+                ),
+                {"market": evidence.market_id},
+            )
+        ).mappings().one_or_none()
+        if market is None or str(market["condition_id"]).lower() != evidence.condition_id.lower():
+            raise RuntimeError("settlement_evidence_market_condition_mismatch")
+        if (
+            market["closed"] is not True
+            or market["accepting_orders"] is not False
+            or evidence.gamma_closed is not True
+            or evidence.gamma_accepting_orders is not False
+        ):
+            raise RuntimeError("settlement_evidence_market_not_closed")
+        tokens = (
+            await uow.session.execute(
+                text(
+                    "SELECT id, token_id, outcome_index FROM trading.pm_tokens "
+                    "WHERE market_id=:market ORDER BY outcome_index"
+                ),
+                {"market": evidence.market_id},
+            )
+        ).mappings().all()
+        # Canonical token order is outcome_index, never lexical token-id order.
+        db_token_set = tuple(str(row["token_id"]).lower() for row in tokens)
+        if len(tokens) != 2 or db_token_set != tuple(evidence.token_set):
+            raise RuntimeError("settlement_evidence_token_set_mismatch")
+        label = (
+            await uow.session.execute(
+                text(
+                    "SELECT rl.id, rl.label_key, rl.version_no, rl.state, rl.resolution_state, "
+                    "rl.token_cashflow, rl.evidence_artifact_id, rl.policy_code_hash, "
+                    "rl.auditor_identity, rl.conflict_set, rl.supersedes_id, "
+                    "cs.contract_key, cs.version_no AS contract_version_no, "
+                    "cs.content_hash AS contract_content_hash, ao.sha256 AS label_artifact_hash, "
+                    "NOT EXISTS (SELECT 1 FROM trading.resolution_labels newer "
+                    " WHERE newer.supersedes_id=rl.id) AS is_latest "
+                    "FROM trading.resolution_labels rl "
+                    "JOIN trading.contract_specs cs ON cs.id=rl.contract_spec_id "
+                    "JOIN trading.artifact_objects ao ON ao.id=rl.evidence_artifact_id "
+                    "JOIN trading.contract_snapshots snap ON snap.id=cs.snapshot_id "
+                    "JOIN trading.pm_market_versions mv ON mv.id=snap.market_version_id "
+                    "WHERE rl.id=:label AND mv.market_id=:market"
+                ),
+                {"label": evidence.label_id, "market": evidence.market_id},
+            )
+        ).mappings().one_or_none()
+        if (
+            label is None
+            or int(label["version_no"]) != evidence.label_version_no
+            or label["state"] != "final_admissible"
+            or label["resolution_state"] != evidence.label_resolution_state
+            or not label["is_latest"]
+            or label["evidence_artifact_id"] is None
+            or not label["policy_code_hash"]
+            or not label["auditor_identity"]
+            or label["conflict_set"] not in (None, [])
+        ):
+            raise RuntimeError("settlement_evidence_label_mismatch")
+        if not verify_payout_consistency(
+            ctf_payout_outcome=evidence.ctf_outcome_index,
+            ctf_numerator=evidence.ctf_numerator,
+            ctf_denominator=evidence.ctf_denominator,
+            clob_winner=evidence.clob_winner,
+            clob_is_50_50=evidence.clob_is_50_50,
+        ):
+            raise RuntimeError("settlement_evidence_payout_conflict")
+        expected_vector = self._payout_numerators(
+            outcome=evidence.ctf_outcome_index,
+            numerator=evidence.ctf_numerator,
+            denominator=evidence.ctf_denominator,
         )
-        if entry is None:
-            raise RuntimeError(f"registry_missing:{kind}")
-        if entry["content_hash"] != expected_content_hash:
-            raise RuntimeError("registry_version_drift")
-        if entry["chain_id"] != self.chain_id:
-            raise RuntimeError("registry_chain_drift")
-        return entry
-
-    def _build_operation_hashes(self, *, binding: dict, calls: list[dict]) -> dict:
-        """冻结 economic_hash/call_set_hash/expected_operation_hash（确定性）。"""
-        economic_hash = canonical_hash({
-            "operation_type": binding["operation_type"],
-            "account_id": binding["account_id"],
-            "wallet_address": binding["wallet_address"],
-            "condition_id": binding["condition_id"],
-            "market_id": binding.get("market_id"),
-            "amount_base_units": binding["amount_base_units"],
-            "target_address": binding["target_address"],
-        })
-        call_set_hash = canonical_hash(calls)
-        expected_operation_hash = canonical_hash({
-            **binding,
-            "call_set": calls,
-            "registry_version": self.registry_version,
-            "chain_id": self.chain_id,
-            "deposit_wallet": self.deposit_wallet,
-        })
-        return {
-            "economic_hash": economic_hash,
-            "call_set_hash": call_set_hash,
-            "expected_operation_hash": expected_operation_hash,
+        if evidence.ctf_payout_numerators != expected_vector:
+            raise RuntimeError("settlement_evidence_payout_vector_conflict")
+        # WP-04's audited token_cashflow is the label authority.  It is keyed by
+        # internal pm_token_id and must equal the full ordered CTF payout vector.
+        token_cashflow = label["token_cashflow"]
+        if not isinstance(token_cashflow, dict):
+            raise RuntimeError("settlement_evidence_label_cashflow_missing")
+        payout_rates = self._normalized_payout_rates(
+            evidence.ctf_payout_numerators, evidence.ctf_denominator
+        )
+        expected_cashflow = {
+            str(row["id"]): value for row, value in zip(tokens, payout_rates)
         }
+        try:
+            actual_cashflow = {
+                str(key): _decimal(value, f"label_cashflow_{key}")
+                for key, value in token_cashflow.items()
+            }
+        except Exception as exc:
+            raise RuntimeError("settlement_evidence_label_cashflow_invalid") from exc
+        if actual_cashflow != expected_cashflow:
+            raise RuntimeError("settlement_evidence_label_cashflow_conflict")
+        if evidence.data_api_redeemable is not True:
+            raise RuntimeError("settlement_evidence_not_redeemable")
+
+        artifact_rows = (
+            await uow.session.execute(
+                text(
+                    "SELECT id, sha256 FROM trading.artifact_objects "
+                    "WHERE id=ANY(:ids) FOR SHARE"
+                ),
+                {"ids": [item.artifact_id for item in evidence.artifacts.values()]},
+            )
+        ).mappings().all()
+        catalog = {int(row["id"]): row["sha256"] for row in artifact_rows}
+        if len(catalog) != len(evidence.artifacts):
+            raise RuntimeError("settlement_evidence_artifact_catalog_incomplete")
+        provenance: dict[str, dict[str, Any]] = {}
+        for kind in sorted(SETTLEMENT_SOURCE_KINDS):
+            artifact = evidence.artifacts[kind]
+            if catalog.get(artifact.artifact_id) != artifact.artifact_hash:
+                raise RuntimeError(f"settlement_evidence_artifact_catalog_mismatch:{kind}")
+            provenance[kind] = {
+                "artifact_ref": artifact.artifact_ref,
+                "artifact_hash": artifact.artifact_hash,
+                "source_version": artifact.source_version,
+                "source_cutoff": artifact.source_cutoff,
+            }
+        set_material = {
+            "schema": "settlement-source-set/v2",
+            "market": {
+                "gamma_market_id": market["gamma_market_id"],
+                "condition_id": evidence.condition_id.lower(),
+                "content_hash": market["content_hash"],
+                "version_no": market["market_version_no"],
+                "version_hash": market["market_version_hash"],
+            },
+            "condition_id": evidence.condition_id.lower(),
+            "token_set": db_token_set,
+            "cutoff_at": evidence.cutoff_at,
+            "label": {
+                "contract_key": label["contract_key"],
+                "contract_version_no": label["contract_version_no"],
+                "contract_content_hash": label["contract_content_hash"],
+                "label_key": label["label_key"],
+                "version_no": label["version_no"],
+                "resolution_state": label["resolution_state"],
+                "policy_code_hash": label["policy_code_hash"],
+                "auditor_identity": label["auditor_identity"],
+                "evidence_artifact_hash": label["label_artifact_hash"],
+            },
+            "source_provenance": provenance,
+        }
+        settlement_set_key = canonical_hash(set_material)
+        source_rows = {
+            "gamma_clob_closed": {
+                "payload": {"closed": True, "accepting_orders": False},
+            },
+            "ctf_payout": {
+                "outcome_index": evidence.ctf_outcome_index,
+                "numerator": evidence.ctf_numerator,
+                "denominator": evidence.ctf_denominator,
+                "payout_vector": {
+                    "numerators": evidence.ctf_payout_numerators,
+                    "denominator": evidence.ctf_denominator,
+                },
+            },
+            "data_api_redeemable": {"redeemable": True},
+            "clob_winner_5050": {
+                "winner": evidence.clob_winner,
+                "is_50_50_outcome": evidence.clob_is_50_50,
+            },
+            "label_audit": {
+                "label_audit_version": str(evidence.label_version_no),
+                "payload": {
+                    "status": "final_admissible",
+                    "resolution_state": evidence.label_resolution_state,
+                    "label_key": label["label_key"],
+                    "contract_key": label["contract_key"],
+                    "token_cashflow_rates": [str(value) for value in payout_rates],
+                },
+            },
+        }
+        for kind in SETTLEMENT_SOURCE_KINDS:
+            artifact = evidence.artifacts[kind]
+            fields = source_rows[kind]
+            content = {
+                "settlement_set_key": settlement_set_key,
+                "source_kind": kind,
+                "condition_id": evidence.condition_id.lower(),
+                "market_id": evidence.market_id,
+                "token_set": db_token_set,
+                "as_of": evidence.cutoff_at,
+                "artifact_hash": artifact.artifact_hash,
+                "source_provenance": provenance[kind],
+                **fields,
+            }
+            await self.observations.insert_observation(
+                uow.session,
+                {
+                    "observation_key": f"{settlement_set_key}:{kind}",
+                    "settlement_set_key": settlement_set_key,
+                    "source_kind": kind,
+                    "condition_id": evidence.condition_id.lower(),
+                    "market_id": evidence.market_id,
+                    "token_set": list(db_token_set),
+                    "token_set_hash": canonical_hash(list(db_token_set)),
+                    "outcome_index": fields.get("outcome_index"),
+                    "numerator": fields.get("numerator"),
+                    "denominator": fields.get("denominator"),
+                    "payout_vector": fields.get("payout_vector"),
+                    "winner": fields.get("winner"),
+                    "is_50_50_outcome": fields.get("is_50_50_outcome"),
+                    "redeemable": fields.get("redeemable"),
+                    "label_audit_version": fields.get("label_audit_version"),
+                    "source_version": artifact.source_version,
+                    "source_cutoff": artifact.source_cutoff,
+                    "as_of": evidence.cutoff_at,
+                    "received_at": evidence.received_at,
+                    "raw_artifact_ref": artifact.artifact_ref,
+                    "raw_artifact_id": artifact.artifact_id,
+                    "raw_artifact_hash": artifact.artifact_hash,
+                    "content_hash": canonical_hash(content),
+                    "payload": fields.get("payload"),
+                    "status": "COMPLETE",
+                },
+            )
+        return settlement_set_key
+
+    @staticmethod
+    def _payout_numerators(
+        *, outcome: str, numerator: str, denominator: str
+    ) -> list[str]:
+        if denominator == "2" and numerator == "1" and outcome in {"YES", "NO", "50_50"}:
+            return ["1", "1"]
+        if outcome == "YES":
+            return [numerator, "0"]
+        if outcome == "NO":
+            return ["0", numerator]
+        raise RuntimeError("settlement_payout_vector_unsupported")
+
+    @staticmethod
+    def _normalized_payout_rates(
+        numerators: list[str] | tuple[str, ...], denominator: str
+    ) -> tuple[Decimal, Decimal]:
+        try:
+            den = Decimal(str(denominator))
+            nums = tuple(Decimal(str(value)) for value in numerators)
+        except Exception as exc:
+            raise RuntimeError("settlement_payout_vector_invalid") from exc
+        if len(nums) != 2 or den <= 0 or any(value < 0 for value in nums):
+            raise RuntimeError("settlement_payout_vector_invalid")
+        if sum(nums, Decimal(0)) != den:
+            raise RuntimeError("settlement_payout_vector_not_normalized")
+        return (nums[0] / den, nums[1] / den)
+
+    # ---------------- authoritative preflight / TX1 ----------------
+
+    async def preflight_redeem(
+        self,
+        uow: UnitOfWork,
+        *,
+        request: ChainRedeemRequest,
+        runtime_identity: str,
+        expected_registry_content_hash: str,
+    ) -> RedeemPreflight:
+        if not runtime_identity.strip():
+            raise RuntimeError("chain_runtime_identity_required")
+        kind = await self._registry_kind_for_market(uow, request.market_id)
+        loader = getattr(self.chain_operations, "load_preflight_context", None)
+        if not callable(loader):
+            raise RuntimeError("chain_preflight_repository_capability_missing")
+        material = await loader(
+            uow.session,
+            account_id=request.account_id,
+            market_id=request.market_id,
+            registry_kind=kind,
+            registry_content_hash=expected_registry_content_hash,
+            release_manifest_id=None,
+            capital_permission_manifest_id=None,
+            lease_owner=runtime_identity,
+            fencing_token=request.fencing_token,
+            for_update=True,
+        )
+        if material is None:
+            raise RuntimeError("chain_preflight_context_missing")
+        exact_checks = {
+            "account_id": request.account_id,
+            "account_status": "active",
+            "account_provider": "polymarket",
+            "account_chain_id": self.chain_id,
+            "account_identity_type": "FIXTURE_ONLY",
+            "account_network_mode": "fixture",
+            "market_id": request.market_id,
+            "market_condition_id": request.condition_id,
+            "release_status": "active",
+            "permission_status": "active",
+            "permission_mode": "shadow",
+            "registry_status": "ACTIVE",
+            "registry_version": self.registry_version,
+            "registry_kind": kind,
+            "registry_content_hash": expected_registry_content_hash,
+            "lease_owner": runtime_identity,
+            "lease_fencing_token": request.fencing_token,
+        }
+        for field, expected in exact_checks.items():
+            actual = material.get(field)
+            if field == "market_condition_id" and isinstance(actual, str):
+                actual, expected = actual.lower(), str(expected).lower()
+            if actual != expected:
+                raise RuntimeError(f"chain_preflight_mismatch:{field}")
+        if material["lease_until"] <= _utcnow():
+            raise RuntimeError("chain_preflight_lease_expired")
+        if material["funder_address"] != material["maker_address"]:
+            raise RuntimeError("chain_preflight_wallet_identity_mismatch")
+        if not material.get("signing_identity") or material["signing_identity"] == material["maker_address"]:
+            raise RuntimeError("chain_preflight_signer_identity_invalid")
+        if material["account_release_manifest_id"] != material["release_manifest_id"]:
+            raise RuntimeError("chain_preflight_release_lineage_mismatch")
+        if (
+            material["account_capital_permission_manifest_id"]
+            != material["capital_permission_manifest_id"]
+            or material["release_capital_permission_manifest_id"]
+            != material["capital_permission_manifest_id"]
+        ):
+            raise RuntimeError("chain_preflight_permission_lineage_mismatch")
+        if Decimal(str(material["permission_authorized_capital"])) != 0:
+            raise RuntimeError("chain_preflight_nonzero_capital_forbidden")
+        if material["permission_kill_switch"] is True:
+            raise RuntimeError("chain_preflight_kill_switch")
+        if material["active_reconciliation"] is True:
+            raise RuntimeError("chain_preflight_reconciliation_active")
+        if material["market_neg_risk"] is None:
+            raise RuntimeError("chain_preflight_neg_risk_missing")
+        if material["market_closed"] is not True or material["market_accepting_orders"] is not False:
+            raise RuntimeError("chain_preflight_market_not_closed")
+        capability = material.get("permission_capability") or {}
+        if (
+            not isinstance(capability, dict)
+            or capability.get("chain_settlement") != "FAKE_CONFORMANCE"
+        ):
+            raise RuntimeError("chain_preflight_fake_capability_missing")
+
+        market_identity = (
+            await uow.session.execute(
+                text(
+                    "SELECT m.gamma_market_id, m.condition_id, m.content_hash, "
+                    "mv.version_no, mv.normalized_hash "
+                    "FROM trading.pm_markets m JOIN LATERAL ("
+                    " SELECT version_no, normalized_hash FROM trading.pm_market_versions "
+                    " WHERE market_id=m.id ORDER BY version_no DESC LIMIT 1"
+                    ") mv ON true WHERE m.id=:market FOR SHARE OF m"
+                ),
+                {"market": request.market_id},
+            )
+        ).mappings().one_or_none()
+        if market_identity is None or any(
+            market_identity[field] is None
+            for field in ("gamma_market_id", "condition_id", "content_hash", "normalized_hash")
+        ):
+            raise RuntimeError("chain_preflight_market_identity_incomplete")
+
+        raw_bundle_entries = material.get("registry_bundle_entries") or {}
+        if not isinstance(raw_bundle_entries, dict):
+            raise RuntimeError("chain_preflight_registry_bundle_incomplete")
+        registry_bundle = [
+            {"kind": bundle_kind, "chain_id": self.chain_id, "status": "ACTIVE", **dict(entry)}
+            for bundle_kind, entry in sorted(raw_bundle_entries.items())
+        ]
+        required_bundle = {"pusd", "ctf", "deposit_wallet", kind}
+        if {row["kind"] for row in registry_bundle} != required_bundle:
+            raise RuntimeError("chain_preflight_registry_bundle_incomplete")
+        by_kind = {str(row["kind"]): row for row in registry_bundle}
+        if by_kind[kind]["id"] != material["registry_version_id"]:
+            raise RuntimeError("chain_preflight_registry_adapter_drift")
+        registry_bundle_material = [
+            {
+                key: row.get(key)
+                for key in (
+                    "kind", "registry_version", "version_no", "chain_id", "address",
+                    "proxy_kind", "runtime_keccak", "resolved_implementation_or_beacon",
+                    "resolved_code_keccak", "snapshot_block_number", "snapshot_block_hash",
+                    "content_hash", "extra",
+                )
+            }
+            for row in registry_bundle
+        ]
+        registry_bundle_hash = str(material["registry_bundle_content_hash"])
+        if material.get("registry_bundle") != {
+            str(row["kind"]): str(row["content_hash"]) for row in registry_bundle
+        }:
+            raise RuntimeError("chain_preflight_registry_bundle_identity_mismatch")
+
+        assessment = await self.assess_settlement(
+            uow, request.condition_id, market_id=request.market_id
+        )
+        if not assessment.admissible:
+            raise RuntimeError(f"settlement_not_admissible:{assessment.conflict_reason}")
+        calldata = build_redeem_calldata(
+            collateral_address=by_kind["pusd"]["address"], condition_id=request.condition_id,
+            parent_collection_id=self.parent_collection_id, partition=list(self.partition),
+        )
+        calls = ({"target": material["registry_address"], "value": "0", "data": calldata},)
+        authority = {
+            "schema": "chain-redeem-preflight/v2",
+            "runtime_identity": runtime_identity,
+            "request": {
+                "operation_key": request.operation_key,
+                "idempotency_key": request.idempotency_key,
+                "condition_id": request.condition_id.lower(),
+                "fencing_token": request.fencing_token,
+            },
+            "account": {
+                "account_key": material["account_key"],
+                "wallet_address": material["funder_address"],
+                "signing_identity": material["signing_identity"],
+            },
+            "release": {
+                "release_name": material["release_name"],
+                "total_hash": material["release_total_hash"],
+                "db_revision": material["release_db_revision"],
+            },
+            "permission": {
+                "name": material["permission_name"],
+                "content_hash": material["permission_content_hash"],
+                "capability": capability,
+                "authorized_capital": str(material["permission_authorized_capital"]),
+                "kill_switch": material["permission_kill_switch"],
+            },
+            "market": {
+                "gamma_market_id": market_identity["gamma_market_id"],
+                "condition_id": material["market_condition_id"],
+                "content_hash": market_identity["content_hash"],
+                "version_no": market_identity["version_no"],
+                "version_hash": market_identity["normalized_hash"],
+                "neg_risk": material["market_neg_risk"],
+                "token_set": assessment.token_set,
+                "settlement_cutoff": assessment.as_of,
+            },
+            "registry_bundle": registry_bundle_material,
+            "registry_bundle_hash": registry_bundle_hash,
+            "calls": calls,
+        }
+        return RedeemPreflight(
+            request=request, authority_hash=canonical_hash(authority),
+            account_key=material["account_key"], wallet_address=material["funder_address"],
+            signing_identity=material["signing_identity"],
+            registry_id=int(material["registry_version_id"]),
+            registry_kind=material["registry_kind"],
+            registry_version=material["registry_version"],
+            registry_content_hash=material["registry_content_hash"],
+            registry_address=material["registry_address"],
+            registry_snapshot_block_number=int(material["registry_snapshot_block_number"]),
+            registry_runtime_keccak=material["registry_runtime_keccak"],
+            registry_resolved_address=material["registry_resolved_implementation_or_beacon"],
+            registry_resolved_code_keccak=material["registry_resolved_code_keccak"],
+            registry_proxy_kind=material["registry_proxy_kind"],
+            registry_snapshot_block_hash=material["registry_snapshot_block_hash"],
+            registry_extra=dict(material.get("registry_extra") or {}),
+            registry_bundle=tuple(dict(row) for row in registry_bundle),
+            registry_bundle_hash=registry_bundle_hash,
+            pusd_address=by_kind["pusd"]["address"],
+            ctf_address=by_kind["ctf"]["address"],
+            deposit_wallet_address=by_kind["deposit_wallet"]["address"],
+            release_manifest_id=int(material["release_manifest_id"]),
+            release_name=material["release_name"],
+            release_total_hash=material["release_total_hash"],
+            permission_manifest_id=int(material["capital_permission_manifest_id"]),
+            permission_ref=material["permission_content_hash"],
+            market_key=market_identity["gamma_market_id"],
+            market_content_hash=market_identity["content_hash"],
+            market_version_no=int(market_identity["version_no"]),
+            market_version_hash=market_identity["normalized_hash"],
+            token_set=assessment.token_set,
+            settlement_set_key=str(assessment.settlement_set_key),
+            calldata=calldata, calls=calls,
+        )
+
+    async def _load_registry_bundle(
+        self,
+        uow: UnitOfWork,
+        *,
+        registry_version: str,
+        adapter_kind: str,
+    ) -> list[dict[str, Any]]:
+        required = ("pusd", "ctf", "deposit_wallet", adapter_kind)
+        rows = [dict(row) for row in (
+            await uow.session.execute(
+                text(
+                    "SELECT id, registry_version, kind, version_no, chain_id, address, "
+                    "proxy_kind, runtime_keccak, resolved_implementation_or_beacon, "
+                    "resolved_code_keccak, snapshot_block_number, snapshot_block_hash, "
+                    "content_hash, extra, status FROM trading.contract_registry "
+                    "WHERE chain_id=:chain AND registry_version=:version "
+                    "AND kind=ANY(:kinds) AND status='ACTIVE' ORDER BY kind FOR SHARE"
+                ),
+                {"chain": self.chain_id, "version": registry_version, "kinds": list(required)},
+            )
+        ).mappings().all()]
+        if len(rows) != len(required) or {row["kind"] for row in rows} != set(required):
+            raise RuntimeError("chain_preflight_registry_bundle_incomplete")
+        snapshots = {
+            (row["snapshot_block_number"], row["snapshot_block_hash"]) for row in rows
+        }
+        if len(snapshots) != 1:
+            raise RuntimeError("chain_preflight_registry_bundle_snapshot_conflict")
+        return rows
+
+    async def _registry_kind_for_market(self, uow: UnitOfWork, market_id: int) -> str:
+        value = (await uow.session.execute(
+            text("SELECT neg_risk FROM trading.pm_markets WHERE id=:market"),
+            {"market": market_id},
+        )).scalar_one_or_none()
+        if value is None:
+            raise RuntimeError("chain_preflight_neg_risk_missing")
+        return "neg_risk_adapter" if bool(value) else "ctf_adapter_standard"
 
     async def prepare_redeem(
         self,
         uow: UnitOfWork,
         *,
-        operation_key: str,
-        idempotency_key: str,
-        account_id: int,
-        wallet_address: str,
-        condition_id: str,
-        market_id: int | None,
-        neg_risk: bool,
-        registry_content_hash: str,
-        permission_ref: str,
-        release_manifest_id: int,
-        capital_permission_manifest_id: int,
-        fencing_token: int,
+        request: ChainRedeemRequest,
+        runtime_identity: str,
+        expected_registry_content_hash: str,
+        first_preflight_hash: str,
+        wire: ChainWireEvidence,
     ) -> PreparedOperation:
-        """两次 preflight 全等后创建 REDEEM operation；caller 不可覆盖 adapter/calldata。"""
-        # preflight 1：registry + assessment
-        adapter = self.adapter_neg_risk if neg_risk else self.adapter_standard
-        entry = await self._verify_registry(
-            uow, kind="neg_risk_adapter" if neg_risk else "ctf_adapter_standard",
-            expected_content_hash=registry_content_hash,
+        current = await self.preflight_redeem(
+            uow,
+            request=request,
+            runtime_identity=runtime_identity,
+            expected_registry_content_hash=expected_registry_content_hash,
         )
-        assessment = await self.assess_settlement(uow, condition_id)
-        if not assessment.admissible:
-            raise RuntimeError(f"settlement_not_admissible:{assessment.conflict_reason}:{condition_id}")
-        # preflight 2：calldata 确定性 + 全等（两次结果必须一致）
-        calldata = build_redeem_calldata(
-            collateral_address=self.ctf, condition_id=condition_id,
-            parent_collection_id=self.parent_collection_id,
-            partition=list(self.partition),
-        )
-        calldata_2 = build_redeem_calldata(
-            collateral_address=self.ctf, condition_id=condition_id,
-            parent_collection_id=self.parent_collection_id,
-            partition=list(self.partition),
-        )
-        if calldata != calldata_2:
-            raise RuntimeError("preflight_calldata_mismatch")
-        calls = [{"target": adapter, "value": "0", "data": calldata}]
-        # exact body（fake signature 占位；发送前由 signer 替换，body_hash 冻结结构）
-        fake_signature = "0x" + "0" * 130
-        body = {
-            "type": "WALLET",
-            "from": wallet_address,
-            "to": self.deposit_wallet,
-            "nonce": "0",
-            "signature": fake_signature,
-            "metadata": "pm-v2-settlement/v1",
-            "depositWalletParams": {
-                "depositWallet": wallet_address,
-                "deadline": "0",
-                "calls": calls,
-            },
-        }
-        body_bytes = json.dumps(body, separators=(",", ":")).encode()
-        body_hash = hashlib.sha256(body_bytes).hexdigest()
+        if current.authority_hash != first_preflight_hash:
+            raise RuntimeError("chain_preflight_authority_drift")
+        expected_call_set_hash = canonical_hash(list(current.calls))
+        if wire.call_set_hash != expected_call_set_hash:
+            raise RuntimeError("chain_wire_call_set_mismatch")
+        if wire.registry_content_hash != current.registry_content_hash:
+            raise RuntimeError("chain_registry_content_drift")
+        expected_bundle = {str(row["kind"]): str(row["content_hash"]) for row in current.registry_bundle}
+        if wire.registry_bundle != expected_bundle:
+            raise RuntimeError("chain_registry_bundle_drift")
+        if wire.registry_bundle_content_hash != current.registry_bundle_hash:
+            raise RuntimeError("chain_registry_bundle_hash_drift")
+        artifact = (
+            await uow.session.execute(
+                text("SELECT sha256 FROM trading.artifact_objects WHERE id=:id FOR SHARE"),
+                {"id": wire.registry_evidence_artifact_id},
+            )
+        ).scalar_one_or_none()
+        if artifact != wire.registry_evidence_hash:
+            raise RuntimeError("chain_registry_evidence_artifact_mismatch")
+        geo_artifact = (
+            await uow.session.execute(
+                text("SELECT sha256 FROM trading.artifact_objects WHERE id=:id FOR SHARE"),
+                {"id": wire.geo_evidence_artifact_id},
+            )
+        ).scalar_one_or_none()
+        if geo_artifact != wire.geo_evidence_hash:
+            raise RuntimeError("chain_geo_evidence_artifact_mismatch")
+        if wire.geo_allowed is not True:
+            raise RuntimeError("chain_geoblock_denied")
+        now = _utcnow()
+        if wire.geo_observed_at > now or (now - wire.geo_observed_at).total_seconds() > 30:
+            raise RuntimeError("chain_geo_evidence_stale")
+        if wire.settlement_set_key != current.settlement_set_key:
+            raise RuntimeError("chain_settlement_set_drift")
         binding = {
+            "schema": "chain-operation-binding/v2",
             "operation_type": "REDEEM",
-            "account_id": account_id,
-            "wallet_address": wallet_address,
-            "condition_id": condition_id,
-            "market_id": market_id,
-            "target_address": adapter,
-            "amount_base_units": 0,
+            "account_key": current.account_key,
+            "wallet_address": current.wallet_address,
+            "condition_id": request.condition_id,
+            "market_key": current.market_key,
+            "market_content_hash": current.market_content_hash,
+            "market_version_no": current.market_version_no,
+            "market_version_hash": current.market_version_hash,
+            "registry_version": current.registry_version,
+            "registry_content_hash": current.registry_content_hash,
+            "registry_bundle_hash": current.registry_bundle_hash,
+            "target_address": current.registry_address,
+            "permission_ref": current.permission_ref,
+            "release_name": current.release_name,
+            "release_total_hash": current.release_total_hash,
+            "fencing_token": request.fencing_token,
+            "token_set": current.token_set,
         }
-        hashes = self._build_operation_hashes(binding=binding, calls=calls)
-        # 并发 claim：非分区 idempotency_claims
+        economic_hash = canonical_hash({
+            key: binding[key]
+            for key in (
+                "operation_type", "account_key", "wallet_address", "condition_id",
+                "market_key", "market_content_hash", "market_version_no",
+                "market_version_hash", "target_address", "token_set",
+            )
+        })
+        allocation = await self._derive_settlement_allocation(
+            uow, account_id=request.account_id, market_id=request.market_id,
+            pre_balance=wire.pre_balance, settlement_set_key=current.settlement_set_key,
+        )
+        allocation_hash = canonical_hash(allocation)
+        expected_operation_hash = canonical_hash({
+            **binding,
+            "calls": current.calls,
+            "settlement_set_key": wire.settlement_set_key,
+            "settlement_allocation_hash": allocation_hash,
+        })
         claimed = await self.chain_operations.claim_idempotency(
-            uow.session, key=idempotency_key, owner="chain-settlement"
+            uow.session, key=request.idempotency_key, owner=expected_operation_hash
         )
         if not claimed:
+            existing = await self.chain_operations.get_by_key(
+                uow.session, request.operation_key
+            )
+            if existing and existing.get("expected_operation_hash") == expected_operation_hash:
+                return self._prepared_from_row(existing, transport_owner=False)
             raise RuntimeError("redeem_idempotency_conflict")
-        from eth_utils import keccak as _keccak
 
-        calldata_keccak = _keccak(bytes.fromhex(calldata[2:])).hex()
+        from eth_utils import keccak as _keccak
+        calldata_keccak = _keccak(bytes.fromhex(current.calldata[2:])).hex()
         op_id = await self.chain_operations.insert_operation(
             uow.session,
             {
-                **binding,
-                "operation_key": operation_key,
-                "idempotency_key": idempotency_key,
+                "operation_key": request.operation_key,
+                "idempotency_key": request.idempotency_key,
+                "economic_hash": economic_hash,
+                "operation_type": "REDEEM",
                 "chain_id": self.chain_id,
-                "registry_version_id": entry["id"],
-                "permission_ref": permission_ref,
-                "release_manifest_id": release_manifest_id,
-                "capital_permission_manifest_id": capital_permission_manifest_id,
-                "fencing_token": fencing_token,
-                "calldata": calldata,
+                "account_id": request.account_id,
+                "wallet_address": current.wallet_address,
+                "condition_id": request.condition_id,
+                "market_id": request.market_id,
+                "registry_version_id": current.registry_id,
+                "target_address": current.registry_address,
+                "permission_ref": current.permission_ref,
+                "release_manifest_id": current.release_manifest_id,
+                "capital_permission_manifest_id": current.permission_manifest_id,
+                "fencing_token": request.fencing_token,
+                "lease_owner": runtime_identity,
+                "amount_base_units": 0,
+                "calldata": current.calldata,
                 "calldata_keccak": calldata_keccak,
-                **hashes,
-                "body_hash": body_hash,
-                "preflight_hash1": canonical_hash({"calldata": calldata}),
-                "preflight_hash2": canonical_hash({"calldata": calldata_2}),
+                "body_hash": wire.body_hash,
+                "call_set_hash": wire.call_set_hash,
+                "expected_operation_hash": expected_operation_hash,
+                "preflight_hash1": first_preflight_hash,
+                "preflight_hash2": current.authority_hash,
+                "registry_evidence_hash": wire.registry_evidence_hash,
+                "registry_content_hash": wire.registry_content_hash,
+                "registry_bundle": wire.registry_bundle,
+                "registry_bundle_content_hash": wire.registry_bundle_content_hash,
+                "registry_evidence_artifact_id": wire.registry_evidence_artifact_id,
+                "geo_evidence_artifact_id": wire.geo_evidence_artifact_id,
+                "geo_evidence_hash": wire.geo_evidence_hash,
+                "geo_allowed": wire.geo_allowed,
+                "geo_observed_at": wire.geo_observed_at,
+                "geo_source_version": wire.geo_source_version,
+                "settlement_set_key": wire.settlement_set_key,
+                "settlement_allocation": allocation,
+                "settlement_allocation_hash": allocation_hash,
+                "pre_balance": wire.pre_balance,
+            },
+        )
+        await self.chain_operations.update_evidence(
+            uow.session,
+            op_id,
+            {
+                "relayer_nonce": wire.nonce,
+                "deadline": wire.deadline,
+            },
+            lease_owner=runtime_identity,
+            fencing_token=request.fencing_token,
+        )
+        await self._append_state(
+            uow,
+            operation_id=op_id,
+            from_status="PREPARED",
+            to_status="SUBMITTING",
+            runtime_identity=runtime_identity,
+            fencing_token=request.fencing_token,
+            event_type="WIRE_COMMITTED",
+            payload={
+                "body_hash": wire.body_hash,
+                "call_set_hash": wire.call_set_hash,
+                "nonce": wire.nonce,
+                "deadline": wire.deadline.isoformat(),
             },
         )
         return PreparedOperation(
-            operation_id=op_id, operation_key=operation_key,
-            economic_hash=hashes["economic_hash"],
-            expected_operation_hash=hashes["expected_operation_hash"],
-            calldata=calldata, body_hash=body_hash,
+            operation_id=op_id,
+            operation_key=request.operation_key,
+            account_id=request.account_id,
+            fencing_token=request.fencing_token,
+            economic_hash=economic_hash,
+            expected_operation_hash=expected_operation_hash,
+            calldata=current.calldata,
+            body_hash=wire.body_hash,
+            nonce=wire.nonce,
+            deadline=wire.deadline,
+            transport_owner=True,
         )
 
-    # ---------------- finality & ledger effect ----------------
+    async def _derive_settlement_allocation(
+        self,
+        uow: UnitOfWork,
+        *,
+        account_id: int,
+        market_id: int,
+        pre_balance: dict[str, object],
+        settlement_set_key: str,
+    ) -> list[dict[str, str]]:
+        tokens = pre_balance.get("tokens")
+        if not isinstance(tokens, dict):
+            raise RuntimeError("chain_pre_balance_token_set_missing")
+        expected = {str(key).lower(): Decimal(str(value)) for key, value in tokens.items()}
+        if len(expected) != 2 or any(value < 0 for value in expected.values()):
+            raise RuntimeError("chain_pre_balance_token_set_invalid")
+        rows = (await uow.session.execute(
+            text(
+                "SELECT p.portfolio_namespace, t.token_id, p.quantity "
+                "FROM trading.positions p JOIN trading.pm_tokens t ON t.id=p.token_id "
+                "WHERE p.account_id=:account AND p.market_id=:market AND p.quantity>0 "
+                "ORDER BY p.portfolio_namespace, t.outcome_index, p.id FOR UPDATE OF p"
+            ),
+            {"account": account_id, "market": market_id},
+        )).mappings().all()
+        aggregated: dict[tuple[str, str], Decimal] = {}
+        for row in rows:
+            key = (str(row["portfolio_namespace"]), str(row["token_id"]).lower())
+            aggregated[key] = aggregated.get(key, Decimal(0)) + Decimal(str(row["quantity"]))
+        payout = (
+            await uow.session.execute(
+                text(
+                    "SELECT token_set,payout_vector FROM trading.settlement_observations "
+                    "WHERE settlement_set_key=:key AND source_kind='ctf_payout' "
+                    "AND status='COMPLETE' FOR SHARE"
+                ),
+                {"key": settlement_set_key},
+            )
+        ).mappings().one_or_none()
+        if payout is None:
+            raise RuntimeError("chain_settlement_payout_missing")
+        ordered_tokens = tuple(str(token).lower() for token in payout["token_set"])
+        vector = payout["payout_vector"] or {}
+        denominator = self._base_units(vector.get("denominator"), "payout_denominator")
+        numerators = vector.get("numerators")
+        if not isinstance(numerators, list) or len(numerators) != 2 or denominator <= 0:
+            raise RuntimeError("chain_settlement_payout_vector_invalid")
+        payout_by_token = {
+            token: self._base_units(numerators[index], "payout_numerator")
+            for index, token in enumerate(ordered_tokens)
+        }
+        allocation = []
+        for (namespace, token), quantity_decimal in sorted(aggregated.items()):
+            if quantity_decimal <= 0 or quantity_decimal != quantity_decimal.to_integral_value():
+                continue
+            quantity = int(quantity_decimal)
+            if token not in payout_by_token:
+                raise RuntimeError("chain_settlement_allocation_token_unknown")
+            product = quantity * payout_by_token[token]
+            if product % denominator:
+                raise RuntimeError("chain_settlement_fractional_base_unit_allocation")
+            allocation.append({
+                "portfolio_namespace": namespace,
+                "token_id": token,
+                "quantity_base_units": str(quantity),
+                "expected_cash_base_units": str(product // denominator),
+            })
+        actual = {token: Decimal(0) for token in expected}
+        for row in allocation:
+            token = row["token_id"]
+            if token not in actual:
+                raise RuntimeError("chain_pre_balance_position_token_set_conflict")
+            actual[token] += Decimal(row["quantity_base_units"])
+        # Both outcome tokens are always part of the authoritative balance vector;
+        # the losing leg commonly has a zero wallet balance and therefore no position.
+        if actual != expected or not allocation:
+            raise RuntimeError("chain_pre_balance_position_allocation_conflict")
+        return allocation
 
-    async def apply_finality(self, uow: UnitOfWork, operation_id: int,
-                             *, winning_token_id: int | None = None) -> dict:
-        """FINALIZED 在同一 UoW 写 execution/position/balanced ledger/audit；effect 一次。"""
-        op = await self.chain_operations.get_for_update(uow.session, operation_id)
-        if op is None:
-            raise RuntimeError("chain_operation_missing")
-        if op["status"] != "FINALIZED":
-            raise RuntimeError("chain_operation_not_finalized")
-        # idempotency：已存在该 operation 的 SETTLEMENT 账务即跳过（effect 只一次）
-        existing = await self._settlement_ledger_for_operation(uow, operation_id)
-        if existing is not None:
-            return {"applied": False, "transaction_key": existing["transaction_key"]}
+    # ---------------- TX2 and recovery application ----------------
 
-        pre = op["pre_balance"] or {}
-        post = op["post_balance"] or {}
-        try:
-            g = Decimal(str(post.get("pusd", 0))) - Decimal(str(pre.get("pusd", 0)))
-        except Exception as exc:
-            raise RuntimeError("settlement_balance_delta_invalid") from exc
-        # redeem 消费全部 outcome 余额：T = pre 的 winning token 余额
-        outcome = op["condition_id"]
-        t = Decimal(str(pre.get("token", 0)))
-        portfolio_namespace = f"chain:{op['wallet_address']}"
-        tx_key = f"settle-{op['operation_key']}"
-        tx_id = await self.ledger.insert_transaction(
-            uow.session,
-            transaction_key=tx_key,
-            kind="SETTLEMENT",
-            trade_decision_id=None,
-            execution_id=None,
-            portfolio_namespace=portfolio_namespace,
-            # WP-05 real-fill lineage guard：settlement 账务不设 account_id（避免填充链要求），
-            # account 关联通过 chain_operation_id → chain_operations.account_id 派生。
-            account_id=None,
-            chain_operation_id=operation_id,
+    async def apply_submit_outcome(
+        self,
+        uow: UnitOfWork,
+        *,
+        operation_id: int,
+        runtime_identity: str,
+        fencing_token: int,
+        outcome: Any,
+        sent_body_hash: str,
+    ) -> dict[str, Any]:
+        op = await self._load_owned_operation(
+            uow, operation_id, runtime_identity=runtime_identity,
+            fencing_token=fencing_token,
         )
-        # base-unit 整数金额（ledger postings 要求 NUMERIC(38,0)；jsonb_to_recordset 需 int）
-        g_int = int(g)
-        t_int = int(t)
-        postings = [
-            {"posting_no": 0, "asset_type": "CASH", "asset_key": self.pusd,
-             "amount": g_int, "counterparty": f"ctf-redeem:{outcome}"},
-            {"posting_no": 1, "asset_type": "CASH", "asset_key": self.pusd,
-             "amount": -g_int, "counterparty": f"ctf-redeem:{outcome}"},
-            {"posting_no": 2, "asset_type": "TOKEN", "asset_key": outcome,
-             "amount": -t_int, "counterparty": f"ctf-redeem:{outcome}"},
-            {"posting_no": 3, "asset_type": "TOKEN", "asset_key": outcome,
-             "amount": t_int, "counterparty": f"ctf-redeem:{outcome}"},
-        ]
-        if g == 0 and t == 0:
-            # 空 effect：仍写账务容器（SETTLEMENT kind）以证明 effect 只产生一次
-            postings = []
-        if postings:
-            await self.ledger.insert_postings(uow.session, transaction_id=tx_id, postings=postings)
-            await self.ledger.mark_posted(uow.session, tx_id, posted_at=_utcnow())
-        # 审计：settlement applied（append-only workflow event）
-        await self.audit.insert_workflow_event(
-            uow.session,
-            event_key=f"settle-applied-{operation_id}",
-            event_type="SETTLEMENT_FINALIZED",
-            aggregate_type="chain_operation",
-            aggregate_id=op["operation_key"],
-            payload_hash=canonical_hash({
-                "operation_id": operation_id, "ledger_transaction_id": tx_id,
-                "pusd_delta": str(g), "token_delta": str(t),
-            }),
+        if sent_body_hash != op["body_hash"]:
+            raise RuntimeError("chain_submit_body_hash_mismatch")
+        if op["status"] != "SUBMITTING":
+            if op["status"] in CHAIN_OPERATION_ACTIVE_STATES:
+                return {"status": op["status"], "replayed": True}
+            raise RuntimeError("chain_submit_operation_not_submitting")
+        cls = str(getattr(outcome, "cls", "UNKNOWN") or "UNKNOWN")
+        transaction_id = getattr(outcome, "transaction_id", None)
+        transaction_hash = getattr(outcome, "transaction_hash", None)
+        relayer_state = str(getattr(outcome, "state", "") or "")
+        evidence_updates: dict[str, Any] = {}
+        if transaction_id is not None:
+            evidence_updates["transaction_id"] = str(transaction_id)
+        if transaction_hash is not None:
+            evidence_updates["transaction_hash"] = str(transaction_hash).lower()
+        if evidence_updates:
+            await self.chain_operations.update_evidence(
+                uow.session, operation_id, evidence_updates,
+                lease_owner=runtime_identity, fencing_token=fencing_token,
+            )
+        if cls != "SUBMITTED" or relayer_state not in {"NEW", "EXECUTED"}:
+            target = "UNKNOWN"
+        else:
+            target = "RELAYER_NEW" if relayer_state == "NEW" else "EXECUTED"
+        await self._append_state(
+            uow,
+            operation_id=operation_id,
+            from_status="SUBMITTING",
+            to_status=target,
+            runtime_identity=runtime_identity,
+            fencing_token=fencing_token,
+            event_type="RELAYER_SUBMIT_OUTCOME",
             payload={
-                "operation_id": operation_id,
-                "ledger_transaction_id": tx_id,
-                "pusd_delta": str(g),
-                "token_delta": str(t),
-                "condition_id": outcome,
+                "class": cls,
+                "state": relayer_state or None,
+                "transaction_id": str(transaction_id) if transaction_id else None,
+                "transaction_hash": str(transaction_hash).lower() if transaction_hash else None,
+                "http_status": getattr(outcome, "http_status", None),
+                "body_hash": sent_body_hash,
             },
         )
-        return {"applied": True, "transaction_key": tx_key,
-                "pusd_delta": g, "token_delta": t}
+        return {"status": target, "replayed": False}
 
-    async def _settlement_ledger_for_operation(self, uow: UnitOfWork,
-                                               operation_id: int) -> dict | None:
-        result = await uow.session.execute(
-            text(
-                "SELECT * FROM trading.ledger_transactions "
-                "WHERE chain_operation_id = :oid AND kind = 'SETTLEMENT' LIMIT 1"
-            ),
-            {"oid": operation_id},
+    async def recover_unknown(
+        self,
+        uow: UnitOfWork,
+        operation_id: int,
+        *,
+        runtime_identity: str,
+        fencing_token: int,
+        allow_finalized_audit: bool = False,
+    ) -> dict[str, Any]:
+        """Return a provider query plan only.  It never claims recovery occurred."""
+        op = await self.chain_operations.load_recovery_context(
+            uow.session,
+            operation_id=operation_id,
+            lease_owner=runtime_identity,
+            fencing_token=fencing_token,
+            for_update=False,
         )
-        rows = [dict(zip(result.keys(), row)) for row in result.fetchall()]
-        return rows[0] if rows else None
-
-    # ---------------- UNKNOWN 只读恢复 ----------------
-
-    async def recover_unknown(self, uow: UnitOfWork, operation_id: int) -> dict:
-        """UNKNOWN/active operation 只读恢复：relayer transaction/nonce/receipt/finalized
-        block/pre-post balance。无权威失败/不存在证据时 real resend=0（禁盲重发）。"""
-        op = await self.chain_operations.get_for_update(uow.session, operation_id)
         if op is None:
-            raise RuntimeError("chain_operation_missing")
-        if op["status"] not in CHAIN_OPERATION_ACTIVE_STATES:
+            raise RuntimeError("chain_recovery_fence_or_operation_missing")
+        if op["status"] == "FINALIZED" and allow_finalized_audit:
+            pass
+        elif op["status"] not in CHAIN_OPERATION_ACTIVE_STATES:
             raise RuntimeError("chain_operation_not_recoverable")
+        if not op.get("signing_identity"):
+            raise RuntimeError("chain_recovery_signing_identity_missing")
         return {
             "operation_id": operation_id,
+            "account_id": op["account_id"],
+            "wallet_address": op["wallet_address"],
+            "signing_identity": op["signing_identity"],
+            "condition_id": op["condition_id"],
+            "market_id": op["market_id"],
+            "target_address": op["target_address"],
             "status": op["status"],
             "transaction_id": op.get("transaction_id"),
             "transaction_hash": op.get("transaction_hash"),
             "nonce": op.get("relayer_nonce"),
+            "body_hash": op["body_hash"],
+            "operation_key": op["operation_key"],
+            "idempotency_key": op["idempotency_key"],
+            "registry_version_id": op["registry_version_id"],
+            "registry_content_hash": op.get("registry_content_hash"),
+            "registry_bundle": op.get("registry_bundle"),
+            "registry_bundle_content_hash": op.get("registry_bundle_content_hash"),
+            "registry_evidence_hash": op["registry_evidence_hash"],
             "blind_resend": False,
-            "evidence": {
-                "has_transaction_id": op.get("transaction_id") is not None,
-                "has_transaction_hash": op.get("transaction_hash") is not None,
-                "has_receipt": op.get("receipt_block_number") is not None,
-                "has_finalized": op.get("finalized_block_number") is not None,
-            },
+            "required_queries": (
+                "relayer_transaction", "relayer_nonce", "polygon_receipt",
+                "canonical_block", "finalized_block", "post_balances",
+            ),
         }
+
+    async def apply_recovery(
+        self,
+        uow: UnitOfWork,
+        *,
+        operation_id: int,
+        runtime_identity: str,
+        fencing_token: int,
+        evidence: ChainRecoveryEvidence,
+    ) -> dict[str, Any]:
+        op = await self._load_owned_operation(
+            uow, operation_id, runtime_identity=runtime_identity,
+            fencing_token=fencing_token,
+        )
+        status = op["status"]
+        if status == "FINALIZED":
+            contradictions: list[str] = []
+            # A periodic audit is affirmative proof of the *same* finalized
+            # transaction, not a best-effort heartbeat.  Missing receipt/status
+            # facts are contradictions too: otherwise a provider returning no
+            # receipt (or INVALID) could silently replay a finalized operation.
+            if evidence.relayer_state != "CONFIRMED":
+                contradictions.append("relayer_state")
+            if evidence.transaction_id != op.get("transaction_id"):
+                contradictions.append("transaction_id")
+            if not evidence.transaction_hash or str(evidence.transaction_hash).lower() != str(
+                op.get("transaction_hash") or ""
+            ).lower():
+                contradictions.append("transaction_hash")
+            if evidence.receipt_removed or evidence.canonical is not True:
+                contradictions.append("canonical_receipt")
+            if evidence.receipt_success is not True:
+                contradictions.append("receipt_status")
+            if evidence.receipt_block_number != op.get("receipt_block_number"):
+                contradictions.append("receipt_block_number")
+            if str(evidence.receipt_block_hash or "").lower() != str(
+                op.get("receipt_block_hash") or ""
+            ).lower():
+                contradictions.append("receipt_block_hash")
+            if str(evidence.canonical_block_hash or "").lower() != str(
+                op.get("canonical_block_hash") or ""
+            ).lower():
+                contradictions.append("canonical_block_hash")
+            if (
+                evidence.finalized_after_receipt is not True
+                or evidence.finalized_block_number is None
+                or evidence.finalized_block_hash is None
+            ):
+                contradictions.append("finalized_proof")
+            elif op.get("finalized_block_number") is not None:
+                frozen_finalized = int(op["finalized_block_number"])
+                if evidence.finalized_block_number < frozen_finalized:
+                    contradictions.append("finalized_block_regression")
+                elif (
+                    evidence.finalized_block_number == frozen_finalized
+                    and str(evidence.finalized_block_hash).lower()
+                    != str(op.get("finalized_block_hash") or "").lower()
+                ):
+                    contradictions.append("finalized_block_hash")
+            if evidence.post_balance is None or evidence.post_balance != op.get("post_balance"):
+                contradictions.append("post_balance")
+            if evidence.balance_artifact_id is None or evidence.balance_artifact_hash is None:
+                contradictions.append("balance_artifact")
+            await self._record_recovery_observation(
+                uow, operation_id=operation_id, op=op, evidence=evidence,
+                status=status, contradictions=contradictions,
+            )
+            if not contradictions:
+                return {"status": status, "replayed": True, "applied": False}
+            await self._append_state(
+                uow, operation_id=operation_id, from_status="FINALIZED",
+                to_status="SETTLEMENT_CONFLICT", runtime_identity=runtime_identity,
+                fencing_token=fencing_token, event_type="POST_FINALITY_CONTRADICTION",
+                payload={"observation_hash": evidence.observation_hash,
+                         "contradictions": contradictions},
+            )
+            await self.audit.insert_alert_event(
+                uow.session,
+                alert_key=f"chain-finality-conflict:{op['operation_key']}:{evidence.observation_hash}",
+                severity="CRITICAL", code="CHAIN_FINALITY_CONTRADICTION",
+                message_redacted="Frozen finalized chain evidence contradicted by provider audit",
+            )
+            return {"status": "SETTLEMENT_CONFLICT", "replayed": False, "applied": False}
+        if status not in CHAIN_OPERATION_ACTIVE_STATES:
+            raise RuntimeError("chain_operation_not_recoverable")
+        if evidence.transaction_id and op.get("transaction_id") not in (None, evidence.transaction_id):
+            raise RuntimeError("chain_recovery_transaction_id_conflict")
+        if evidence.transaction_hash and op.get("transaction_hash") not in (None, evidence.transaction_hash):
+            raise RuntimeError("chain_recovery_transaction_hash_conflict")
+        if evidence.nonce is not None and op.get("relayer_nonce") is not None:
+            if int(evidence.nonce) < int(op["relayer_nonce"]):
+                raise RuntimeError("chain_recovery_nonce_regression")
+        updates: dict[str, Any] = {}
+        if evidence.transaction_id:
+            updates["transaction_id"] = evidence.transaction_id
+        if evidence.transaction_hash:
+            updates["transaction_hash"] = evidence.transaction_hash.lower()
+        if evidence.receipt_block_number is not None:
+            updates["receipt_block_number"] = evidence.receipt_block_number
+        if evidence.receipt_block_hash:
+            updates["receipt_block_hash"] = evidence.receipt_block_hash.lower()
+        if evidence.receipt_success is not None:
+            updates["receipt_status"] = evidence.receipt_success
+        if evidence.canonical_block_hash:
+            updates["canonical_block_hash"] = evidence.canonical_block_hash.lower()
+        # A finalized head at/before the receipt is useful provider evidence but
+        # is not the operation's finality binding.  It remains in the immutable
+        # recovery artifact; freeze these columns only once the head proves the
+        # receipt is strictly finalized, allowing a later recovery pass to close.
+        if evidence.finalized_after_receipt is True:
+            if evidence.finalized_block_number is not None:
+                updates["finalized_block_number"] = evidence.finalized_block_number
+            if evidence.finalized_block_hash:
+                updates["finalized_block_hash"] = evidence.finalized_block_hash.lower()
+        if evidence.balance_artifact_hash:
+            updates["balance_evidence_hash"] = evidence.balance_artifact_hash
+        if evidence.balance_artifact_id:
+            updates["balance_evidence_artifact_id"] = evidence.balance_artifact_id
+        if evidence.post_balance is not None:
+            updates["post_balance"] = evidence.post_balance
+        if updates:
+            await self.chain_operations.update_evidence(
+                uow.session, operation_id, updates,
+                lease_owner=runtime_identity, fencing_token=fencing_token,
+            )
+        await self._record_recovery_observation(
+            uow, operation_id=operation_id, op=op, evidence=evidence,
+            status=status, contradictions=[],
+        )
+
+        # Authoritative provider failure is terminal; a transport exception or absent
+        # evidence remains UNKNOWN and never creates a new signed batch.
+        if evidence.relayer_state in {"INVALID", "FAILED"}:
+            target = evidence.relayer_state
+            if self._transition_reachable(status, target):
+                await self._append_state(
+                    uow, operation_id=operation_id, from_status=status, to_status=target,
+                    runtime_identity=runtime_identity, fencing_token=fencing_token,
+                    event_type="RELAYER_TERMINAL_FAILURE",
+                    payload=evidence.model_dump(mode="json", exclude_none=True),
+                )
+                return {"status": target, "replayed": False, "applied": False}
+            return {"status": status, "replayed": True, "applied": False}
+
+        # Advance through the declared state graph; one recovery observation may prove
+        # several adjacent states but every step remains append-only and fenced.
+        desired = self._desired_state(status, evidence)
+        current = status
+        for target in self._path_to(current, desired):
+            if target == "FINALIZED":
+                break
+            await self._append_state(
+                uow, operation_id=operation_id, from_status=current, to_status=target,
+                runtime_identity=runtime_identity, fencing_token=fencing_token,
+                event_type="RECOVERY_OBSERVATION",
+                payload={"observation_hash": evidence.observation_hash, "proved": target},
+            )
+            current = target
+
+        if desired != "FINALIZED":
+            return {"status": current, "replayed": current == status, "applied": False}
+        if not self._finality_evidence_exact(op, evidence):
+            raise RuntimeError("chain_finality_evidence_conflict")
+        # FINALIZED state, economic facts and the effect bit commit atomically.  The
+        # deferred DB guard verifies the ledger/outbox/audit set at transaction end.
+        await self._append_state(
+            uow, operation_id=operation_id, from_status=current, to_status="FINALIZED",
+            runtime_identity=runtime_identity, fencing_token=fencing_token,
+            event_type="CANONICAL_FINALITY",
+            payload={
+                "observation_hash": evidence.observation_hash,
+                "balance_artifact_hash": evidence.balance_artifact_hash,
+            },
+        )
+        result = await self._apply_economic_effect(
+            uow, operation_id=operation_id, op={**op, **updates}, evidence=evidence
+        )
+        marked = await self.chain_operations.mark_economic_effect_applied(
+            uow.session, operation_id=operation_id,
+            lease_owner=runtime_identity, fencing_token=fencing_token,
+        )
+        if not marked:
+            raise RuntimeError("chain_economic_effect_mark_conflict")
+        return {"status": "FINALIZED", "replayed": False, **result}
+
+    async def apply_finality(
+        self, uow: UnitOfWork, operation_id: int, *, winning_token_id: int | None = None
+    ) -> dict[str, Any]:
+        """Legacy direct application is closed: finality must arrive as provider evidence."""
+        del uow, operation_id, winning_token_id
+        raise RuntimeError("chain_finality_requires_recovery_evidence")
+
+    async def _record_recovery_observation(
+        self,
+        uow: UnitOfWork,
+        *,
+        operation_id: int,
+        op: dict[str, Any],
+        evidence: ChainRecoveryEvidence,
+        status: str,
+        contradictions: list[str],
+    ) -> None:
+        """Link every provider observation, including non-final ones, to the op."""
+        artifact_hash = (
+            await uow.session.execute(
+                text("SELECT sha256 FROM trading.artifact_objects WHERE id=:id FOR SHARE"),
+                {"id": evidence.provider_artifact_id},
+            )
+        ).scalar_one_or_none()
+        if artifact_hash != evidence.provider_artifact_hash:
+            raise RuntimeError("chain_recovery_provider_artifact_mismatch")
+        payload = {
+            "operation_key": op["operation_key"],
+            "status_before": status,
+            "observation_hash": evidence.observation_hash,
+            "provider_artifact_hash": evidence.provider_artifact_hash,
+            "contradictions": sorted(contradictions),
+        }
+        await self.audit.insert_workflow_event(
+            uow.session,
+            event_key=f"chain-recovery:{op['operation_key']}:{canonical_hash(payload)}",
+            event_type="CHAIN_RECOVERY_OBSERVATION",
+            aggregate_type="chain_operation",
+            aggregate_id=op["operation_key"],
+            payload_hash=canonical_hash(payload),
+            payload=payload,
+        )
+
+    # ---------------- internal invariants ----------------
+
+    async def _load_owned_operation(
+        self,
+        uow: UnitOfWork,
+        operation_id: int,
+        *,
+        runtime_identity: str,
+        fencing_token: int,
+    ) -> dict[str, Any]:
+        op = await self.chain_operations.load_recovery_context(
+            uow.session,
+            operation_id=operation_id,
+            lease_owner=runtime_identity,
+            fencing_token=fencing_token,
+            for_update=True,
+        )
+        if op is None:
+            raise RuntimeError("chain_stale_fence_rejected")
+        return op
+
+    async def _append_state(
+        self,
+        uow: UnitOfWork,
+        *,
+        operation_id: int,
+        from_status: str,
+        to_status: str,
+        runtime_identity: str,
+        fencing_token: int,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        from app.orchestrator.trading_state_machine import (
+            assert_chain_operation_transition,
+        )
+
+        assert_chain_operation_transition(from_status, to_status)
+        sequence = await self.chain_operations.next_sequence(uow.session, operation_id)
+        operation_key = (
+            await uow.session.execute(
+                text("SELECT operation_key FROM trading.chain_operations WHERE id=:oid"),
+                {"oid": operation_id},
+            )
+        ).scalar_one()
+        stable_event_material = {
+            "operation_key": operation_key,
+            "sequence_no": sequence,
+            "transition_from": from_status,
+            "transition_to": to_status,
+            # ``event_type`` is the canonical state proved by this append.  The
+            # business reason belongs in evidence, never in the state vocabulary.
+            "event_type": to_status,
+            "event_payload": {"reason": event_type, **payload},
+            "fence_token": fencing_token,
+            "lease_owner": runtime_identity,
+        }
+        event_material = {"operation_id": operation_id, **stable_event_material}
+        await self.chain_operations.append_state_event(
+            uow.session,
+            {**event_material, "event_hash": canonical_hash(stable_event_material)},
+        )
+
+    @staticmethod
+    def _transition_reachable(current: str, target: str) -> bool:
+        return target in {
+            "SUBMITTING": {"INVALID", "FAILED"},
+            "UNKNOWN": {"INVALID", "FAILED"},
+            "RELAYER_NEW": {"INVALID", "FAILED"},
+            "EXECUTED": {"INVALID", "FAILED"},
+            "MINED": {"INVALID", "FAILED"},
+            "RELAYER_CONFIRMED": {"INVALID", "FAILED", "SETTLEMENT_CONFLICT"},
+            "MINED_PROVISIONAL": {"INVALID", "FAILED", "SETTLEMENT_CONFLICT"},
+        }.get(current, set())
+
+    @staticmethod
+    def _desired_state(current: str, evidence: ChainRecoveryEvidence) -> str:
+        if evidence.receipt_removed or evidence.canonical is False:
+            return "REORGED"
+        if evidence.receipt_success is False:
+            return "FAILED"
+        if evidence.relayer_state in {"INVALID", "FAILED"}:
+            return str(evidence.relayer_state)
+        if evidence.relayer_state == "CONFIRMED" and not evidence.transaction_hash:
+            return "UNKNOWN"
+        if (
+            evidence.relayer_state == "CONFIRMED"
+            and evidence.receipt_success is True
+            and evidence.canonical is True
+            and evidence.finalized_after_receipt is True
+            and evidence.post_balance is not None
+            and evidence.balance_artifact_hash is not None
+            and evidence.balance_artifact_id is not None
+        ):
+            return "FINALIZED"
+        if evidence.receipt_success is True and evidence.canonical is True:
+            return "MINED_PROVISIONAL" if evidence.relayer_state == "CONFIRMED" else "MINED"
+        if evidence.relayer_state in {"MINED", "CONFIRMED"}:
+            return "UNKNOWN"
+        return {
+            "NEW": "RELAYER_NEW",
+            "EXECUTED": "EXECUTED",
+            "MINED": "MINED",
+            "CONFIRMED": "RELAYER_CONFIRMED",
+        }.get(evidence.relayer_state or "", "UNKNOWN")
+
+    @staticmethod
+    def _path_to(current: str, desired: str) -> tuple[str, ...]:
+        if current == desired:
+            return ()
+        graph: dict[str, tuple[str, ...]] = {
+            "PREPARED": ("SUBMITTING",),
+            "SUBMITTING": ("UNKNOWN", "RELAYER_NEW", "EXECUTED", "INVALID", "FAILED"),
+            "UNKNOWN": (
+                "RELAYER_NEW", "EXECUTED", "REORGED", "INVALID", "FAILED",
+                "SETTLEMENT_CONFLICT", "REVERSED",
+            ),
+            "RELAYER_NEW": ("EXECUTED", "MINED", "UNKNOWN", "REORGED", "INVALID", "FAILED"),
+            "EXECUTED": ("MINED", "UNKNOWN", "REORGED", "INVALID", "FAILED"),
+            # A confirmed receipt must pass through RELAYER_CONFIRMED before it
+            # becomes provisional/final.  Besides preserving provider semantics,
+            # the deferred FINALIZED gate requires this append-only proof.
+            "MINED": ("RELAYER_CONFIRMED", "UNKNOWN", "REORGED", "INVALID", "FAILED"),
+            "RELAYER_CONFIRMED": (
+                "MINED_PROVISIONAL", "FINALIZED", "UNKNOWN", "REORGED",
+                "INVALID", "FAILED", "SETTLEMENT_CONFLICT",
+            ),
+            "MINED_PROVISIONAL": (
+                "FINALIZED", "UNKNOWN", "REORGED", "INVALID", "FAILED",
+                "SETTLEMENT_CONFLICT",
+            ),
+            "REORGED": ("UNKNOWN",),
+        }
+        queue: list[tuple[str, tuple[str, ...]]] = [(current, ())]
+        visited = {current}
+        while queue:
+            state, path = queue.pop(0)
+            for target in graph.get(state, ()):
+                next_path = (*path, target)
+                if target == desired:
+                    return next_path
+                if target not in visited:
+                    visited.add(target)
+                    queue.append((target, next_path))
+        raise RuntimeError(f"chain_recovery_transition_unreachable:{current}->{desired}")
+
+    @staticmethod
+    def _finality_evidence_exact(op: dict[str, Any], evidence: ChainRecoveryEvidence) -> bool:
+        return bool(
+            evidence.transaction_hash
+            and evidence.transaction_hash.lower() == str(op.get("transaction_hash") or evidence.transaction_hash).lower()
+            and evidence.receipt_success is True
+            and evidence.receipt_removed is False
+            and evidence.receipt_block_number is not None
+            and evidence.receipt_block_hash is not None
+            and evidence.canonical is True
+            and evidence.canonical_block_hash == evidence.receipt_block_hash
+            and evidence.finalized_block_number is not None
+            and evidence.finalized_block_hash is not None
+            and evidence.finalized_block_number > evidence.receipt_block_number
+            and evidence.finalized_after_receipt is True
+            and evidence.post_balance is not None
+            and evidence.balance_artifact_hash is not None
+            and evidence.balance_artifact_id is not None
+        )
+
+    async def _apply_economic_effect(
+        self,
+        uow: UnitOfWork,
+        *,
+        operation_id: int,
+        op: dict[str, Any],
+        evidence: ChainRecoveryEvidence,
+    ) -> dict[str, Any]:
+        existing_rows = (
+            await uow.session.execute(
+                text(
+                    "SELECT id, transaction_key, portfolio_namespace "
+                    "FROM trading.ledger_transactions "
+                    "WHERE chain_operation_id=:oid AND kind='SETTLEMENT' "
+                    "ORDER BY portfolio_namespace FOR UPDATE"
+                ),
+                {"oid": operation_id},
+            )
+        ).mappings().all()
+        if existing_rows:
+            return {
+                "applied": False,
+                "ledger_transaction_id": int(existing_rows[0]["id"]),
+                "ledger_transaction_ids": [int(row["id"]) for row in existing_rows],
+                "transaction_key": existing_rows[0]["transaction_key"],
+            }
+
+        pre = op.get("pre_balance") or {}
+        post = evidence.post_balance or {}
+        pre_tokens = pre.get("tokens")
+        post_tokens = post.get("tokens")
+        pre_contracts = pre.get("contracts")
+        post_contracts = post.get("contracts")
+        if not isinstance(pre_tokens, dict) or not isinstance(post_tokens, dict):
+            raise RuntimeError("chain_balance_token_set_missing")
+        if (
+            not isinstance(pre_contracts, dict)
+            or pre_contracts != post_contracts
+            or pre_contracts.get("registry_bundle_hash") != op.get("registry_bundle_content_hash")
+        ):
+            raise RuntimeError("chain_balance_contract_binding_mismatch")
+        pusd_asset = str(pre_contracts.get("pusd") or "").lower()
+        if len(pusd_asset) != 42:
+            raise RuntimeError("chain_balance_pusd_binding_missing")
+        normalized_pre = {
+            str(key).lower(): self._base_units(value, "pre_token_balance")
+            for key, value in pre_tokens.items()
+        }
+        normalized_post = {
+            str(key).lower(): self._base_units(value, "post_token_balance")
+            for key, value in post_tokens.items()
+        }
+        if (
+            len(normalized_pre) != 2
+            or set(normalized_pre) != set(normalized_post)
+            or any(value != 0 for value in normalized_post.values())
+        ):
+            raise RuntimeError("chain_redeem_token_balance_mismatch")
+        pre_cash = self._base_units(pre.get("pusd", 0), "pre_cash_balance")
+        post_cash = self._base_units(post.get("pusd", 0), "post_cash_balance")
+        cash_delta = post_cash - pre_cash
+        if cash_delta <= 0 or sum(normalized_pre.values()) <= 0:
+            raise RuntimeError("chain_redeem_zero_or_negative_effect")
+
+        position_rows = [dict(row) for row in (
+            await uow.session.execute(
+                text(
+                    "SELECT p.id, p.portfolio_namespace, p.contract_spec_id, p.token_id, "
+                    "p.quantity, p.cost_basis, p.version, t.token_id AS external_token_id, "
+                    "t.outcome_index "
+                    "FROM trading.positions p JOIN trading.pm_tokens t ON t.id=p.token_id "
+                    "WHERE p.account_id=:account AND p.market_id=:market "
+                    "AND p.quantity > 0 "
+                    "ORDER BY p.portfolio_namespace, t.outcome_index, p.id FOR UPDATE OF p"
+                ),
+                {"account": op["account_id"], "market": op["market_id"]},
+            )
+        ).mappings().all()]
+        aggregates: dict[tuple[str, str], int] = {}
+        for row in position_rows:
+            key = (str(row["portfolio_namespace"]), str(row["external_token_id"]).lower())
+            aggregates[key] = aggregates.get(key, 0) + self._base_units(
+                row["quantity"], "position_quantity"
+            )
+        actual_by_token = {token: 0 for token in normalized_pre}
+        for (_, token), quantity in aggregates.items():
+            if token not in actual_by_token:
+                raise RuntimeError("chain_redeem_position_token_set_conflict")
+            actual_by_token[token] += quantity
+        if actual_by_token != normalized_pre or not aggregates:
+            raise RuntimeError("chain_redeem_position_reconciliation_conflict")
+
+        payout_row = (
+            await uow.session.execute(
+                text(
+                    "SELECT token_set, payout_vector FROM trading.settlement_observations "
+                    "WHERE settlement_set_key=:set_key AND source_kind='ctf_payout' "
+                    "AND status='COMPLETE' FOR SHARE"
+                ),
+                {"set_key": op["settlement_set_key"]},
+            )
+        ).mappings().one_or_none()
+        ordered_tokens = tuple(str(token).lower() for token in (payout_row or {}).get("token_set", ()))
+        if payout_row is None or len(ordered_tokens) != 2 or set(ordered_tokens) != set(normalized_pre):
+            raise RuntimeError("chain_redeem_payout_evidence_missing")
+        vector = payout_row["payout_vector"] or {}
+        numerators = vector.get("numerators")
+        denominator = self._base_units(vector.get("denominator"), "payout_denominator")
+        if not isinstance(numerators, list) or len(numerators) != 2 or denominator <= 0:
+            raise RuntimeError("chain_redeem_payout_vector_invalid")
+        payout_by_token = {
+            token: self._base_units(numerators[index], "payout_numerator")
+            for index, token in enumerate(ordered_tokens)
+        }
+        if any(value < 0 for value in payout_by_token.values()) or sum(
+            payout_by_token.values()
+        ) != denominator:
+            raise RuntimeError("chain_redeem_payout_vector_invalid")
+
+        frozen_allocation = []
+        for (namespace, token), quantity in sorted(aggregates.items()):
+            product = quantity * payout_by_token[token]
+            if product % denominator:
+                raise RuntimeError("chain_redeem_fractional_base_unit_allocation")
+            frozen_allocation.append({
+                "portfolio_namespace": namespace,
+                "token_id": token,
+                "quantity_base_units": str(quantity),
+                "expected_cash_base_units": str(product // denominator),
+            })
+        if frozen_allocation != list(op.get("settlement_allocation") or []):
+            raise RuntimeError("chain_redeem_frozen_allocation_conflict")
+        if canonical_hash(frozen_allocation) != op.get("settlement_allocation_hash"):
+            raise RuntimeError("chain_redeem_allocation_hash_conflict")
+
+        expected_cash = sum(
+            int(row["expected_cash_base_units"]) for row in frozen_allocation
+        )
+        if cash_delta != expected_cash:
+            raise RuntimeError("chain_redeem_cash_delta_conflict")
+        namespace_cash: dict[str, int] = {namespace: 0 for namespace, _ in aggregates}
+        for row in frozen_allocation:
+            namespace_cash[row["portfolio_namespace"]] += int(
+                row["expected_cash_base_units"]
+            )
+        if sum(namespace_cash.values()) != cash_delta:
+            raise RuntimeError("chain_redeem_cash_allocation_conflict")
+
+        for row in position_rows:
+            result = await uow.session.execute(
+                text(
+                    "UPDATE trading.positions SET quantity=0, cost_basis=0, version=version+1 "
+                    "WHERE id=:id AND version=:version"
+                ),
+                {"id": row["id"], "version": row["version"]},
+            )
+            if result.rowcount != 1:
+                raise RuntimeError("chain_redeem_position_version_conflict")
+
+        ledger_ids: list[int] = []
+        economic_allocation: list[dict[str, Any]] = []
+        for namespace in sorted(namespace_cash):
+            tx_id = await self.ledger.insert_transaction(
+                uow.session,
+                transaction_key=f"settle-{op['operation_key']}:{namespace}",
+                kind="SETTLEMENT",
+                trade_decision_id=None,
+                execution_id=None,
+                portfolio_namespace=namespace,
+                account_id=op["account_id"],
+                chain_operation_id=operation_id,
+            )
+            postings: list[dict[str, Any]] = []
+            posting_no = 0
+            cash_share = namespace_cash[namespace]
+            if cash_share:
+                postings.extend([
+                    {"posting_no": posting_no, "asset_type": "CASH", "asset_key": pusd_asset,
+                     "amount": str(cash_share), "counterparty": namespace},
+                    {"posting_no": posting_no + 1, "asset_type": "CASH", "asset_key": pusd_asset,
+                     "amount": str(-cash_share), "counterparty": "ctf:redeem"},
+                ])
+                posting_no += 2
+            for (row_namespace, token), quantity in sorted(aggregates.items()):
+                if row_namespace != namespace:
+                    continue
+                postings.extend([
+                    {"posting_no": posting_no, "asset_type": "TOKEN", "asset_key": token,
+                     "amount": str(-quantity), "counterparty": namespace},
+                    {"posting_no": posting_no + 1, "asset_type": "TOKEN", "asset_key": token,
+                     "amount": str(quantity), "counterparty": "ctf:redeem"},
+                ])
+                posting_no += 2
+                economic_allocation.append({
+                    "namespace": namespace,
+                    "token_id": token,
+                    "token_delta": str(-quantity),
+                    "cash_entitlement_numerator": str(quantity * payout_by_token[token]),
+                    "cash_entitlement_denominator": str(denominator),
+                    "ledger_transaction_id": tx_id,
+                })
+            await self.ledger.insert_postings(
+                uow.session, transaction_id=tx_id, postings=postings
+            )
+            if not await self.ledger.mark_posted(uow.session, tx_id, posted_at=_utcnow()):
+                raise RuntimeError("chain_redeem_ledger_post_conflict")
+            ledger_ids.append(tx_id)
+
+        allocation_hash = canonical_hash({
+            "operation_key": op["operation_key"],
+            "frozen_token_allocation": frozen_allocation,
+            "namespace_cash": {key: str(value) for key, value in sorted(namespace_cash.items())},
+        })
+        event = create_envelope(
+            topic="chain.settlement.finalized",
+            schema_version=1,
+            aggregate_type="chain_operation",
+            aggregate_id=op["operation_key"],
+            idempotency_key=f"chain-settlement:{op['operation_key']}",
+            priority=32,
+            release_manifest_id=op["release_manifest_id"],
+            payload={
+                "operation_id": operation_id,
+                "operation_key": op["operation_key"],
+                "market_id": op["market_id"],
+                "condition_id": op["condition_id"],
+                "ledger_transaction_ids": ledger_ids,
+                "cash_delta": str(cash_delta),
+                "namespace_cash": {key: str(value) for key, value in sorted(namespace_cash.items())},
+                "allocation": economic_allocation,
+                "allocation_hash": allocation_hash,
+                "balance_artifact_hash": evidence.balance_artifact_hash,
+            },
+        )
+        await self.outbox.enqueue(uow.session, event)
+        await self.audit.insert_workflow_event(
+            uow.session,
+            event_key=f"chain-settlement:{op['operation_key']}:finalized",
+            event_type="SETTLEMENT_FINALIZED",
+            aggregate_type="chain_operation",
+            aggregate_id=op["operation_key"],
+            payload_hash=canonical_hash(event.payload),
+            payload=event.payload,
+        )
+        return {
+            "applied": True,
+            "ledger_transaction_id": ledger_ids[0],
+            "ledger_transaction_ids": ledger_ids,
+            "transaction_key": f"settle-{op['operation_key']}",
+            "allocation_hash": allocation_hash,
+        }
+
+    @staticmethod
+    def _base_units(value: Any, path: str) -> int:
+        try:
+            decimal_value = Decimal(str(value))
+        except Exception as exc:
+            raise RuntimeError(f"chain_{path}_invalid") from exc
+        if not decimal_value.is_finite() or decimal_value != decimal_value.to_integral_value():
+            raise RuntimeError(f"chain_{path}_not_integer")
+        return int(decimal_value)
+
+    @staticmethod
+    def _prepared_from_row(
+        row: dict[str, Any], *, transport_owner: bool = False
+    ) -> PreparedOperation:
+        deadline = row["deadline"]
+        if deadline is None:
+            raise RuntimeError("chain_existing_operation_wire_incomplete")
+        return PreparedOperation(
+            operation_id=int(row["id"]),
+            operation_key=row["operation_key"],
+            account_id=int(row["account_id"]),
+            fencing_token=int(row["fencing_token"]),
+            economic_hash=row["economic_hash"],
+            expected_operation_hash=row["expected_operation_hash"],
+            calldata=row["calldata"],
+            body_hash=row["body_hash"],
+            nonce=row["relayer_nonce"],
+            deadline=deadline,
+            transport_owner=transport_owner,
+        )
 
 
 def _utcnow() -> datetime:
     from datetime import datetime, timezone
-
     return datetime.now(timezone.utc)

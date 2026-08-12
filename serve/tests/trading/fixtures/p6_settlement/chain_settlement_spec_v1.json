@@ -1,5 +1,5 @@
 {
-  "content_hash": "098f6fda470f7f7e56cfc8f65362487b72d299fbe90fd281754c77007f6c673d",
+  "content_hash": "9361542bb9b7dc6ba5bf56aaef0e77fbeb149f204dc796ae6fd686a9882bcb7d",
   "spec_key": "chain_settlement_v1",
   "spec_version": "chain_settlement_v1",
   "schema_version": "1",
@@ -35,7 +35,16 @@
       "failure_terminal": [
         "INVALID",
         "FAILED"
-      ]
+      ],
+      "raw": [
+        "STATE_NEW",
+        "STATE_EXECUTED",
+        "STATE_MINED",
+        "STATE_CONFIRMED",
+        "STATE_INVALID",
+        "STATE_FAILED"
+      ],
+      "normalization": "strip exactly one STATE_ prefix after strict raw allowlist validation"
     },
     "hmac": {
       "algorithm": "hmac-sha256",

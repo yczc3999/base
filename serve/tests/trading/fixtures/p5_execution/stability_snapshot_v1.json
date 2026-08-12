@@ -10,8 +10,8 @@
     "processing_disposition": "bdb6029171ee3149d1ca49c3e4e5bc12b4441bee58ddd213b71165c67c796089",
     "blind_commit": "5b1f9611d582368bd69559e34e9e01738654993f65602f187abded8c994fce2a",
     "economic_action_intent": "b253e214841747e15f8eed7f124ec0641dcb2532718a3aa8abfdb5360a970022",
-    "authorization_envelope": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
-    "authorization_envelope_note": "real b1000051 reduce-only envelope; authority/market/envelope v2 binds natural identity, immutable market facts, neg-risk mode, and the frozen official exchange address without surrogate IDs",
+    "authorization_envelope": "237d4b2d1cccbeccd5e7c434549fb7ecae4c87e693c080432b3e6179dad0e7ba",
+    "authorization_envelope_note": "real b1000051 reduce-only envelope; authority/market/envelope v2 binds natural identity, immutable market facts, neg-risk mode, and the frozen official exchange address without surrogate IDs or wall-clock evidence timestamps; freshness remains DB-validated",
     "ledger": "b25d71f52f90ed33aaac4efabf70ff06abb02bd3fadcaa2816d9e914c293f585",
     "metric_artifact": "ce37d4946b7933eebeac083e0e93dd5816a4a09c894af41f78229b687e70984f"
   },
@@ -25,15 +25,21 @@
     },
     {
       "field": "expected_business_hashes.authorization_envelope",
-      "old_hash": "46e903beb1cfa760098c08832202734f80c71c18a29a42342f4a38c40340d372",
-      "new_hash": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
-      "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after market preflight bound gamma market ID, condition ID, market content hash, neg-risk mode, and the frozen official Standard/NegRisk exchange address",
-      "algorithm_code_hash": "52323b0b308897b2273cabdd29af803dc5e4078f65dc3a8b5a2fa4f4ab5e07a0",
+      "old_hash": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
+      "new_hash": "237d4b2d1cccbeccd5e7c434549fb7ecae4c87e693c080432b3e6179dad0e7ba",
+      "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after separating DB-validated quote/balance freshness timestamps from immutable book/depth/request content while retaining natural market identity, neg-risk mode, and exchange address bindings",
+      "algorithm_code_hash": "0ba79414b3b07557031def77f45b35c60aedfee45c676b9e77b95f7ba43bf6d4",
       "history": [
         {
           "old_hash": null,
           "new_hash": "46e903beb1cfa760098c08832202734f80c71c18a29a42342f4a38c40340d372",
           "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after authority/market/envelope v2 removed all surrogate IDs",
+          "algorithm_code_hash": "52323b0b308897b2273cabdd29af803dc5e4078f65dc3a8b5a2fa4f4ab5e07a0"
+        },
+        {
+          "old_hash": "46e903beb1cfa760098c08832202734f80c71c18a29a42342f4a38c40340d372",
+          "new_hash": "7a69c0b55b2c4cf529c8b360af167fd88eaf5a4333bab21708982df08c9e1c15",
+          "reason": "real reduce-only FAKE_CONFORMANCE envelope regenerated from two equal full replays after market preflight bound gamma market ID, condition ID, market content hash, neg-risk mode, and the frozen official Standard/NegRisk exchange address",
           "algorithm_code_hash": "52323b0b308897b2273cabdd29af803dc5e4078f65dc3a8b5a2fa4f4ab5e07a0"
         }
       ]
@@ -53,5 +59,5 @@
       "algorithm_code_hash": "a4db998bd994976f8dfa48feb62307ea530f192f7f37fc8133ecf44fa922b196"
     }
   ],
-  "content_hash": "dcd8ce0409758b26f063d77262771be0b4035d7c834e03766de5c51cf1b77446"
+  "content_hash": "cd9631f0ea1525811e3171769a7c86b199c66ade14592778ffc33da3376e9748"
 }

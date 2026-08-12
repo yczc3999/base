@@ -84,6 +84,16 @@ from app.schemas.polymarket.data_api import (
     DataApiTrade,
     DataApiTrades,
 )
+from app.schemas.polymarket.chain import (
+    FinalityCheck,
+    JsonRpcResponse,
+    RelayerStatus,
+    RpcBlock,
+    RpcReceipt,
+    validate_address,
+    validate_hex_data,
+    validate_hex_quantity,
+)
 
 __all__ = [
     "Cursor",
@@ -156,15 +166,13 @@ __all__ = [
     "DataApiTrades",
     "DataApiPosition",
     "DataApiPositions",
+    # WP-06 Polygon / Relayer
+    "FinalityCheck",
+    "JsonRpcResponse",
+    "RelayerStatus",
+    "RpcBlock",
+    "RpcReceipt",
+    "validate_address",
+    "validate_hex_data",
+    "validate_hex_quantity",
 ]
-
-from app.schemas.polymarket.chain import (
-    FinalityCheck,
-    JsonRpcResponse,
-    RelayerStatus,
-    RpcBlock,
-    RpcReceipt,
-    validate_address,
-    validate_hex_data,
-    validate_hex_quantity,
-)

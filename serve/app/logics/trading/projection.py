@@ -59,6 +59,9 @@ _CHAIN_SOURCES: tuple[tuple[str, str], ...] = (
     ("action_set.count", "action_sets"),
     ("intent.count", "economic_action_intents"),
     ("operating_cost.count", "operating_cost_entries"),
+    ("chain_operation.count", "chain_operations"),
+    ("chain_operation_event.count", "chain_operation_state_history"),
+    ("settlement_observation.count", "settlement_observations"),
 )
 
 # list allowlist（与 repository 层一致）。

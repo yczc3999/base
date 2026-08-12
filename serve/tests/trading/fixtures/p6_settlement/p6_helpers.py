@@ -191,18 +191,19 @@ def registry_runtime_keccak(name: str) -> str:
         )
         return entry["resolved_code_keccak"]
     if kind == "beacon":
+        extra = entry["extra"]
         beacon_addr = entry["resolved_implementation_or_beacon"]
         slot_val = _entry_responses(golden, "eth_getStorageAt_ctf_adapter_beacon")["result"]
         assert slot_val == slot32(beacon_addr), f"{name} beacon slot mismatch"
         beacon_code = _entry_responses(golden, "eth_getCode_beacon")["result"]
-        assert code_keccak(beacon_code) == entry["beacon_runtime_keccak"]
+        assert code_keccak(beacon_code) == extra["beacon_runtime_keccak"]
         impl_call = _entry_responses(golden, "eth_call_beacon_implementation")["result"]
-        assert impl_call == slot32(entry["beacon_implementation"]), (
+        assert impl_call == slot32(extra["beacon_implementation"]), (
             f"{name} beacon implementation() mismatch"
         )
         impl_code = _entry_responses(golden, "eth_getCode_beacon_impl")["result"]
-        assert code_keccak(impl_code) == entry["beacon_implementation_code_keccak"]
-        assert entry["resolved_code_keccak"] == entry["beacon_implementation_code_keccak"]
+        assert code_keccak(impl_code) == extra["beacon_implementation_code_keccak"]
+        assert entry["resolved_code_keccak"] == extra["beacon_implementation_code_keccak"]
         return entry["resolved_code_keccak"]
     raise AssertionError(f"{name} unknown proxy_kind {kind!r}")
 

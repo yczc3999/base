@@ -22,6 +22,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -71,6 +72,14 @@ class LedgerTransaction(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         Index("ix_ledger_transactions_decision", "trade_decision_id"),
         Index("ix_ledger_transactions_execution", "execution_id"),
         Index("ix_ledger_transactions_chain_operation", "chain_operation_id"),
+        Index(
+            "uq_ledger_transactions_chain_operation_settlement",
+            "chain_operation_id", "portfolio_namespace",
+            unique=True,
+            postgresql_where=text(
+                "chain_operation_id IS NOT NULL AND kind = 'SETTLEMENT'"
+            ),
+        ),
         {"schema": TRADING_SCHEMA},
     )
 

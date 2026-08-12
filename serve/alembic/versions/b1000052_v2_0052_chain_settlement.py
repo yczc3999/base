@@ -12,13 +12,15 @@ v2_0052 —— WP-06 Checkpoint B：Polygon/Relayer/settlement 数据层。
   - 只对既有 executions / ledger_transactions 增加最小可空 lineage 列
     ``chain_operation_id``（不得创建平行账户/Vault/账本/label/投影表）。
   - guard：
-    - registry 只 INSERT（append-only）；同 chain+kind 只允许一个 active；发布前
-      completeness trigger（proxy kind 合法、resolved code 全长、beacon 字段齐备）。
+    - registry 字段不可变，仅原子 publisher 可将 ACTIVE→SUPERSEDED；同
+      chain+kind 只允许一个 active；发布前校验 none/EIP-1967/beacon 的
+      resolved code 全长证据。
     - chain_operations 绑定列不可变；状态机 CAS 由 history 触发推进（``FOR UPDATE`` +
       fence 校验 + terminal 拒绝 + finality evidence 必须齐备才 FINALIZED）；直接 UPDATE
       状态也必须通过同一转移表（无 GUC 绕过）。
     - chain_operation_state_history append-only，aggregate sequence 唯一；FINALIZED
-      时同一触发内置 ``economic_effect_applied=true``（只允许 FINALIZED 记账）。
+      在提交时 deferred 验证真实 position/ledger/workflow/outbox 经济事实，
+      禁止状态触发器伪造 ``economic_effect_applied``。
     - settlement_observations append-only；``COMPLETE`` 五元组 exact set 由 deferred
       constraint trigger 在提交时核验（缺失 → ``v2_settlement_observation_complete_set_missing``）。
     - 同 account+wallet+condition 同时最多一个 active REDEEM（partial unique）。
@@ -65,11 +67,11 @@ _OBSERVATION_STATUS = "'PENDING','COMPLETE','CONFLICT'"
 
 # 冻结 fixture registry 的 5 条 entry content_hash（downgrade 非 fixture registry 校验）。
 _FIXTURE_REGISTRY_HASHES = (
-    "05b16a969afb53ba80bb7fb179f940e3a0945e2bd61076bc5cdd1d461364b1ee",
-    "f25d24c2df397567350d284cb29352b4c6d80aad5b2c1d27e96f0218f87f62d1",
-    "741c1e6bd40254f51cd9265629c4e74195976b2fe2119656d9d3c278104c3c4e",
-    "5cb33f788431d4ca478a318c97c516c5b27350da25de4b4df2abd80087d12c4a",
-    "e8c8d66d337340814f5fa3046caf354100457c021d7718e21cd7b58a56b9886d",
+    "2a45596924268153acef218ee104ed69f355399701725f88aea967438f91bd4d",
+    "6fe9adbfbb71a1d191341218da25185e0871a61b76df2758b0873d884f87cc5b",
+    "774caf5580ff19b5fefbf7fd8236885e353f4ac15803449d921aaa2a02d9511f",
+    "9668ef928815b964220d02ef2562f2cf5713e9f06bf7c475b0011bae89af8741",
+    "97376e86cad7664dd9b745188ed06ca7fc45965966f61ce407146902380954c7",
 )
 
 
@@ -107,9 +109,6 @@ _NEW_TABLES = (
             "\tPRIMARY KEY (id), \n"
             "\tCONSTRAINT uq_contract_registry_chain_kind_version "
             "UNIQUE (chain_id, kind, version_no), \n"
-            "\tCONSTRAINT uq_contract_registry_chain_kind_addr "
-            "UNIQUE (chain_id, kind, address), \n"
-            "\tCONSTRAINT uq_contract_registry_runtime_keccak UNIQUE (runtime_keccak), \n"
             "\tCONSTRAINT ck_contract_registry_kind_known "
             "CHECK (kind IN (" + _REGISTRY_KIND + ")), \n"
             "\tCONSTRAINT ck_contract_registry_proxy_kind_known "
@@ -159,10 +158,11 @@ _NEW_TABLES = (
             "\taccount_id BIGINT NOT NULL, \n"
             "\twallet_address TEXT COLLATE \"C\" NOT NULL, \n"
             "\tcondition_id VARCHAR(66) COLLATE \"C\" NOT NULL, \n"
-            "\tmarket_id BIGINT, \n"
+            "\tmarket_id BIGINT NOT NULL, \n"
             "\tregistry_version_id BIGINT NOT NULL, \n"
             "\ttarget_address TEXT COLLATE \"C\" NOT NULL, \n"
             "\tpermission_ref TEXT COLLATE \"C\" NOT NULL, \n"
+            "\tlease_owner TEXT COLLATE \"C\" NOT NULL, \n"
             "\trelease_manifest_id BIGINT NOT NULL, \n"
             "\tcapital_permission_manifest_id BIGINT NOT NULL, \n"
             "\tfencing_token BIGINT NOT NULL, \n"
@@ -181,7 +181,25 @@ _NEW_TABLES = (
             "\ttransaction_hash TEXT COLLATE \"C\", \n"
             "\treceipt_block_number BIGINT, \n"
             "\treceipt_block_hash VARCHAR(66) COLLATE \"C\", \n"
+            "\treceipt_status BOOLEAN, \n"
+            "\tcanonical_block_hash VARCHAR(66) COLLATE \"C\", \n"
             "\tfinalized_block_number BIGINT, \n"
+            "\tfinalized_block_hash VARCHAR(66) COLLATE \"C\", \n"
+            "\tregistry_content_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tregistry_bundle JSONB NOT NULL, \n"
+            "\tregistry_bundle_content_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tregistry_evidence_artifact_id BIGINT NOT NULL, \n"
+            "\tregistry_evidence_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tgeo_evidence_artifact_id BIGINT NOT NULL, \n"
+            "\tgeo_evidence_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tgeo_allowed BOOLEAN NOT NULL, \n"
+            "\tgeo_observed_at TIMESTAMP WITH TIME ZONE NOT NULL, \n"
+            "\tgeo_source_version VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tbalance_evidence_artifact_id BIGINT, \n"
+            "\tbalance_evidence_hash VARCHAR(64) COLLATE \"C\", \n"
+            "\tsettlement_set_key VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tsettlement_allocation JSONB NOT NULL, \n"
+            "\tsettlement_allocation_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
             "\tpre_balance JSONB, \n"
             "\tpost_balance JSONB, \n"
             "\teconomic_effect_applied BOOLEAN DEFAULT false NOT NULL, \n"
@@ -217,9 +235,29 @@ _NEW_TABLES = (
             "CHECK (condition_id ~ '^0x[0-9a-fA-F]{64}$'), \n"
             "\tCONSTRAINT ck_chain_operations_receipt_hash_hex "
             "CHECK (receipt_block_hash IS NULL OR receipt_block_hash ~ '^0x[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_chain_operations_canonical_hash_hex CHECK ("
+            "canonical_block_hash IS NULL OR canonical_block_hash ~ '^0x[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_chain_operations_finalized_hash_hex CHECK ("
+            "finalized_block_hash IS NULL OR finalized_block_hash ~ '^0x[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_chain_operations_evidence_hashes_hex CHECK ("
+            "registry_content_hash ~ '^[0-9a-f]{64}$' AND "
+            "registry_bundle_content_hash ~ '^[0-9a-f]{64}$' AND "
+            "registry_evidence_hash ~ '^[0-9a-f]{64}$' AND "
+            "geo_evidence_hash ~ '^[0-9a-f]{64}$' AND "
+            "(balance_evidence_hash IS NULL OR balance_evidence_hash ~ '^[0-9a-f]{64}$') AND "
+            "(settlement_set_key IS NULL OR settlement_set_key ~ '^[0-9a-f]{64}$')), \n"
             "\tCONSTRAINT ck_chain_operations_balances_object CHECK ("
             "(pre_balance IS NULL OR jsonb_typeof(pre_balance) = 'object') AND "
-            "(post_balance IS NULL OR jsonb_typeof(post_balance) = 'object')), \n"
+            "(post_balance IS NULL OR jsonb_typeof(post_balance) = 'object') AND "
+            "jsonb_typeof(registry_bundle) = 'object'), \n"
+            "\tCONSTRAINT ck_chain_operations_balance_artifact_pair CHECK ("
+            "(balance_evidence_artifact_id IS NULL) = (balance_evidence_hash IS NULL)), \n"
+            "\tCONSTRAINT ck_chain_operations_geo_source_nonempty CHECK ("
+            "length(btrim(geo_source_version)) > 0), \n"
+            "\tCONSTRAINT ck_chain_operations_allocation_shape CHECK ("
+            "jsonb_typeof(settlement_allocation) = 'array' "
+            "AND jsonb_array_length(settlement_allocation) > 0 "
+            "AND settlement_allocation_hash ~ '^[0-9a-f]{64}$'), \n"
             "\tCONSTRAINT ck_chain_operations_economic_once CHECK ("
             "NOT economic_effect_applied OR status IN "
             "('FINALIZED','SETTLEMENT_CONFLICT','REVERSED')), \n"
@@ -227,9 +265,12 @@ _NEW_TABLES = (
             "status <> 'FINALIZED' OR ("
             "transaction_id IS NOT NULL AND transaction_hash IS NOT NULL AND "
             "receipt_block_number IS NOT NULL AND receipt_block_hash IS NOT NULL AND "
-            "finalized_block_number IS NOT NULL AND "
-            "pre_balance IS NOT NULL AND post_balance IS NOT NULL AND "
-            "economic_effect_applied)), \n"
+            "receipt_status IS TRUE AND canonical_block_hash = receipt_block_hash AND "
+            "finalized_block_number IS NOT NULL AND finalized_block_hash IS NOT NULL AND "
+            "finalized_block_number > receipt_block_number AND "
+            "registry_evidence_hash IS NOT NULL AND balance_evidence_hash IS NOT NULL AND "
+            "settlement_set_key IS NOT NULL AND "
+            "pre_balance IS NOT NULL AND post_balance IS NOT NULL)), \n"
             "\tCONSTRAINT ck_chain_operations_mining_evidence CHECK ("
             "status NOT IN ('MINED_PROVISIONAL','FINALIZED') OR "
             "(transaction_hash IS NOT NULL AND receipt_block_number IS NOT NULL "
@@ -247,7 +288,13 @@ _NEW_TABLES = (
             "FOREIGN KEY(capital_permission_manifest_id) "
             "REFERENCES trading.capital_permission_manifests (id), \n"
             "\tCONSTRAINT fk_chain_operations_market "
-            "FOREIGN KEY(market_id) REFERENCES trading.pm_markets (id)\n"
+            "FOREIGN KEY(market_id) REFERENCES trading.pm_markets (id), \n"
+            "\tCONSTRAINT fk_chain_operations_registry_evidence_artifact "
+            "FOREIGN KEY(registry_evidence_artifact_id) REFERENCES trading.artifact_objects (id), \n"
+            "\tCONSTRAINT fk_chain_operations_geo_evidence_artifact "
+            "FOREIGN KEY(geo_evidence_artifact_id) REFERENCES trading.artifact_objects (id), \n"
+            "\tCONSTRAINT fk_chain_operations_balance_evidence_artifact "
+            "FOREIGN KEY(balance_evidence_artifact_id) REFERENCES trading.artifact_objects (id)\n"
             ")\n\n"
         ),
         index_sql=(
@@ -274,6 +321,7 @@ _NEW_TABLES = (
             "\tevent_type VARCHAR(32) NOT NULL, \n"
             "\tevent_payload JSONB NOT NULL, \n"
             "\tevent_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tlease_owner TEXT COLLATE \"C\" NOT NULL, \n"
             "\tfence_token BIGINT NOT NULL, \n"
             "\tid BIGINT GENERATED BY DEFAULT AS IDENTITY, \n"
             "\tcreated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, \n"
@@ -297,7 +345,7 @@ _NEW_TABLES = (
             "(transition_from = 'SUBMITTING' AND transition_to IN "
             "('UNKNOWN','RELAYER_NEW','EXECUTED','INVALID','FAILED')) OR "
             "(transition_from = 'UNKNOWN' AND transition_to IN "
-            "('RELAYER_NEW','EXECUTED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR "
+            "('RELAYER_NEW','EXECUTED','INVALID','FAILED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR "
             "(transition_from = 'RELAYER_NEW' AND transition_to IN "
             "('EXECUTED','MINED','INVALID','FAILED','UNKNOWN','REORGED')) OR "
             "(transition_from = 'EXECUTED' AND transition_to IN "
@@ -305,11 +353,12 @@ _NEW_TABLES = (
             "(transition_from = 'MINED' AND transition_to IN "
             "('RELAYER_CONFIRMED','MINED_PROVISIONAL','INVALID','FAILED','UNKNOWN','REORGED')) OR "
             "(transition_from = 'RELAYER_CONFIRMED' AND transition_to IN "
-            "('MINED_PROVISIONAL','FINALIZED','UNKNOWN','REORGED')) OR "
+            "('MINED_PROVISIONAL','FINALIZED','INVALID','FAILED','UNKNOWN','REORGED','SETTLEMENT_CONFLICT')) OR "
             "(transition_from = 'MINED_PROVISIONAL' AND transition_to IN "
-            "('FINALIZED','REORGED','UNKNOWN')) OR "
+            "('FINALIZED','INVALID','FAILED','REORGED','UNKNOWN','SETTLEMENT_CONFLICT')) OR "
             "(transition_from = 'FINALIZED' AND transition_to IN "
             "('SETTLEMENT_CONFLICT','REVERSED')) OR "
+            "(transition_from = 'REORGED' AND transition_to = 'UNKNOWN') OR "
             "(transition_from = 'REVERSED' AND transition_to = 'SETTLEMENT_CONFLICT')\n"
             "),\n"
             "\tCONSTRAINT fk_chain_op_state_history_operation "
@@ -327,10 +376,13 @@ _NEW_TABLES = (
         create_sql=(
             "\nCREATE TABLE trading.settlement_observations (\n"
             "\tobservation_key TEXT COLLATE \"C\" NOT NULL, \n"
+            "\tsettlement_set_key VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
             "\tsource_kind VARCHAR(32) NOT NULL, \n"
             "\tcondition_id VARCHAR(66) COLLATE \"C\" NOT NULL, \n"
-            "\tmarket_id BIGINT, \n"
+            "\tmarket_id BIGINT NOT NULL, \n"
             "\ttoken_set JSONB NOT NULL, \n"
+            "\ttoken_set_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tpayout_vector JSONB, \n"
             "\toutcome_index VARCHAR(32), \n"
             "\tnumerator TEXT COLLATE \"C\", \n"
             "\tdenominator TEXT COLLATE \"C\", \n"
@@ -338,9 +390,12 @@ _NEW_TABLES = (
             "\tis_50_50_outcome BOOLEAN, \n"
             "\tredeemable BOOLEAN, \n"
             "\tlabel_audit_version VARCHAR(64) COLLATE \"C\", \n"
+            "\tsource_version VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
+            "\tsource_cutoff TIMESTAMP WITH TIME ZONE NOT NULL, \n"
             "\tas_of TIMESTAMP WITH TIME ZONE NOT NULL, \n"
             "\treceived_at TIMESTAMP WITH TIME ZONE NOT NULL, \n"
             "\traw_artifact_ref VARCHAR(64) COLLATE \"C\", \n"
+            "\traw_artifact_id BIGINT, \n"
             "\traw_artifact_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
             "\tcontent_hash VARCHAR(64) COLLATE \"C\" NOT NULL, \n"
             "\tpayload JSONB, \n"
@@ -350,6 +405,8 @@ _NEW_TABLES = (
             "\tPRIMARY KEY (id), \n"
             "\tCONSTRAINT uq_settlement_observations_key UNIQUE (observation_key), \n"
             "\tCONSTRAINT uq_settlement_observations_hash UNIQUE (content_hash), \n"
+            "\tCONSTRAINT uq_settlement_observations_set_source "
+            "UNIQUE (settlement_set_key, source_kind), \n"
             "\tCONSTRAINT ck_settlement_observations_source_known "
             "CHECK (source_kind IN (" + _SOURCE_KIND + ")), \n"
             "\tCONSTRAINT ck_settlement_observations_status_known "
@@ -360,18 +417,35 @@ _NEW_TABLES = (
             "CHECK (raw_artifact_hash ~ '^[0-9a-f]{64}$'), \n"
             "\tCONSTRAINT ck_settlement_observations_content_hash_hex "
             "CHECK (content_hash ~ '^[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_settlement_observations_set_hashes_hex CHECK ("
+            "settlement_set_key ~ '^[0-9a-f]{64}$' AND token_set_hash ~ '^[0-9a-f]{64}$'), \n"
             "\tCONSTRAINT ck_settlement_observations_token_set "
-            "CHECK (jsonb_typeof(token_set) = 'array'), \n"
+            "CHECK (jsonb_typeof(token_set) = 'array' AND jsonb_array_length(token_set) = 2), \n"
+            "\tCONSTRAINT ck_settlement_observations_time_order CHECK ("
+            "as_of <= received_at AND as_of <= source_cutoff), \n"
+            "\tCONSTRAINT ck_settlement_observations_source_version_nonempty "
+            "CHECK (length(btrim(source_version)) > 0), \n"
+            "\tCONSTRAINT ck_settlement_observations_artifact_ref CHECK ("
+            "raw_artifact_id IS NOT NULL OR raw_artifact_ref ~ '^[0-9a-f]{64}$'), \n"
+            "\tCONSTRAINT ck_settlement_observations_complete_artifact CHECK ("
+            "status <> 'COMPLETE' OR raw_artifact_id IS NOT NULL), \n"
             "\tCONSTRAINT ck_settlement_observations_payout_pair CHECK ("
             "(source_kind = 'ctf_payout') = (numerator IS NOT NULL "
-            "AND denominator IS NOT NULL)), \n"
+            "AND denominator IS NOT NULL AND payout_vector IS NOT NULL)), \n"
+            "\tCONSTRAINT ck_settlement_observations_payout_vector CHECK ("
+            "payout_vector IS NULL OR (jsonb_typeof(payout_vector) = 'object' "
+            "AND jsonb_typeof(payout_vector->'numerators') = 'array' "
+            "AND jsonb_array_length(payout_vector->'numerators') = 2 "
+            "AND payout_vector ? 'denominator')), \n"
             "\tCONSTRAINT ck_settlement_observations_winner_pair CHECK ("
             "(source_kind = 'clob_winner_5050') = (winner IS NOT NULL "
             "OR is_50_50_outcome IS NOT NULL)), \n"
             "\tCONSTRAINT ck_settlement_observations_redeemable_pair CHECK ("
             "(source_kind = 'data_api_redeemable') = (redeemable IS NOT NULL)), \n"
             "\tCONSTRAINT fk_settlement_observations_market "
-            "FOREIGN KEY(market_id) REFERENCES trading.pm_markets (id)\n"
+            "FOREIGN KEY(market_id) REFERENCES trading.pm_markets (id), \n"
+            "\tCONSTRAINT fk_settlement_observations_artifact "
+            "FOREIGN KEY(raw_artifact_id) REFERENCES trading.artifact_objects (id)\n"
             ")\n\n"
         ),
         index_sql=(
@@ -449,6 +523,8 @@ def _assert_downgrade_safe() -> None:
             "trg_contract_registry_immutable",
             "trg_contract_registry_publish_check",
             "trg_chain_operations_lifecycle",
+            "trg_chain_operations_preflight",
+            "trg_chain_operations_finality_complete",
             "trg_chain_operation_state_cas",
             "trg_chain_operation_state_history_immutable",
             "trg_settlement_observations_immutable",
@@ -462,6 +538,8 @@ DO $v2_wp06_chain_settlement_preflight$
 DECLARE unknown_objects text;
         unknown_indexes text;
         unknown_triggers text;
+        unknown_fks text;
+        unknown_dependencies text;
         bad_registry text;
         active_ops bigint;
         chain_facts bigint;
@@ -540,6 +618,44 @@ BEGIN
         RAISE EXCEPTION 'v2_wp06_chain_settlement_unknown_trigger:%', unknown_triggers
         USING ERRCODE='55000';
     END IF;
+    SELECT string_agg(con.conname, ', ' ORDER BY con.conname)
+      INTO unknown_fks
+      FROM pg_constraint con
+      JOIN pg_class src ON src.oid=con.conrelid
+      JOIN pg_class dst ON dst.oid=con.confrelid
+      JOIN pg_namespace sn ON sn.oid=src.relnamespace
+      JOIN pg_namespace dn ON dn.oid=dst.relnamespace
+     WHERE con.contype='f'
+       AND ((sn.nspname='trading' AND src.relname IN ({owned}))
+         OR (dn.nspname='trading' AND dst.relname IN ({owned})))
+       AND con.conname NOT IN (
+          'fk_chain_operations_account','fk_chain_operations_registry',
+          'fk_chain_operations_release','fk_chain_operations_permission',
+          'fk_chain_operations_market','fk_chain_op_state_history_operation',
+          'fk_chain_operations_registry_evidence_artifact',
+          'fk_chain_operations_geo_evidence_artifact',
+          'fk_chain_operations_balance_evidence_artifact',
+          'fk_settlement_observations_market','fk_settlement_observations_artifact',
+          'fk_executions_chain_operation','fk_ledger_transactions_chain_operation');
+    IF unknown_fks IS NOT NULL THEN
+        RAISE EXCEPTION 'v2_wp06_chain_settlement_unknown_fk:%', unknown_fks
+        USING ERRCODE='55000';
+    END IF;
+    SELECT string_agg(n.nspname || '.' || dependent.relname, ', '
+                      ORDER BY n.nspname || '.' || dependent.relname)
+      INTO unknown_dependencies
+      FROM pg_depend d
+      JOIN pg_rewrite rw ON rw.oid=d.objid
+      JOIN pg_class dependent ON dependent.oid=rw.ev_class
+      JOIN pg_namespace n ON n.oid=dependent.relnamespace
+      JOIN pg_class referenced ON referenced.oid=d.refobjid
+      JOIN pg_namespace rn ON rn.oid=referenced.relnamespace
+     WHERE rn.nspname='trading' AND referenced.relname IN ({owned})
+       AND dependent.oid<>referenced.oid;
+    IF unknown_dependencies IS NOT NULL THEN
+        RAISE EXCEPTION 'v2_wp06_chain_settlement_unknown_dependency:%', unknown_dependencies
+        USING ERRCODE='55000';
+    END IF;
 END $v2_wp06_chain_settlement_preflight$
 """
     )
@@ -571,6 +687,11 @@ def _add_lineage() -> None:
         "CREATE INDEX ix_ledger_transactions_chain_operation "
         "ON trading.ledger_transactions (chain_operation_id)"
     )
+    op.execute(
+        "CREATE UNIQUE INDEX uq_ledger_transactions_chain_operation_settlement "
+        "ON trading.ledger_transactions (chain_operation_id, portfolio_namespace) "
+        "WHERE chain_operation_id IS NOT NULL AND kind = 'SETTLEMENT'"
+    )
 
 
 def _drop_lineage() -> None:
@@ -582,13 +703,105 @@ def _drop_lineage() -> None:
     )
 
 
+def _restore_wp05_real_fill_lineage() -> None:
+    """Restore the exact b1000051 guard before removing WP-06 lineage columns."""
+    op.execute(
+        r"""
+CREATE OR REPLACE FUNCTION trading.v2_check_real_fill_lineage() RETURNS trigger
+LANGUAGE plpgsql AS $v2_guard$
+BEGIN
+    IF TG_TABLE_NAME = 'ledger_transactions' THEN
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                JOIN trading.economic_action_intents i ON i.id=e.intent_id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND t.id=NEW.trade_id
+                  AND i.trade_decision_id IS NOT DISTINCT FROM NEW.trade_decision_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.envelope_id=NEW.envelope_id AND x.order_id=NEW.order_id
+                         AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_ledger_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'position_lots' THEN
+        IF NEW.execution_id IS NOT NULL AND NEW.account_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.exchange_orders o
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                WHERE o.id=NEW.order_id AND o.account_id=NEW.account_id
+                  AND t.id=NEW.trade_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.order_id=NEW.order_id AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_position_lot_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'positions' THEN
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL AND NEW.order_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL OR NEW.order_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND o.account_id=NEW.account_id
+           ) THEN
+            RAISE EXCEPTION 'v2_position_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    RETURN NEW;
+END $v2_guard$
+"""
+    )
+
+
 def _create_guards() -> None:
     op.execute(
         """
 CREATE FUNCTION trading.v2_guard_contract_registry_immutable() RETURNS trigger AS $$
 BEGIN
-    IF TG_OP = 'UPDATE' OR TG_OP = 'DELETE' THEN
+    IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'v2_contract_registry_immutable' USING ERRCODE='55000';
+    END IF;
+    -- Lifecycle metadata may only be advanced by the atomic publisher below.  Every
+    -- provenance/address/code field remains byte-for-byte immutable.
+    IF TG_OP = 'UPDATE' THEN
+        IF COALESCE(current_setting('trading.registry_publish', true), 'off') <> 'on'
+           OR OLD.status <> 'ACTIVE' OR NEW.status <> 'SUPERSEDED'
+           OR (to_jsonb(OLD) - 'status') IS DISTINCT FROM (to_jsonb(NEW) - 'status') THEN
+            RAISE EXCEPTION 'v2_contract_registry_immutable' USING ERRCODE='55000';
+        END IF;
     END IF;
     RETURN NEW;
 END;
@@ -611,6 +824,19 @@ BEGIN
     IF NEW.resolved_code_keccak IS NULL OR NEW.runtime_keccak IS NULL THEN
         RAISE EXCEPTION 'v2_contract_registry_code_missing' USING ERRCODE='23502';
     END IF;
+    IF length(btrim(NEW.registry_version)) = 0 OR length(btrim(NEW.source_url)) = 0 THEN
+        RAISE EXCEPTION 'v2_contract_registry_provenance_missing' USING ERRCODE='23502';
+    END IF;
+    IF NEW.proxy_kind = 'none' AND NEW.resolved_code_keccak <> NEW.runtime_keccak THEN
+        RAISE EXCEPTION 'v2_contract_registry_direct_code_mismatch' USING ERRCODE='23514';
+    END IF;
+    IF NEW.proxy_kind = 'eip1967' THEN
+        IF NEW.extra IS NULL
+           OR NEW.extra->>'implementation_slot' IS NULL
+           OR NEW.extra->>'implementation_slot' !~ '^0x[0-9a-f]{64}$' THEN
+            RAISE EXCEPTION 'v2_contract_registry_eip1967_incomplete' USING ERRCODE='23502';
+        END IF;
+    END IF;
     IF NEW.proxy_kind = 'beacon' THEN
         IF NEW.extra IS NULL
            OR NEW.extra->>'beacon_address' IS NULL
@@ -626,6 +852,74 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_contract_registry_publish_check
     BEFORE INSERT ON trading.contract_registry
     FOR EACH ROW EXECUTE FUNCTION trading.v2_guard_contract_registry_publish();
+"""
+    )
+    op.execute(
+        r"""
+CREATE FUNCTION trading.v2_publish_contract_registry(
+    p_registry_version text, p_kind text, p_version_no integer, p_chain_id bigint,
+    p_address text, p_proxy_kind text, p_runtime_keccak text,
+    p_resolved text, p_resolved_code_keccak text, p_snapshot_block_number bigint,
+    p_snapshot_block_hash text, p_source_url text, p_retrieved_at timestamptz,
+    p_content_hash text, p_extra jsonb
+) RETURNS bigint AS $$
+DECLARE published_id bigint;
+        existing trading.contract_registry%ROWTYPE;
+        latest trading.contract_registry%ROWTYPE;
+BEGIN
+    PERFORM pg_advisory_xact_lock(p_chain_id::integer, hashtext(p_kind));
+    SELECT * INTO existing
+      FROM trading.contract_registry
+     WHERE chain_id=p_chain_id AND kind=p_kind AND version_no=p_version_no;
+    IF FOUND THEN
+        IF existing.registry_version IS DISTINCT FROM p_registry_version
+           OR existing.address IS DISTINCT FROM p_address
+           OR existing.proxy_kind IS DISTINCT FROM p_proxy_kind
+           OR existing.runtime_keccak IS DISTINCT FROM p_runtime_keccak
+           OR existing.resolved_implementation_or_beacon IS DISTINCT FROM p_resolved
+           OR existing.resolved_code_keccak IS DISTINCT FROM p_resolved_code_keccak
+           OR existing.snapshot_block_number IS DISTINCT FROM p_snapshot_block_number
+           OR existing.snapshot_block_hash IS DISTINCT FROM p_snapshot_block_hash
+           OR existing.source_url IS DISTINCT FROM p_source_url
+           OR existing.retrieved_at IS DISTINCT FROM p_retrieved_at
+           OR existing.content_hash IS DISTINCT FROM p_content_hash
+           OR existing.extra IS DISTINCT FROM p_extra THEN
+            RAISE EXCEPTION 'v2_contract_registry_version_conflict:%:%:%',
+                p_chain_id,p_kind,p_version_no USING ERRCODE='23505';
+        END IF;
+        RETURN existing.id;
+    END IF;
+    SELECT * INTO latest FROM trading.contract_registry
+     WHERE chain_id=p_chain_id AND kind=p_kind ORDER BY version_no DESC LIMIT 1;
+    IF FOUND THEN
+        IF p_version_no <> latest.version_no + 1 THEN
+            RAISE EXCEPTION 'v2_contract_registry_version_not_linear expected=% actual=%',
+                latest.version_no + 1,p_version_no USING ERRCODE='23514';
+        END IF;
+        IF p_snapshot_block_number < latest.snapshot_block_number
+           OR p_retrieved_at < latest.retrieved_at THEN
+            RAISE EXCEPTION 'v2_contract_registry_provenance_regression' USING ERRCODE='23514';
+        END IF;
+    ELSIF p_version_no <> 1 THEN
+        RAISE EXCEPTION 'v2_contract_registry_first_version_not_one' USING ERRCODE='23514';
+    END IF;
+    PERFORM set_config('trading.registry_publish', 'on', true);
+    UPDATE trading.contract_registry
+       SET status='SUPERSEDED'
+     WHERE chain_id=p_chain_id AND kind=p_kind AND status='ACTIVE';
+    INSERT INTO trading.contract_registry(
+        registry_version,kind,version_no,chain_id,address,proxy_kind,runtime_keccak,
+        resolved_implementation_or_beacon,resolved_code_keccak,snapshot_block_number,
+        snapshot_block_hash,source_url,retrieved_at,content_hash,extra,status
+    ) VALUES (
+        p_registry_version,p_kind,p_version_no,p_chain_id,p_address,p_proxy_kind,
+        p_runtime_keccak,p_resolved,p_resolved_code_keccak,p_snapshot_block_number,
+        p_snapshot_block_hash,p_source_url,p_retrieved_at,p_content_hash,p_extra,'ACTIVE'
+    ) RETURNING id INTO published_id;
+    PERFORM set_config('trading.registry_publish', 'off', true);
+    RETURN published_id;
+END;
+$$ LANGUAGE plpgsql;
 """
     )
     op.execute(
@@ -646,6 +940,7 @@ BEGIN
        OR OLD.registry_version_id <> NEW.registry_version_id
        OR OLD.target_address <> NEW.target_address
        OR OLD.permission_ref <> NEW.permission_ref
+       OR OLD.lease_owner <> NEW.lease_owner
        OR OLD.release_manifest_id <> NEW.release_manifest_id
        OR OLD.capital_permission_manifest_id <> NEW.capital_permission_manifest_id
        OR OLD.fencing_token <> NEW.fencing_token
@@ -656,16 +951,59 @@ BEGIN
        OR OLD.call_set_hash <> NEW.call_set_hash
        OR OLD.expected_operation_hash <> NEW.expected_operation_hash
        OR OLD.preflight_hash1 <> NEW.preflight_hash1
-       OR OLD.preflight_hash2 <> NEW.preflight_hash2 THEN
+       OR OLD.preflight_hash2 <> NEW.preflight_hash2
+       OR OLD.registry_content_hash <> NEW.registry_content_hash
+       OR OLD.registry_bundle <> NEW.registry_bundle
+       OR OLD.registry_bundle_content_hash <> NEW.registry_bundle_content_hash
+       OR OLD.registry_evidence_artifact_id <> NEW.registry_evidence_artifact_id
+       OR OLD.registry_evidence_hash <> NEW.registry_evidence_hash
+       OR OLD.geo_evidence_artifact_id <> NEW.geo_evidence_artifact_id
+       OR OLD.geo_evidence_hash <> NEW.geo_evidence_hash
+       OR OLD.geo_allowed <> NEW.geo_allowed
+       OR OLD.geo_observed_at <> NEW.geo_observed_at
+       OR OLD.geo_source_version <> NEW.geo_source_version
+       OR OLD.settlement_set_key <> NEW.settlement_set_key
+       OR OLD.settlement_allocation <> NEW.settlement_allocation
+       OR OLD.settlement_allocation_hash <> NEW.settlement_allocation_hash THEN
         RAISE EXCEPTION 'v2_chain_operation_binding_immutable' USING ERRCODE='55000';
     END IF;
+    IF (OLD.relayer_nonce IS NOT NULL AND OLD.relayer_nonce IS DISTINCT FROM NEW.relayer_nonce)
+       OR (OLD.deadline IS NOT NULL AND OLD.deadline IS DISTINCT FROM NEW.deadline)
+       OR (OLD.transaction_id IS NOT NULL AND OLD.transaction_id IS DISTINCT FROM NEW.transaction_id)
+       OR (OLD.transaction_hash IS NOT NULL AND OLD.transaction_hash IS DISTINCT FROM NEW.transaction_hash)
+       OR (OLD.receipt_block_number IS NOT NULL AND OLD.receipt_block_number IS DISTINCT FROM NEW.receipt_block_number)
+       OR (OLD.receipt_block_hash IS NOT NULL AND OLD.receipt_block_hash IS DISTINCT FROM NEW.receipt_block_hash)
+       OR (OLD.receipt_status IS NOT NULL AND OLD.receipt_status IS DISTINCT FROM NEW.receipt_status)
+       OR (OLD.canonical_block_hash IS NOT NULL AND OLD.canonical_block_hash IS DISTINCT FROM NEW.canonical_block_hash)
+       OR (OLD.finalized_block_number IS NOT NULL AND OLD.finalized_block_number IS DISTINCT FROM NEW.finalized_block_number)
+       OR (OLD.finalized_block_hash IS NOT NULL AND OLD.finalized_block_hash IS DISTINCT FROM NEW.finalized_block_hash)
+       OR (OLD.balance_evidence_artifact_id IS NOT NULL AND OLD.balance_evidence_artifact_id IS DISTINCT FROM NEW.balance_evidence_artifact_id)
+       OR (OLD.balance_evidence_hash IS NOT NULL AND OLD.balance_evidence_hash IS DISTINCT FROM NEW.balance_evidence_hash)
+       OR (OLD.pre_balance IS NOT NULL AND OLD.pre_balance IS DISTINCT FROM NEW.pre_balance)
+       OR (OLD.post_balance IS NOT NULL AND OLD.post_balance IS DISTINCT FROM NEW.post_balance) THEN
+        RAISE EXCEPTION 'v2_chain_operation_evidence_immutable' USING ERRCODE='55000';
+    END IF;
+    IF OLD.economic_effect_applied IS DISTINCT FROM NEW.economic_effect_applied THEN
+        IF OLD.economic_effect_applied OR NOT NEW.economic_effect_applied
+           OR NEW.status <> 'FINALIZED'
+           OR NOT EXISTS (
+               SELECT 1 FROM trading.ledger_transactions tx
+                WHERE tx.chain_operation_id=NEW.id AND tx.kind='SETTLEMENT'
+                  AND tx.status='POSTED'
+           ) THEN
+            RAISE EXCEPTION 'v2_chain_operation_effect_invalid' USING ERRCODE='55000';
+        END IF;
+    END IF;
     IF OLD.status <> NEW.status THEN
+        IF COALESCE(current_setting('trading.chain_state_transition', true), 'off') <> 'on' THEN
+            RAISE EXCEPTION 'v2_chain_operation_status_requires_history' USING ERRCODE='55000';
+        END IF;
         IF NOT (
             (OLD.status = 'PREPARED' AND NEW.status = 'SUBMITTING') OR
             (OLD.status = 'SUBMITTING' AND NEW.status IN
              ('UNKNOWN','RELAYER_NEW','EXECUTED','INVALID','FAILED')) OR
             (OLD.status = 'UNKNOWN' AND NEW.status IN
-             ('RELAYER_NEW','EXECUTED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR
+             ('RELAYER_NEW','EXECUTED','INVALID','FAILED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR
             (OLD.status = 'RELAYER_NEW' AND NEW.status IN
              ('EXECUTED','MINED','INVALID','FAILED','UNKNOWN','REORGED')) OR
             (OLD.status = 'EXECUTED' AND NEW.status IN
@@ -673,10 +1011,11 @@ BEGIN
             (OLD.status = 'MINED' AND NEW.status IN
              ('RELAYER_CONFIRMED','MINED_PROVISIONAL','INVALID','FAILED','UNKNOWN','REORGED')) OR
             (OLD.status = 'RELAYER_CONFIRMED' AND NEW.status IN
-             ('MINED_PROVISIONAL','FINALIZED','UNKNOWN','REORGED')) OR
+             ('MINED_PROVISIONAL','FINALIZED','INVALID','FAILED','UNKNOWN','REORGED','SETTLEMENT_CONFLICT')) OR
             (OLD.status = 'MINED_PROVISIONAL' AND NEW.status IN
-             ('FINALIZED','REORGED','UNKNOWN')) OR
+             ('FINALIZED','INVALID','FAILED','REORGED','UNKNOWN','SETTLEMENT_CONFLICT')) OR
             (OLD.status = 'FINALIZED' AND NEW.status IN ('SETTLEMENT_CONFLICT','REVERSED')) OR
+            (OLD.status = 'REORGED' AND NEW.status = 'UNKNOWN') OR
             (OLD.status = 'REVERSED' AND NEW.status = 'SETTLEMENT_CONFLICT')
         ) THEN
             RAISE EXCEPTION 'v2_chain_operation_transition_invalid' USING ERRCODE='23514';
@@ -697,10 +1036,181 @@ CREATE TRIGGER trg_chain_operations_lifecycle
 """
     )
     op.execute(
+        r"""
+CREATE FUNCTION trading.v2_guard_chain_operation_preflight() RETURNS trigger AS $$
+DECLARE expected_kind text;
+        selected_registry trading.contract_registry%ROWTYPE;
+        expected_bundle jsonb;
+        expected_bundle_hash text;
+        bundle_count integer;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM trading.pm_accounts a
+          JOIN trading.release_manifests rel ON rel.id=NEW.release_manifest_id
+          JOIN trading.capital_permission_manifests perm
+            ON perm.id=NEW.capital_permission_manifest_id
+          JOIN trading.execution_leases lease
+            ON lease.account_id=a.id AND lease.lease_role='EXECUTION'
+         WHERE a.id=NEW.account_id AND a.status='active'
+           AND a.provider='polymarket' AND a.chain_id=NEW.chain_id
+           AND a.identity_type='FIXTURE_ONLY' AND a.network_mode='fixture'
+           AND a.funder_address=NEW.wallet_address AND a.maker_address=NEW.wallet_address
+           AND a.release_manifest_id=rel.id
+           AND a.capital_permission_manifest_id=perm.id
+           AND rel.status='active' AND rel.capital_permission_manifest_id=perm.id
+           AND perm.status='active' AND perm.mode='shadow'
+           AND perm.authorized_capital=0 AND perm.kill_switch=false
+           AND perm.capability->>'chain_settlement'='FAKE_CONFORMANCE'
+           AND perm.content_hash=NEW.permission_ref
+           AND lease.owner=NEW.lease_owner
+           AND lease.fencing_token=NEW.fencing_token
+           AND lease.lease_until > statement_timestamp()
+           AND NOT EXISTS (
+               SELECT 1 FROM trading.account_reconciliations ar
+                WHERE ar.account_id=a.id AND (ar.status='RECONCILING' OR
+                     (ar.status='FAILED' AND NOT EXISTS (
+                        SELECT 1 FROM trading.account_reconciliations ok
+                         WHERE ok.account_id=a.id AND ok.status='COMPLETED' AND ok.id>ar.id)))
+           )
+    ) THEN
+        RAISE EXCEPTION 'v2_chain_operation_preflight_invalid' USING ERRCODE='55000';
+    END IF;
+    SELECT CASE WHEN m.neg_risk THEN 'neg_risk_adapter' ELSE 'ctf_adapter_standard' END
+      INTO expected_kind
+      FROM trading.pm_markets m
+     WHERE m.id=NEW.market_id AND m.condition_id=NEW.condition_id
+       AND m.neg_risk IS NOT NULL;
+    IF expected_kind IS NULL THEN
+        RAISE EXCEPTION 'v2_chain_operation_market_registry_invalid' USING ERRCODE='55000';
+    END IF;
+    SELECT * INTO selected_registry FROM trading.contract_registry r
+     WHERE r.id=NEW.registry_version_id AND r.chain_id=NEW.chain_id
+       AND r.kind=expected_kind AND r.address=NEW.target_address
+       AND r.status='ACTIVE';
+    IF NOT FOUND OR selected_registry.content_hash<>NEW.registry_content_hash THEN
+        RAISE EXCEPTION 'v2_chain_operation_market_registry_invalid' USING ERRCODE='55000';
+    END IF;
+    SELECT jsonb_object_agg(r.kind,r.content_hash ORDER BY r.kind),count(*)
+      INTO expected_bundle,bundle_count
+      FROM trading.contract_registry r
+     WHERE r.chain_id=NEW.chain_id AND r.status='ACTIVE'
+       AND r.kind IN ('pusd','ctf','deposit_wallet',expected_kind)
+       AND r.registry_version=selected_registry.registry_version
+       AND r.version_no=selected_registry.version_no
+       AND r.snapshot_block_number=selected_registry.snapshot_block_number
+       AND r.snapshot_block_hash=selected_registry.snapshot_block_hash;
+    expected_bundle_hash := encode(sha256(convert_to(expected_bundle::text,'UTF8')),'hex');
+    IF bundle_count<>4 OR NEW.registry_bundle IS DISTINCT FROM expected_bundle
+       OR NEW.registry_bundle_content_hash<>expected_bundle_hash THEN
+        RAISE EXCEPTION 'v2_chain_operation_registry_bundle_invalid' USING ERRCODE='55000';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM trading.artifact_objects a
+         WHERE a.id=NEW.registry_evidence_artifact_id
+           AND a.sha256=NEW.registry_evidence_hash
+    ) THEN
+        RAISE EXCEPTION 'v2_chain_operation_registry_artifact_invalid' USING ERRCODE='55000';
+    END IF;
+    IF NEW.geo_allowed IS NOT TRUE
+       OR NEW.geo_observed_at > statement_timestamp()
+       OR NEW.geo_observed_at < statement_timestamp() - interval '30 seconds'
+       OR length(btrim(NEW.geo_source_version))=0
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.artifact_objects a
+           WHERE a.id=NEW.geo_evidence_artifact_id
+             AND a.sha256=NEW.geo_evidence_hash) THEN
+        RAISE EXCEPTION 'v2_chain_operation_geo_evidence_invalid' USING ERRCODE='55000';
+    END IF;
+    IF NEW.operation_type='REDEEM' THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM trading.pm_markets m WHERE m.id=NEW.market_id
+            AND m.closed IS TRUE AND m.accepting_orders IS FALSE)
+           OR (SELECT count(*) FROM trading.settlement_observations o
+                WHERE o.settlement_set_key=NEW.settlement_set_key
+                  AND o.market_id=NEW.market_id AND o.condition_id=NEW.condition_id
+                  AND o.status='COMPLETE') <> 5 THEN
+            RAISE EXCEPTION 'v2_chain_operation_settlement_preflight_invalid' USING ERRCODE='55000';
+        END IF;
+        IF NEW.pre_balance IS NULL OR jsonb_typeof(NEW.pre_balance->'tokens')<>'object'
+           OR NEW.pre_balance->>'pusd' IS NULL OR NEW.pre_balance->>'pusd' !~ '^[0-9]+$'
+           OR (SELECT count(*) FROM jsonb_object_keys(NEW.pre_balance->'tokens'))<>2
+           OR EXISTS (
+             SELECT 1 FROM jsonb_each_text(NEW.pre_balance->'tokens') b(token,quantity)
+              WHERE quantity !~ '^[0-9]+$'
+                 OR NOT EXISTS (SELECT 1 FROM trading.pm_tokens t
+                                 WHERE t.market_id=NEW.market_id AND t.token_id=token))
+           OR EXISTS (
+             SELECT 1 FROM trading.pm_tokens t WHERE t.market_id=NEW.market_id
+               AND NOT (NEW.pre_balance->'tokens' ? t.token_id)) THEN
+            RAISE EXCEPTION 'v2_chain_operation_pre_balance_invalid' USING ERRCODE='55000';
+        END IF;
+        IF EXISTS (
+             SELECT 1 FROM jsonb_array_elements(NEW.settlement_allocation) item
+              WHERE jsonb_typeof(item)<>'object'
+                 OR NOT (item ? 'portfolio_namespace' AND item ? 'token_id'
+                         AND item ? 'quantity_base_units' AND item ? 'expected_cash_base_units')
+                 OR length(btrim(item->>'portfolio_namespace'))=0
+                 OR item->>'quantity_base_units' !~ '^[1-9][0-9]*$'
+                 OR item->>'expected_cash_base_units' !~ '^[0-9]+$')
+           OR (SELECT count(*) FROM jsonb_array_elements(NEW.settlement_allocation)) <>
+              (SELECT count(*) FROM (
+                 SELECT item->>'portfolio_namespace',item->>'token_id'
+                   FROM jsonb_array_elements(NEW.settlement_allocation) item
+                  GROUP BY 1,2) pairs)
+           OR EXISTS (
+             SELECT 1 FROM (
+               SELECT item->>'portfolio_namespace' namespace,item->>'token_id' token,
+                      sum((item->>'quantity_base_units')::numeric) quantity
+                 FROM jsonb_array_elements(NEW.settlement_allocation) item GROUP BY 1,2
+             ) alloc FULL JOIN (
+               SELECT p.portfolio_namespace namespace,t.token_id token,sum(p.quantity) quantity
+                 FROM trading.positions p JOIN trading.pm_tokens t ON t.id=p.token_id
+                WHERE p.account_id=NEW.account_id AND p.market_id=NEW.market_id AND p.quantity>0
+                GROUP BY 1,2
+             ) pos USING(namespace,token)
+             WHERE alloc.quantity IS DISTINCT FROM pos.quantity)
+           OR EXISTS (
+             SELECT 1 FROM (
+               SELECT item->>'token_id' token,sum((item->>'quantity_base_units')::numeric) quantity
+                 FROM jsonb_array_elements(NEW.settlement_allocation) item GROUP BY 1
+             ) alloc FULL JOIN (
+               SELECT token,quantity::numeric
+                 FROM jsonb_each_text(NEW.pre_balance->'tokens') AS balance(token,quantity)
+                WHERE quantity::numeric>0
+             ) bal USING(token)
+             WHERE alloc.quantity IS DISTINCT FROM bal.quantity)
+           OR EXISTS (
+             SELECT 1
+               FROM jsonb_array_elements(NEW.settlement_allocation) item
+               JOIN trading.settlement_observations obs
+                 ON obs.settlement_set_key=NEW.settlement_set_key
+                AND obs.source_kind='ctf_payout' AND obs.status='COMPLETE'
+               JOIN LATERAL jsonb_array_elements_text(obs.token_set)
+                    WITH ORDINALITY token(value,ord) ON token.value=item->>'token_id'
+               JOIN LATERAL jsonb_array_elements_text(obs.payout_vector->'numerators')
+                    WITH ORDINALITY numerator(value,ord) ON numerator.ord=token.ord
+              WHERE (item->>'expected_cash_base_units')::numeric <>
+                    (item->>'quantity_base_units')::numeric * numerator.value::numeric /
+                    (obs.payout_vector->>'denominator')::numeric)
+        THEN
+            RAISE EXCEPTION 'v2_chain_operation_settlement_allocation_invalid' USING ERRCODE='55000';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_chain_operations_preflight
+    BEFORE INSERT ON trading.chain_operations
+    FOR EACH ROW EXECUTE FUNCTION trading.v2_guard_chain_operation_preflight();
+"""
+    )
+    op.execute(
         """
 CREATE FUNCTION trading.v2_guard_chain_operation_state() RETURNS trigger AS $$
 DECLARE cur_status VARCHAR(32);
-        cur_fence BIGINT;
+        creation_fence BIGINT;
+        expected_sequence INTEGER;
         applied_count bigint;
 BEGIN
     IF TG_OP = 'UPDATE' OR TG_OP = 'DELETE' THEN
@@ -710,7 +1220,7 @@ BEGIN
         RAISE EXCEPTION 'v2_chain_operation_state_fence_nonpositive' USING ERRCODE='23514';
     END IF;
     SELECT status, fencing_token
-      INTO cur_status, cur_fence
+      INTO cur_status, creation_fence
       FROM trading.chain_operations
      WHERE id = NEW.operation_id
      FOR UPDATE;
@@ -721,9 +1231,22 @@ BEGIN
         RAISE EXCEPTION 'v2_chain_operation_cas_mismatch expected=% actual=%',
             cur_status, NEW.transition_from USING ERRCODE='55000';
     END IF;
-    IF NEW.fence_token <> cur_fence THEN
-        RAISE EXCEPTION 'v2_chain_operation_fence_mismatch expected=% actual=%',
-            cur_fence, NEW.fence_token USING ERRCODE='55000';
+    IF NEW.fence_token < creation_fence OR NOT EXISTS (
+        SELECT 1 FROM trading.execution_leases lease
+         JOIN trading.chain_operations cop ON cop.account_id=lease.account_id
+        WHERE cop.id=NEW.operation_id AND lease.lease_role='EXECUTION'
+          AND lease.owner=NEW.lease_owner
+          AND lease.fencing_token=NEW.fence_token
+          AND lease.lease_until > statement_timestamp()
+    ) THEN
+        RAISE EXCEPTION 'v2_chain_operation_fence_mismatch creation=% actual=%',
+            creation_fence, NEW.fence_token USING ERRCODE='55000';
+    END IF;
+    SELECT COALESCE(max(sequence_no), -1) + 1 INTO expected_sequence
+      FROM trading.chain_operation_state_history WHERE operation_id=NEW.operation_id;
+    IF NEW.sequence_no <> expected_sequence THEN
+        RAISE EXCEPTION 'v2_chain_operation_sequence_mismatch expected=% actual=%',
+            expected_sequence, NEW.sequence_no USING ERRCODE='55000';
     END IF;
     IF cur_status IN ('INVALID','FAILED','SETTLEMENT_CONFLICT','REVERSED') THEN
         RAISE EXCEPTION 'v2_chain_operation_terminal_mutation' USING ERRCODE='23514';
@@ -737,7 +1260,7 @@ BEGIN
         (cur_status = 'SUBMITTING' AND NEW.transition_to IN
          ('UNKNOWN','RELAYER_NEW','EXECUTED','INVALID','FAILED')) OR
         (cur_status = 'UNKNOWN' AND NEW.transition_to IN
-         ('RELAYER_NEW','EXECUTED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR
+         ('RELAYER_NEW','EXECUTED','INVALID','FAILED','REORGED','SETTLEMENT_CONFLICT','REVERSED')) OR
         (cur_status = 'RELAYER_NEW' AND NEW.transition_to IN
          ('EXECUTED','MINED','INVALID','FAILED','UNKNOWN','REORGED')) OR
         (cur_status = 'EXECUTED' AND NEW.transition_to IN
@@ -745,23 +1268,32 @@ BEGIN
         (cur_status = 'MINED' AND NEW.transition_to IN
          ('RELAYER_CONFIRMED','MINED_PROVISIONAL','INVALID','FAILED','UNKNOWN','REORGED')) OR
         (cur_status = 'RELAYER_CONFIRMED' AND NEW.transition_to IN
-         ('MINED_PROVISIONAL','FINALIZED','UNKNOWN','REORGED')) OR
+         ('MINED_PROVISIONAL','FINALIZED','INVALID','FAILED','UNKNOWN','REORGED','SETTLEMENT_CONFLICT')) OR
         (cur_status = 'MINED_PROVISIONAL' AND NEW.transition_to IN
-         ('FINALIZED','REORGED','UNKNOWN')) OR
+         ('FINALIZED','INVALID','FAILED','REORGED','UNKNOWN','SETTLEMENT_CONFLICT')) OR
         (cur_status = 'FINALIZED' AND NEW.transition_to IN ('SETTLEMENT_CONFLICT','REVERSED')) OR
+        (cur_status = 'REORGED' AND NEW.transition_to = 'UNKNOWN') OR
         (cur_status = 'REVERSED' AND NEW.transition_to = 'SETTLEMENT_CONFLICT')
     ) THEN
         RAISE EXCEPTION 'v2_chain_operation_transition_invalid' USING ERRCODE='23514';
     END IF;
     IF NEW.transition_to = 'FINALIZED' THEN
+        PERFORM set_config('trading.chain_state_transition', 'on', true);
         UPDATE trading.chain_operations
-           SET status = 'FINALIZED', updated_at = now(), economic_effect_applied = true
+           SET status = 'FINALIZED', updated_at = now()
          WHERE id = NEW.operation_id
            AND transaction_id IS NOT NULL
            AND transaction_hash IS NOT NULL
            AND receipt_block_number IS NOT NULL
            AND receipt_block_hash IS NOT NULL
+           AND receipt_status IS TRUE
+           AND canonical_block_hash = receipt_block_hash
            AND finalized_block_number IS NOT NULL
+           AND finalized_block_hash IS NOT NULL
+           AND finalized_block_number > receipt_block_number
+           AND registry_evidence_hash IS NOT NULL
+           AND balance_evidence_hash IS NOT NULL
+           AND settlement_set_key IS NOT NULL
            AND pre_balance IS NOT NULL
            AND post_balance IS NOT NULL;
         GET DIAGNOSTICS applied_count = ROW_COUNT;
@@ -769,16 +1301,115 @@ BEGIN
             RAISE EXCEPTION 'v2_chain_operation_finality_evidence_missing' USING ERRCODE='55000';
         END IF;
     ELSE
+        PERFORM set_config('trading.chain_state_transition', 'on', true);
         UPDATE trading.chain_operations
            SET status = NEW.transition_to, updated_at = now()
          WHERE id = NEW.operation_id;
     END IF;
+    PERFORM set_config('trading.chain_state_transition', 'off', true);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_chain_operation_state_cas
     BEFORE INSERT ON trading.chain_operation_state_history
     FOR EACH ROW EXECUTE FUNCTION trading.v2_guard_chain_operation_state();
+"""
+    )
+    # WP-05's outer-lineage guard only distinguished anonymous shadow facts from
+    # real CLOB fills.  WP-06 settlement ledgers are account-bound but are not fills:
+    # bind them to the frozen chain operation and exec namespace while forbidding
+    # envelope/order/trade/execution identities. All other WP-05 branches stay exact.
+    op.execute(
+        r"""
+CREATE OR REPLACE FUNCTION trading.v2_check_real_fill_lineage() RETURNS trigger
+LANGUAGE plpgsql AS $v2_guard$
+BEGIN
+    IF TG_TABLE_NAME = 'ledger_transactions' THEN
+        IF NEW.kind = 'SETTLEMENT' AND NEW.chain_operation_id IS NOT NULL THEN
+            IF NEW.account_id IS NULL
+               OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+               OR NEW.envelope_id IS NOT NULL OR NEW.order_id IS NOT NULL
+               OR NEW.trade_id IS NOT NULL OR NEW.execution_id IS NOT NULL
+               OR NOT EXISTS (
+                    SELECT 1 FROM trading.chain_operations cop
+                     WHERE cop.id=NEW.chain_operation_id
+                       AND cop.account_id=NEW.account_id
+               ) THEN
+                RAISE EXCEPTION 'v2_settlement_ledger_lineage_invalid' USING ERRCODE='23514';
+            END IF;
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                JOIN trading.economic_action_intents i ON i.id=e.intent_id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND t.id=NEW.trade_id
+                  AND i.trade_decision_id IS NOT DISTINCT FROM NEW.trade_decision_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.envelope_id=NEW.envelope_id AND x.order_id=NEW.order_id
+                         AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_ledger_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'position_lots' THEN
+        IF NEW.execution_id IS NOT NULL AND NEW.account_id IS NULL
+           AND NEW.order_id IS NULL AND NEW.trade_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL
+           OR NEW.order_id IS NULL OR NEW.trade_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.exchange_orders o
+                JOIN trading.exchange_trades t
+                  ON t.order_id=o.id AND t.account_id=o.account_id
+                WHERE o.id=NEW.order_id AND o.account_id=NEW.account_id
+                  AND t.id=NEW.trade_id
+                  AND (NEW.execution_id IS NULL OR EXISTS (
+                      SELECT 1 FROM trading.executions x
+                       WHERE x.id=NEW.execution_id AND x.account_id=NEW.account_id
+                         AND x.order_id=NEW.order_id AND x.trade_id=NEW.trade_id
+                  ))
+           ) THEN
+            RAISE EXCEPTION 'v2_position_lot_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'positions' THEN
+        IF NEW.account_id IS NULL AND NEW.envelope_id IS NULL AND NEW.order_id IS NULL THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.account_id IS NULL OR NEW.envelope_id IS NULL OR NEW.order_id IS NULL
+           OR NEW.portfolio_namespace <> 'exec-' || NEW.account_id::text
+           OR NOT EXISTS (
+                SELECT 1 FROM trading.execution_authorization_envelopes e
+                JOIN trading.exchange_order_attempts a ON a.envelope_id=e.id
+                JOIN trading.exchange_orders o ON o.attempt_id=a.id
+                WHERE e.id=NEW.envelope_id AND e.account_id=NEW.account_id
+                  AND o.id=NEW.order_id AND o.account_id=NEW.account_id
+           ) THEN
+            RAISE EXCEPTION 'v2_position_outer_lineage_invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    RETURN NEW;
+END $v2_guard$
 """
     )
     op.execute(
@@ -808,26 +1439,55 @@ CREATE TRIGGER trg_settlement_observations_immutable
     op.execute(
         """
 CREATE FUNCTION trading.v2_guard_settlement_observation_complete() RETURNS trigger AS $$
-DECLARE bad text;
+DECLARE row_count integer;
+        identity_count integer;
+        market_condition text;
+        canonical_tokens jsonb;
 BEGIN
-    SELECT string_agg(DISTINCT obs.condition_id, ', ' ORDER BY obs.condition_id)
-      INTO bad
-      FROM (SELECT DISTINCT condition_id FROM trading.settlement_observations
-             WHERE status = 'COMPLETE') obs
-      LEFT JOIN LATERAL (
-        SELECT count(*) AS total,
-               count(*) FILTER (WHERE source_kind = 'gamma_clob_closed') AS g,
-               count(*) FILTER (WHERE source_kind = 'ctf_payout') AS c,
-               count(*) FILTER (WHERE source_kind = 'data_api_redeemable') AS d,
-               count(*) FILTER (WHERE source_kind = 'clob_winner_5050') AS w,
-               count(*) FILTER (WHERE source_kind = 'label_audit') AS l
-          FROM trading.settlement_observations o
-         WHERE o.condition_id = obs.condition_id
-      ) s ON true
-      WHERE s.total <> 5 OR s.g <> 1 OR s.c <> 1 OR s.d <> 1 OR s.w <> 1 OR s.l <> 1;
-    IF bad IS NOT NULL THEN
-        RAISE EXCEPTION 'v2_settlement_observation_complete_set_missing:%', bad
-        USING ERRCODE='55000';
+    IF NEW.status <> 'COMPLETE' THEN
+        RETURN NULL;
+    END IF;
+    IF NEW.raw_artifact_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM trading.artifact_objects artifact
+         WHERE artifact.id=NEW.raw_artifact_id
+           AND artifact.sha256=NEW.raw_artifact_hash
+    ) THEN
+        RAISE EXCEPTION 'v2_settlement_observation_artifact_invalid:%',
+            NEW.observation_key USING ERRCODE='55000';
+    END IF;
+    SELECT count(*), count(DISTINCT
+        condition_id || ':' || market_id::text || ':' || token_set_hash || ':' ||
+        source_cutoff::text)
+      INTO row_count, identity_count
+      FROM trading.settlement_observations
+     WHERE settlement_set_key=NEW.settlement_set_key AND status='COMPLETE';
+    IF row_count <> 5 OR identity_count <> 1 OR EXISTS (
+        SELECT required.kind FROM (VALUES
+          ('gamma_clob_closed'),('ctf_payout'),('data_api_redeemable'),
+          ('clob_winner_5050'),('label_audit')) required(kind)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM trading.settlement_observations o
+           WHERE o.settlement_set_key=NEW.settlement_set_key
+             AND o.status='COMPLETE' AND o.source_kind=required.kind)
+    ) THEN
+        RAISE EXCEPTION 'v2_settlement_observation_complete_set_missing:%',
+            NEW.settlement_set_key USING ERRCODE='55000';
+    END IF;
+    SELECT condition_id INTO market_condition
+      FROM trading.pm_markets WHERE id=NEW.market_id;
+    SELECT jsonb_agg(t.token_id ORDER BY t.outcome_index) INTO canonical_tokens
+      FROM trading.pm_tokens t WHERE t.market_id=NEW.market_id;
+    IF market_condition IS DISTINCT FROM NEW.condition_id
+       OR canonical_tokens IS DISTINCT FROM NEW.token_set
+       OR EXISTS (
+          SELECT 1 FROM trading.settlement_observations o
+           WHERE o.settlement_set_key=NEW.settlement_set_key AND o.status='COMPLETE'
+             AND (o.market_id<>NEW.market_id OR o.condition_id<>NEW.condition_id
+                  OR o.token_set<>NEW.token_set OR o.token_set_hash<>NEW.token_set_hash
+                  OR o.source_cutoff<>NEW.source_cutoff)
+       ) THEN
+        RAISE EXCEPTION 'v2_settlement_observation_identity_mismatch:%',
+            NEW.settlement_set_key USING ERRCODE='55000';
     END IF;
     RETURN NULL;
 END;
@@ -838,12 +1498,175 @@ CREATE CONSTRAINT TRIGGER trg_settlement_observations_complete_set
     FOR EACH ROW EXECUTE FUNCTION trading.v2_guard_settlement_observation_complete();
 """
     )
+    op.execute(
+        r"""
+CREATE FUNCTION trading.v2_check_chain_operation_finality_complete() RETURNS trigger AS $$
+DECLARE op_row trading.chain_operations%ROWTYPE;
+        selected_registry trading.contract_registry%ROWTYPE;
+        expected_bundle jsonb;
+        bundle_count integer;
+        ledger_count integer;
+        namespace_count integer;
+        expected_cash numeric;
+        observed_cash numeric;
+        pusd_address text;
+BEGIN
+    IF NEW.transition_to <> 'FINALIZED' THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO STRICT op_row FROM trading.chain_operations WHERE id=NEW.operation_id;
+    SELECT * INTO STRICT selected_registry FROM trading.contract_registry
+     WHERE id=op_row.registry_version_id;
+    SELECT jsonb_object_agg(r.kind,r.content_hash ORDER BY r.kind),count(*),
+           max(r.address) FILTER (WHERE r.kind='pusd')
+      INTO expected_bundle,bundle_count,pusd_address
+      FROM trading.contract_registry r
+     WHERE r.chain_id=op_row.chain_id
+       AND r.kind IN ('pusd','ctf','deposit_wallet',selected_registry.kind)
+       AND op_row.registry_bundle ? r.kind
+       AND r.content_hash=op_row.registry_bundle->>r.kind
+       AND r.registry_version=selected_registry.registry_version
+       AND r.version_no=selected_registry.version_no
+       AND r.snapshot_block_number=selected_registry.snapshot_block_number
+       AND r.snapshot_block_hash=selected_registry.snapshot_block_hash;
+    SELECT count(*) INTO ledger_count FROM trading.ledger_transactions tx
+     WHERE tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT' AND tx.status='POSTED';
+    SELECT count(DISTINCT item->>'portfolio_namespace'),
+           COALESCE(sum((item->>'expected_cash_base_units')::numeric),0)
+      INTO namespace_count,expected_cash
+      FROM jsonb_array_elements(op_row.settlement_allocation) item;
+    observed_cash := (op_row.post_balance->>'pusd')::numeric -
+                     (op_row.pre_balance->>'pusd')::numeric;
+    IF op_row.status <> 'FINALIZED' OR NOT op_row.economic_effect_applied
+       OR bundle_count<>4 OR expected_bundle IS DISTINCT FROM op_row.registry_bundle
+       OR encode(sha256(convert_to(expected_bundle::text,'UTF8')),'hex')<>
+          op_row.registry_bundle_content_hash
+       OR selected_registry.content_hash<>op_row.registry_content_hash
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.artifact_objects a
+           WHERE a.id=op_row.registry_evidence_artifact_id
+             AND a.sha256=op_row.registry_evidence_hash)
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.artifact_objects a
+           WHERE a.id=op_row.balance_evidence_artifact_id
+             AND a.sha256=op_row.balance_evidence_hash)
+       OR ledger_count<>namespace_count OR ledger_count=0
+       OR observed_cash<>expected_cash
+       OR (SELECT count(*) FROM jsonb_object_keys(op_row.post_balance->'tokens'))<>2
+       OR EXISTS (
+          SELECT 1 FROM jsonb_each_text(op_row.post_balance->'tokens') b(token,quantity)
+           WHERE quantity::numeric<>0 OR NOT (op_row.pre_balance->'tokens' ? token))
+       OR EXISTS (
+          SELECT 1 FROM jsonb_object_keys(op_row.pre_balance->'tokens') token
+           WHERE NOT (op_row.post_balance->'tokens' ? token))
+       OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(op_row.settlement_allocation) item
+           WHERE NOT EXISTS (
+             SELECT 1 FROM trading.positions p JOIN trading.pm_tokens t ON t.id=p.token_id
+              WHERE p.account_id=op_row.account_id AND p.market_id=op_row.market_id
+                AND p.portfolio_namespace=item->>'portfolio_namespace'
+                AND t.token_id=item->>'token_id' AND p.quantity=0))
+       OR EXISTS (
+          SELECT 1 FROM trading.positions p
+           WHERE p.account_id=op_row.account_id AND p.market_id=op_row.market_id
+             AND p.quantity<>0)
+       OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(op_row.settlement_allocation) item
+           WHERE (SELECT count(*) FROM trading.ledger_transactions tx
+                   WHERE tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT'
+                     AND tx.status='POSTED' AND tx.account_id=op_row.account_id
+                     AND tx.portfolio_namespace=item->>'portfolio_namespace')<>1
+              OR (SELECT count(*) FROM trading.ledger_postings p
+                   JOIN trading.ledger_transactions tx ON tx.id=p.transaction_id
+                  WHERE tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT'
+                    AND tx.portfolio_namespace=item->>'portfolio_namespace'
+                    AND p.asset_type='TOKEN' AND p.asset_key=item->>'token_id'
+                    AND p.amount=-(item->>'quantity_base_units')::numeric
+                    AND p.counterparty=item->>'portfolio_namespace')<>1
+              OR (SELECT count(*) FROM trading.ledger_postings p
+                   JOIN trading.ledger_transactions tx ON tx.id=p.transaction_id
+                  WHERE tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT'
+                    AND tx.portfolio_namespace=item->>'portfolio_namespace'
+                    AND p.asset_type='TOKEN' AND p.asset_key=item->>'token_id'
+                    AND p.amount=(item->>'quantity_base_units')::numeric
+                    AND p.counterparty='ctf:redeem')<>1)
+       OR EXISTS (
+          SELECT 1 FROM (
+            SELECT item->>'portfolio_namespace' namespace,
+                   sum((item->>'expected_cash_base_units')::numeric) cash,
+                   count(*) token_count
+              FROM jsonb_array_elements(op_row.settlement_allocation) item GROUP BY 1
+          ) alloc
+          JOIN trading.ledger_transactions tx
+            ON tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT'
+           AND tx.status='POSTED' AND tx.portfolio_namespace=alloc.namespace
+          WHERE (SELECT count(*) FROM trading.ledger_postings p
+                  WHERE p.transaction_id=tx.id) <>
+                2*alloc.token_count + CASE WHEN alloc.cash>0 THEN 2 ELSE 0 END
+             OR (alloc.cash>0 AND (
+                (SELECT count(*) FROM trading.ledger_postings p
+                  WHERE p.transaction_id=tx.id AND p.asset_type='CASH'
+                    AND lower(p.asset_key)=lower(pusd_address) AND p.amount=alloc.cash
+                    AND p.counterparty=alloc.namespace)<>1 OR
+                (SELECT count(*) FROM trading.ledger_postings p
+                  WHERE p.transaction_id=tx.id AND p.asset_type='CASH'
+                    AND lower(p.asset_key)=lower(pusd_address) AND p.amount=-alloc.cash
+                    AND p.counterparty='ctf:redeem')<>1))
+             OR (alloc.cash=0 AND EXISTS (
+                SELECT 1 FROM trading.ledger_postings p
+                 WHERE p.transaction_id=tx.id AND p.asset_type='CASH')))
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.chain_operation_state_history h
+           WHERE h.operation_id=op_row.id AND h.transition_to='RELAYER_CONFIRMED')
+       OR EXISTS (
+          SELECT 1 FROM trading.chain_operation_state_history h
+           WHERE h.operation_id=op_row.id AND h.transition_to='SETTLEMENT_CONFLICT')
+       OR (SELECT count(*) FROM trading.settlement_observations o
+            WHERE o.settlement_set_key=op_row.settlement_set_key
+              AND o.condition_id=op_row.condition_id AND o.market_id=op_row.market_id
+              AND o.status='COMPLETE')<>5
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.workflow_events w
+           WHERE w.aggregate_type='chain_operation' AND w.aggregate_id=op_row.operation_key
+             AND w.event_type='SETTLEMENT_FINALIZED'
+             AND w.payload->>'operation_id'=op_row.id::text
+             AND w.payload->>'balance_artifact_hash'=op_row.balance_evidence_hash)
+       OR NOT EXISTS (
+          SELECT 1 FROM trading.transactional_outbox o
+           WHERE o.aggregate_type='chain_operation' AND o.aggregate_id=op_row.operation_key
+             AND o.topic='chain.settlement.finalized'
+             AND o.payload->>'operation_id'=op_row.id::text
+             AND o.payload->>'operation_key'=op_row.operation_key
+             AND o.payload->>'cash_delta'=expected_cash::text
+             AND o.payload->>'balance_artifact_hash'=op_row.balance_evidence_hash
+             AND jsonb_typeof(o.payload->'ledger_transaction_ids')='array'
+             AND (SELECT count(*) FROM jsonb_array_elements(o.payload->'ledger_transaction_ids'))=
+                 ledger_count
+             AND NOT EXISTS (
+               SELECT 1 FROM trading.ledger_transactions tx
+                WHERE tx.chain_operation_id=op_row.id AND tx.kind='SETTLEMENT'
+                  AND tx.status='POSTED'
+                  AND NOT (o.payload->'ledger_transaction_ids' @> to_jsonb(ARRAY[tx.id]))))
+    THEN
+        RAISE EXCEPTION 'v2_chain_operation_finality_effect_incomplete:%',op_row.id
+        USING ERRCODE='55000';
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+CREATE CONSTRAINT TRIGGER trg_chain_operations_finality_complete
+    AFTER INSERT ON trading.chain_operation_state_history
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+    EXECUTE FUNCTION trading.v2_check_chain_operation_finality_complete();
+"""
+    )
 
 
 def _drop_guards() -> None:
     op.execute("DROP TRIGGER IF EXISTS trg_contract_registry_immutable ON trading.contract_registry")
     op.execute("DROP TRIGGER IF EXISTS trg_contract_registry_publish_check ON trading.contract_registry")
     op.execute("DROP TRIGGER IF EXISTS trg_chain_operations_lifecycle ON trading.chain_operations")
+    op.execute("DROP TRIGGER IF EXISTS trg_chain_operations_preflight ON trading.chain_operations")
     op.execute("DROP TRIGGER IF EXISTS trg_chain_operation_state_cas ON trading.chain_operation_state_history")
     op.execute(
         "DROP TRIGGER IF EXISTS trg_chain_operation_state_history_immutable "
@@ -854,13 +1677,23 @@ def _drop_guards() -> None:
         "DROP TRIGGER IF EXISTS trg_settlement_observations_complete_set "
         "ON trading.settlement_observations"
     )
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_chain_operations_finality_complete "
+        "ON trading.chain_operation_state_history"
+    )
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_contract_registry_immutable()")
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_contract_registry_publish()")
+    op.execute(
+        "DROP FUNCTION IF EXISTS trading.v2_publish_contract_registry(text,text,integer,bigint,"
+        "text,text,text,text,text,bigint,text,text,timestamptz,text,jsonb)"
+    )
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_chain_operation_update()")
+    op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_chain_operation_preflight()")
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_chain_operation_state()")
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_chain_operation_state_history_immutable()")
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_settlement_observation_immutable()")
     op.execute("DROP FUNCTION IF EXISTS trading.v2_guard_settlement_observation_complete()")
+    op.execute("DROP FUNCTION IF EXISTS trading.v2_check_chain_operation_finality_complete()")
 
 
 def upgrade() -> None:
@@ -876,6 +1709,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     _assert_downgrade_safe()
     _drop_guards()
+    _restore_wp05_real_fill_lineage()
     _drop_lineage()
     for table in reversed(_NEW_TABLES):
         op.execute(f"DROP TABLE IF EXISTS trading.{table.name}")
