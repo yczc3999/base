@@ -7,16 +7,17 @@ import { useModelsPage } from '@/queries/v2/models'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useModelsPage({ cursor: cursor.value, asOf: asOf.value, limit: limit.value })
+const { data, isLoading, isError, displayError, denied, refetch } = useModelsPage({ cursor: cursor, asOf: asOf, limit: limit })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Models & AI" :loading="isLoading" sub-title="模型路由绑定">
+  <PageShell class="v2-page" title="Models & AI" :loading="isLoading" sub-title="模型路由绑定">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="role" min-width="110"><template #default="{ row }">{{ row.role }}</template></el-table-column>
         <el-table-column label="provider" min-width="100"><template #default="{ row }">{{ row.provider }}</template></el-table-column>

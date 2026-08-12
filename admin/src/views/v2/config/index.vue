@@ -7,16 +7,17 @@ import { useConfigurationPage } from '@/queries/v2/configuration'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useConfigurationPage({ cursor: cursor.value, asOf: asOf.value, limit: limit.value })
+const { data, isLoading, isError, displayError, denied, refetch } = useConfigurationPage({ cursor: cursor, asOf: asOf, limit: limit })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Strategy Config" :loading="isLoading" sub-title="配置版本 · 只读">
+  <PageShell class="v2-page" title="Strategy Config" :loading="isLoading" sub-title="配置版本 · 只读">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="config_key" min-width="160"><template #default="{ row }">{{ row.config_key }}</template></el-table-column>
         <el-table-column label="version_no" min-width="90"><template #default="{ row }">{{ row.version_no }}</template></el-table-column>

@@ -8,14 +8,15 @@ import { useMarket } from '@/queries/v2/markets'
 
 const route = useRoute()
 const id = toRef(route.params, 'id') as unknown as import('vue').Ref<string>
-const { data, isLoading, isError, error } = useMarket(id)
+const { data, isLoading, isError, displayError, denied, refetch } = useMarket(id)
 const m = computed(() => data.value?.market ?? null)
 </script>
 <template>
-  <PageShell :title="m?.question ?? 'Market Detail'" :loading="isLoading" sub-title="market · snapshot · spec · cohort">
+  <PageShell class="v2-page" :title="m?.question ?? 'Market Detail'" :loading="isLoading" sub-title="market · snapshot · spec · cohort">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !m">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !m"
+      @retry="() => refetch()">
       <div v-if="m" class="grid2">
         <DetailSection title="Market">
           <KeyValueGrid
@@ -40,6 +41,9 @@ const m = computed(() => data.value?.market ?? null)
             </tr>
           </tbody>
         </table>
+      </DetailSection>
+      <DetailSection v-if="data?.cohort?.length" title="Cohort">
+        <p class="mono">{{ JSON.stringify(data.cohort) }}</p>
       </DetailSection>
     </PageState>
   </PageShell>

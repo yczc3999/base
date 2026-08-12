@@ -7,21 +7,22 @@ import { useAlertsPage, useIntegrityRuntime } from '@/queries/v2/integrity'
 
 const rt = useIntegrityRuntime()
 const al_f = ref<Record<string,string>>({}); const al_c = ref<string|null>(null); const al_a = ref<string|null>(null)
-const al = useAlertsPage({ filters: al_f.value, cursor: al_c.value, asOf: al_a.value, limit: 50 })
+const al = useAlertsPage({ filters: al_f, cursor: al_c, asOf: al_a, limit: 50 })
 watch(al_f, () => { al_c.value = null; al_a.value = null }, { deep: true })
 const rows = computed(() => al.data.value?.items ?? [])
 const hasMore = computed(() => al.data.value?.has_more ?? false)
 function next() { al_c.value = al.data.value?.next_cursor ?? null; al_a.value = al.data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Integrity" :loading="al.isLoading.value" sub-title="runtime · alerts">
+  <PageShell class="v2-page" title="Integrity" :loading="al.isLoading.value" sub-title="runtime · alerts">
     <div class="section">
       <h2>Runtime</h2>
       <p class="mono">{{ JSON.stringify(rt.data.value ?? null) }}</p>
     </div>
     <PageState
-:loading="al.isLoading.value" :error="al.isError.value ? String(al.error.value) : null"
-      :denied="false" :empty="!al.isLoading.value && !al.isError.value && !rows.length">
+:loading="al.isLoading.value"
+:error="al.displayError.value" :denied="al.denied.value"
+      :empty="!al.isLoading.value && !al.isError.value && !rows.length" @retry="() => al.refetch()">
       <el-table v-loading="al.isLoading.value" :data="rows" stripe>
         <el-table-column label="alert_key" prop="alert_key" min-width="180" />
         <el-table-column label="severity" min-width="110"><template #default="{ row }">

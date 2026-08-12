@@ -48,7 +48,11 @@
 .v2-page {
   --el-box-shadow: none;
   --el-box-shadow-light: none;
+  min-width: 0;
+  color: var(--v2-ink);
+  font-family: var(--v2-font-ui);
 }
+.v2-page .ps-title { overflow-wrap: anywhere; }
 .v2-page .el-table,
 .v2-page .el-card,
 .v2-page .el-dialog,

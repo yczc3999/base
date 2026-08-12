@@ -7,16 +7,17 @@ import { useReleasesPage } from '@/queries/v2/releases'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useReleasesPage({ cursor: cursor.value, asOf: asOf.value, limit: limit.value })
+const { data, isLoading, isError, displayError, denied, refetch } = useReleasesPage({ cursor: cursor, asOf: asOf, limit: limit })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Releases" :loading="isLoading" sub-title="发布 · 哈希">
+  <PageShell class="v2-page" title="Releases" :loading="isLoading" sub-title="发布 · 哈希">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="release_name" min-width="160"><template #default="{ row }">{{ row.release_name }}</template></el-table-column>
         <el-table-column label="git_sha" min-width="160"><template #default="{ row }"><span class="mono">{{ row.git_sha }}</span></template></el-table-column>

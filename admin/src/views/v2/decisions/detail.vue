@@ -8,14 +8,15 @@ import { useDecision } from '@/queries/v2/decisions'
 
 const route = useRoute()
 const id = toRef(route.params, 'id') as unknown as import('vue').Ref<string>
-const { data, isLoading, isError, error } = useDecision(id)
+const { data, isLoading, isError, displayError, denied, refetch } = useDecision(id)
 const d = computed(() => data.value?.decision ?? null)
 </script>
 <template>
-  <PageShell :title="d?.decision_key ?? 'Decision Detail'" :loading="isLoading" sub-title="decision · quote · action · intent">
+  <PageShell class="v2-page" :title="d?.decision_key ?? 'Decision Detail'" :loading="isLoading" sub-title="decision · quote · action · intent">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !d">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !d"
+      @retry="() => refetch()">
       <div v-if="d" class="grid2">
         <DetailSection title="Decision">
           <KeyValueGrid
@@ -32,6 +33,9 @@ const d = computed(() => data.value?.decision ?? null)
           <p class="mono">{{ JSON.stringify(data?.underwriting_plans?.[0] ?? null) }}</p>
         </DetailSection>
       </div>
+      <DetailSection v-if="data?.action_sets?.length" title="Action Sets">
+        <p class="mono">{{ JSON.stringify(data.action_sets) }}</p>
+      </DetailSection>
       <DetailSection v-if="data?.intents?.length" title="Intents">
         <table class="mini">
           <tbody>

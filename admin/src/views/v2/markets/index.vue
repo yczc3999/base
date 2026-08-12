@@ -10,8 +10,8 @@ const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
 
-const { data, isLoading, isError, error } = useMarketsPage({
-  filters: filters.value, cursor: cursor.value, asOf: asOf.value, limit: limit.value,
+const { data, isLoading, isError, displayError, denied, refetch } = useMarketsPage({
+  filters: filters, cursor: cursor, asOf: asOf, limit: limit,
 })
 // filter 改变 → 清空 cursor/asOf（复用 WP-07A query key 语义）
 watch(filters, () => { cursor.value = null; asOf.value = null }, { deep: true })
@@ -21,7 +21,7 @@ const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Markets" :loading="isLoading" sub-title="公共市场 · 状态 · 流动性">
+  <PageShell class="v2-page" title="Markets" :loading="isLoading" sub-title="公共市场 · 状态 · 流动性">
     <div class="filterbar">
       <el-select v-model="filters.neg_risk" placeholder="negRisk" clearable >
         <el-option label="否" value="false" /><el-option label="是" value="true" />
@@ -31,8 +31,9 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
       </el-select>
     </div>
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="question" min-width="260"><template #default="{ row }">
           <RouterLink class="lnk" :to="`/v2/markets/${row.id}`">{{ row.question }}</RouterLink>

@@ -8,18 +8,18 @@ import { useIntentsPage, useOrdersPage, usePositionsPage, useLedgerPage } from '
 const active = ref('intents')
 // Intents
 const it_f = ref<Record<string,string>>({}); const it_c = ref<string|null>(null); const it_a = ref<string|null>(null)
-const it = useIntentsPage({ filters: it_f.value, cursor: it_c.value, asOf: it_a.value, limit: 50 })
+const it = useIntentsPage({ filters: it_f, cursor: it_c, asOf: it_a, limit: 50 })
 watch(it_f, () => { it_c.value = null; it_a.value = null }, { deep: true })
 // Orders
 const od_f = ref<Record<string,string>>({}); const od_c = ref<string|null>(null); const od_a = ref<string|null>(null)
-const od = useOrdersPage({ filters: od_f.value, cursor: od_c.value, asOf: od_a.value, limit: 50 })
+const od = useOrdersPage({ filters: od_f, cursor: od_c, asOf: od_a, limit: 50 })
 watch(od_f, () => { od_c.value = null; od_a.value = null }, { deep: true })
 // Positions
-const po_c = ref<string|null>(null)
-const po = usePositionsPage({ filters: {}, cursor: po_c.value, asOf: null, limit: 50 })
+const po_c = ref<string|null>(null); const po_a = ref<string|null>(null)
+const po = usePositionsPage({ filters: {}, cursor: po_c, asOf: po_a, limit: 50 })
 // Ledger
 const ld_f = ref<Record<string,string>>({}); const ld_c = ref<string|null>(null); const ld_a = ref<string|null>(null)
-const ld = useLedgerPage({ filters: ld_f.value, cursor: ld_c.value, asOf: ld_a.value, limit: 50 })
+const ld = useLedgerPage({ filters: ld_f, cursor: ld_c, asOf: ld_a, limit: 50 })
 watch(ld_f, () => { ld_c.value = null; ld_a.value = null }, { deep: true })
 const rows = computed<unknown[]>(() => ({
   intents: it.data.value?.items ?? [], orders: od.data.value?.items ?? [],
@@ -29,30 +29,38 @@ const loading = computed<boolean>(() => !!({ intents: it.isLoading.value, orders
   positions: po.isLoading.value, ledger: ld.isLoading.value })[active.value])
 const hasMore = computed(() => ({ intents: it.data.value?.has_more, orders: od.data.value?.has_more,
   positions: po.data.value?.has_more, ledger: ld.data.value?.has_more })[active.value] ?? false)
-const err = computed<string | null>(() => ({ intents: it.isError.value ? String(it.error.value) : null,
-  orders: od.isError.value ? String(od.error.value) : null,
-  positions: po.isError.value ? String(po.error.value) : null,
-  ledger: ld.isError.value ? String(ld.error.value) : null } as Record<string, string | null>)[active.value])
+const err = computed<string | null>(() => ({ intents: it.displayError.value,
+  orders: od.displayError.value,
+  positions: po.displayError.value,
+  ledger: ld.displayError.value } as Record<string, string | null>)[active.value])
+const denied = computed<boolean>(() => Boolean(({ intents: it.denied.value, orders: od.denied.value,
+  positions: po.denied.value, ledger: ld.denied.value })[active.value]))
 const asOf = computed(() => ({ intents: it.data.value?.as_of, orders: od.data.value?.as_of,
   positions: po.data.value?.as_of, ledger: ld.data.value?.as_of })[active.value])
+function retry() {
+  const query = { intents: it, orders: od, positions: po, ledger: ld }[active.value]
+  void query?.refetch()
+}
 function next() {
   const n = { intents: it.data.value?.next_cursor, orders: od.data.value?.next_cursor,
     positions: po.data.value?.next_cursor, ledger: ld.data.value?.next_cursor }[active.value]
-  if (active.value === 'positions') po_c.value = n ?? null
-  else if (active.value === 'intents') it_c.value = n ?? null
-  else if (active.value === 'orders') od_c.value = n ?? null
-  else ld_c.value = n ?? null
+  const a = { intents: it.data.value?.as_of, orders: od.data.value?.as_of,
+    positions: po.data.value?.as_of, ledger: ld.data.value?.as_of }[active.value]
+  if (active.value === 'positions') { po_c.value = n ?? null; po_a.value = a ?? null }
+  else if (active.value === 'intents') { it_c.value = n ?? null; it_a.value = a ?? null }
+  else if (active.value === 'orders') { od_c.value = n ?? null; od_a.value = a ?? null }
+  else { ld_c.value = n ?? null; ld_a.value = a ?? null }
 }
 </script>
 <template>
-  <PageShell title="Execution" :loading="loading" sub-title="intents · orders · positions · ledger">
+  <PageShell class="v2-page" title="Execution" :loading="loading" sub-title="intents · orders · positions · ledger">
     <el-tabs v-model="active" class="v2-tabs">
       <el-tab-pane label="Intents" name="intents" />
       <el-tab-pane label="Orders" name="orders" />
       <el-tab-pane label="Positions" name="positions" />
       <el-tab-pane label="Ledger" name="ledger" />
     </el-tabs>
-    <PageState :loading="loading" :error="err" :denied="false" :empty="!loading && !err && !rows.length">
+    <PageState :loading="loading" :error="err" :denied="denied" :empty="!loading && !err && !rows.length" @retry="retry">
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column label="key" min-width="180"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
         <el-table-column label="status" min-width="110"><template #default="{ row }">

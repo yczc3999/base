@@ -6,8 +6,10 @@ vi.mock('@/api/request', () => ({
 }))
 import {
   createPageAnchor,
+  isForbiddenV2Error,
   keepPreviousCursorPage,
   reconcilePageAnchor,
+  v2PermissionForDomain,
 } from '../page'
 import { normalizeFilters, v2QueryKeys } from '../queryKeys'
 
@@ -101,5 +103,21 @@ describe('placeholder isolation', () => {
     const previousKey = v2QueryKeys.page('markets', 'list', { closed: false }, 'desc', 50, null, null)
     const currentKey = v2QueryKeys.page('markets', 'list', { closed: true }, 'desc', 50, null, null)
     expect(keepPreviousCursorPage(previousData, { queryKey: previousKey }, currentKey)).toBeUndefined()
+  })
+})
+
+describe('permission/error state mapping', () => {
+  it('maps every UI domain to the exact server permission', () => {
+    expect(v2PermissionForDomain('markets')).toBe('v2:markets:view')
+    expect(v2PermissionForDomain('ai')).toBe('v2:ai:view')
+    expect(v2PermissionForDomain('configuration')).toBe('v2:config:view')
+    expect(v2PermissionForDomain('artifacts')).toBe('v2:artifact:read')
+    expect(v2PermissionForDomain('unknown')).toBeNull()
+  })
+
+  it('turns transport and envelope 403 errors into the denied state', () => {
+    expect(isForbiddenV2Error({ response: { status: 403 } })).toBe(true)
+    expect(isForbiddenV2Error({ code: 403, status: 200 })).toBe(true)
+    expect(isForbiddenV2Error({ response: { status: 500 } })).toBe(false)
   })
 })

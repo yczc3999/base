@@ -1,6 +1,7 @@
 import { computed, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { isRequestCanceled } from '@/api/request'
+import { useUserStore } from '@/stores/user'
 import type {
   CursorPage,
   OpaqueCursor,
@@ -37,6 +38,52 @@ export interface PageAnchor {
   identity: string
   cursor: OpaqueCursor | null
   asOf: UtcIsoString | null
+}
+
+const V2_DOMAIN_PERMISSIONS = Object.freeze({
+  dashboard: 'v2:dashboard:view',
+  markets: 'v2:markets:view',
+  components: 'v2:components:view',
+  episodes: 'v2:episodes:view',
+  decisions: 'v2:decisions:view',
+  execution: 'v2:execution:view',
+  models: 'v2:models:view',
+  ai: 'v2:ai:view',
+  costs: 'v2:costs:view',
+  configuration: 'v2:config:view',
+  releases: 'v2:release:view',
+  evaluation: 'v2:evaluation:view',
+  replay: 'v2:replay:view',
+  integrity: 'v2:integrity:view',
+  artifacts: 'v2:artifact:read',
+} as const)
+
+export function v2PermissionForDomain(domain: string): string | null {
+  return V2_DOMAIN_PERMISSIONS[domain as keyof typeof V2_DOMAIN_PERMISSIONS] ?? null
+}
+
+export function isForbiddenV2Error(error: unknown): boolean {
+  const candidate = error as {
+    code?: number
+    status?: number
+    response?: { status?: number }
+  } | null
+  return candidate?.code === 403
+    || candidate?.status === 403
+    || candidate?.response?.status === 403
+}
+
+function useV2QueryAccess(domain: string, requested?: ReactiveValue<boolean>) {
+  const userStore = useUserStore()
+  const permission = v2PermissionForDomain(domain)
+  // The guard loads user/menu permissions before entering authenticated routes. An empty
+  // permission set for a normal user therefore means no V2 access, not implicit access.
+  const deniedByPermission = computed(() => permission !== null
+    && !userStore.isSuperAdmin
+    && !userStore.permissions.includes(permission))
+  const requestedEnabled = computed(() => requested === undefined || Boolean(toValue(requested)))
+  const enabled = computed(() => requestedEnabled.value && !deniedByPermission.value)
+  return { deniedByPermission, enabled }
 }
 
 export function createPageAnchor(
@@ -96,6 +143,7 @@ export function useCursorPageQuery<T, F extends object>(
   fetchPage: (params: PageParams<F>, signal: AbortSignal) => Promise<CursorPage<T>>,
   options?: V2QueryOptions,
 ) {
+  const access = useV2QueryAccess(domain, options?.enabled)
   const resolvedEndpoint = computed(() => toValue(endpoint))
   const normalizedFilters = computed(() => normalizeFilters(
     input.filters === undefined ? undefined : toValue(input.filters),
@@ -154,6 +202,7 @@ export function useCursorPageQuery<T, F extends object>(
 
   const query = useQuery({
     ...options,
+    enabled: access.enabled,
     queryKey,
     queryFn: ({ signal }) => fetchPage(params.value, signal),
     placeholderData: (previousData, previousQuery) => keepPreviousCursorPage(
@@ -168,6 +217,10 @@ export function useCursorPageQuery<T, F extends object>(
     effectiveCursor: computed(() => anchor.value.cursor),
     effectiveAsOf: computed(() => anchor.value.asOf),
     filterIdentity: rawIdentity,
+    denied: computed(() => access.deniedByPermission.value || isForbiddenV2Error(query.error.value)),
+    displayError: computed(() => query.isError.value && !isForbiddenV2Error(query.error.value)
+      ? String(query.error.value)
+      : null),
   })
 }
 
@@ -178,16 +231,24 @@ export function useDetailQuery<T>(
   fetchDetail: (signal: AbortSignal) => Promise<T>,
   options?: V2QueryOptions,
 ) {
+  const access = useV2QueryAccess(domain, options?.enabled)
   const resolvedIdentity = computed(() => identity.map((part) => toValue(part)))
   const queryKey = computed<V2DetailQueryKey>(() => v2QueryKeys.detail(
     domain,
     endpoint,
     ...resolvedIdentity.value,
   ))
-  return useQuery({
+  const query = useQuery({
     ...options,
+    enabled: access.enabled,
     queryKey,
     queryFn: ({ signal }) => fetchDetail(signal),
     retry: shouldRetryV2Query,
+  })
+  return Object.assign(query, {
+    denied: computed(() => access.deniedByPermission.value || isForbiddenV2Error(query.error.value)),
+    displayError: computed(() => query.isError.value && !isForbiddenV2Error(query.error.value)
+      ? String(query.error.value)
+      : null),
   })
 }

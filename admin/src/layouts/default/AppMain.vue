@@ -30,4 +30,8 @@ const cachedViews = computed(() => tagsStore.cachedViews)
   overflow-y: auto;
   min-height: 0;
 }
+
+@media (max-width: 600px) {
+  .app-main { padding: var(--space-md); }
+}
 </style>

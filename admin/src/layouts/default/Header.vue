@@ -197,4 +197,11 @@ onUnmounted(() => clearInterval(timer))
   font-size: 10px;
   color: var(--text-secondary);
 }
+
+@media (max-width: 600px) {
+  .header { padding: 0 8px; }
+  .header-left { gap: 8px; }
+  .header-left :deep(.el-breadcrumb), .header-action, .user-name, .user-arrow { display: none; }
+  .user-info { padding: 4px; }
+}
 </style>

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 export const useAppStore = defineStore('app', {
   state: () => ({
-    sidebarCollapsed: false,
+    sidebarCollapsed: typeof window !== 'undefined' && window.innerWidth <= 600,
     theme: 'light' as 'light' | 'dark',
   }),
 

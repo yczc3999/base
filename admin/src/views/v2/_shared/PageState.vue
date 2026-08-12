@@ -6,7 +6,9 @@ defineProps<{
   denied: boolean
   empty: boolean
   partial?: string | null
+  retryable?: boolean
 }>()
+const emit = defineEmits<{ (e: 'retry'): void }>()
 </script>
 <template>
   <div class="v2-pagestate">
@@ -24,16 +26,19 @@ defineProps<{
     <div v-else-if="error" class="panel-error" data-testid="v2-error">
       <p class="t">请求失败：{{ error }}</p>
       <p class="m">请稍后重试，或查看 Integrity &gt; Alerts。</p>
+      <button v-if="retryable !== false" class="retry" type="button" @click="emit('retry')">重试</button>
     </div>
-    <!-- partial 附加提示（不替换正文） -->
-    <div v-else-if="partial" class="partial-note" data-testid="v2-partial">{{ partial }}</div>
-    <!-- empty -->
-    <div v-else-if="empty" class="panel-empty" data-testid="v2-empty">
-      <p class="t">暂无数据</p>
-      <p class="m">调整筛选条件后重试。</p>
+    <div v-else>
+      <!-- partial 是正文的附加提示，不得把正文替换掉。 -->
+      <div v-if="partial" class="partial-note" data-testid="v2-partial">{{ partial }}</div>
+      <!-- empty -->
+      <div v-if="empty" class="panel-empty" data-testid="v2-empty">
+        <p class="t">暂无数据</p>
+        <p class="m">调整筛选条件后重试。</p>
+      </div>
+      <!-- 默认槽：正文 -->
+      <slot v-else />
     </div>
-    <!-- 默认槽：正文 -->
-    <slot v-else />
   </div>
 </template>
 <style scoped>
@@ -46,4 +51,5 @@ defineProps<{
 .panel-denied .m,.panel-error .m,.panel-empty .m{color:var(--v2-ink-muted)}
 .partial-note{border-left:3px solid var(--v2-warning);background:var(--v2-warning-soft);padding:var(--v2-space-2) var(--v2-space-3);border-radius:0 var(--v2-radius-sm) var(--v2-radius-sm) 0;font-size:12.5px;color:var(--v2-warning);margin-bottom:var(--v2-space-3)}
 .mono{font-family:var(--v2-font-mono)}
+.retry{margin-top:var(--v2-space-3);min-height:var(--v2-control-h);padding:0 var(--v2-space-3);border:1px solid var(--v2-danger);border-radius:var(--v2-radius-sm);background:var(--v2-surface);color:var(--v2-danger);cursor:pointer}
 </style>

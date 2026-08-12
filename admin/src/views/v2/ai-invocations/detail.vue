@@ -8,15 +8,19 @@ import { useAiDetail } from '@/queries/v2/ai'
 
 const route = useRoute()
 const id = toRef(route.params, 'id') as unknown as import('vue').Ref<string>
-const occurredAt = toRef(route.query, 'occurred_at') as unknown as import('vue').Ref<string>
-const { data, isLoading, isError, error } = useAiDetail(id, occurredAt)
+const occurredAt = computed(() => String(route.query.occurred_at ?? ''))
+const missingOccurredAt = computed(() => occurredAt.value.length === 0)
+const { data, isLoading, isError, displayError, denied, refetch } = useAiDetail(id, occurredAt, {
+  enabled: computed(() => !missingOccurredAt.value),
+})
 const inv = computed(() => data.value?.invocation ?? null)
 </script>
 <template>
-  <PageShell :title="inv ? `AI ${inv.id}` : 'AI Invocation Detail'" :loading="isLoading" sub-title="invocation · binding · tools · validators">
+  <PageShell class="v2-page" :title="inv ? `AI ${inv.id}` : 'AI Invocation Detail'" :loading="isLoading" sub-title="invocation · binding · tools · validators">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !inv">
+:loading="isLoading"
+:error="missingOccurredAt ? '缺少 occurred_at 复合身份' : displayError" :denied="denied" :empty="!isLoading && !isError && !inv" :retryable="!missingOccurredAt"
+      @retry="() => refetch()">
       <div v-if="inv" class="grid2">
         <DetailSection title="Invocation">
           <KeyValueGrid
@@ -45,6 +49,16 @@ const inv = computed(() => data.value?.invocation ?? null)
       </DetailSection>
       <DetailSection v-if="data?.validations?.length" title="Validators">
         <p class="mono">{{ JSON.stringify(data.validations) }}</p>
+      </DetailSection>
+      <DetailSection v-if="data?.downstream?.length" title="Downstream">
+        <table class="mini">
+          <tbody>
+            <tr v-for="row in data.downstream" :key="`${row.occurred_at}:${row.id}`">
+              <td class="mono">{{ row.id }}</td><td>{{ row.lifecycle_state }}</td>
+              <td class="mono">{{ row.occurred_at }}</td>
+            </tr>
+          </tbody>
+        </table>
       </DetailSection>
     </PageState>
   </PageShell>

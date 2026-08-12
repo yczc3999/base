@@ -7,16 +7,17 @@ import { useCostsPage } from '@/queries/v2/costs'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useCostsPage({ cursor: cursor.value, asOf: asOf.value, limit: limit.value })
+const { data, isLoading, isError, displayError, denied, refetch } = useCostsPage({ cursor: cursor, asOf: asOf, limit: limit })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Costs" :loading="isLoading" sub-title="成本 · 按类别">
+  <PageShell class="v2-page" title="Costs" :loading="isLoading" sub-title="成本 · 按类别">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="cost_key" min-width="160"><template #default="{ row }">{{ row.cost_key }}</template></el-table-column>
         <el-table-column label="cost_kind" min-width="120"><template #default="{ row }">{{ row.cost_kind }}</template></el-table-column>

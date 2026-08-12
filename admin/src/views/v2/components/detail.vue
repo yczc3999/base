@@ -8,14 +8,15 @@ import { useComponent } from '@/queries/v2/components'
 
 const route = useRoute()
 const id = toRef(route.params, 'id') as unknown as import('vue').Ref<string>
-const { data, isLoading, isError, error } = useComponent(id)
+const { data, isLoading, isError, displayError, denied, refetch } = useComponent(id)
 const c = computed(() => data.value?.component ?? null)
 </script>
 <template>
-  <PageShell :title="c?.component_key ?? 'Component Detail'" :loading="isLoading" sub-title="组件 · 版本 · 成员合约">
+  <PageShell class="v2-page" :title="c?.component_key ?? 'Component Detail'" :loading="isLoading" sub-title="组件 · 版本 · 成员合约">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !c">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !c"
+      @retry="() => refetch()">
       <div v-if="c">
         <DetailSection title="Component">
           <KeyValueGrid

@@ -8,7 +8,7 @@ import { useEpisode } from '@/queries/v2/episodes'
 
 const route = useRoute()
 const id = toRef(route.params, 'id') as unknown as import('vue').Ref<string>
-const { data, isLoading, isError, error } = useEpisode(id)
+const { data, isLoading, isError, displayError, denied, refetch } = useEpisode(id)
 const ep = computed(() => data.value?.episode ?? null)
 const gates = computed(() => (data.value?.gates ?? []).map((g: any) => ({ name: g.gate, result: g.result })))
 import { ref } from 'vue'
@@ -22,10 +22,11 @@ watchEffect(() => {
 })
 </script>
 <template>
-  <PageShell :title="ep?.episode_key ?? 'Episode Detail'" :loading="isLoading" sub-title="cognition episode · 下钻">
+  <PageShell class="v2-page" :title="ep?.episode_key ?? 'Episode Detail'" :loading="isLoading" sub-title="cognition episode · 下钻">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !ep">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !ep"
+      @retry="() => refetch()">
       <div v-if="ep" class="ep-head">
         <h1 class="q">{{ ep.trigger }} <StatusBadge :tone="ep.status === 'DECIDED' ? 'success' : 'info'">{{ ep.status }}</StatusBadge></h1>
         <p class="mono identity">episode {{ ep.episode_key }} · status {{ ep.status }} · cognition {{ ep.cognition_status }} · cutoff {{ ep.cutoff_at }}</p>
@@ -43,14 +44,17 @@ watchEffect(() => {
         <DetailSection title="决策摘要">
           <KeyValueGrid
 :rows="ep ? [
-            { k: 'decision', v: ep.id, mono: true },
-            { k: 'reason', v: '-', },
-            { k: 'action', v: '-', },
+            { k: 'decision_opportunity_id', v: ep.decision_opportunity_id ?? '-', mono: true },
+            { k: 'objective_contract_id', v: ep.objective_contract_id ?? '-', mono: true },
+            { k: 'drop_reason', v: ep.drop_reason ?? '-' },
           ] : []" />
         </DetailSection>
       </div>
       <DetailSection title="Gate 结果">
         <GateStrip :gates="gates" />
+      </DetailSection>
+      <DetailSection v-if="data?.priors?.length" title="Blind Prior">
+        <p class="mono">{{ JSON.stringify(data.priors) }}</p>
       </DetailSection>
       <DetailSection title="Evidence / 提交">
         <table class="mini">

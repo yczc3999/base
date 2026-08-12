@@ -7,16 +7,17 @@ import { useReplayPage } from '@/queries/v2/replay'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useReplayPage({ cursor: cursor.value, asOf: asOf.value, limit: limit.value })
+const { data, isLoading, isError, displayError, denied, refetch } = useReplayPage({ cursor: cursor, asOf: asOf, limit: limit })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="Replay" :loading="isLoading" sub-title="回放运行">
+  <PageShell class="v2-page" title="Replay" :loading="isLoading" sub-title="回放运行">
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="run_key" min-width="160"><template #default="{ row }">{{ row.run_key }}</template></el-table-column>
         <el-table-column label="replay_kind" min-width="110"><template #default="{ row }">{{ row.replay_kind }}</template></el-table-column>

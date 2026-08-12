@@ -8,8 +8,8 @@ const filters = ref<Record<string, string>>({})
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, error } = useAiPage({
-  filters: filters.value, cursor: cursor.value, asOf: asOf.value, limit: limit.value,
+const { data, isLoading, isError, displayError, denied, refetch } = useAiPage({
+  filters: filters, cursor: cursor, asOf: asOf, limit: limit,
 })
 watch(filters, () => { cursor.value = null; asOf.value = null }, { deep: true })
 const rows = computed(() => data.value?.items ?? [])
@@ -17,7 +17,7 @@ const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
-  <PageShell title="AI Invocations" :loading="isLoading" sub-title="provider · lifecycle · cost">
+  <PageShell class="v2-page" title="AI Invocations" :loading="isLoading" sub-title="provider · lifecycle · cost">
     <div class="filterbar">
       <el-select v-model="filters.role" placeholder="role" clearable style="width:150px">
         <el-option v-for="r in ['scorer','researcher','verifier','labeler']" :key="r" :label="r" :value="r" />
@@ -27,11 +27,15 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
       </el-select>
     </div>
     <PageState
-:loading="isLoading" :error="isError ? String(error) : null" :denied="false"
-      :empty="!isLoading && !isError && !rows.length">
+:loading="isLoading"
+:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
+      @retry="() => refetch()">
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="id" min-width="90"><template #default="{ row }">
-          <RouterLink class="lnk" :to="`/v2/ai-invocations/${row.id}`"><span class="mono">{{ row.id }}</span></RouterLink>
+          <RouterLink
+            class="lnk"
+            :to="{ path: `/v2/ai-invocations/${row.id}`, query: { occurred_at: row.occurred_at } }"
+          ><span class="mono">{{ row.id }}</span></RouterLink>
         </template></el-table-column>
         <el-table-column label="occurred_at" prop="occurred_at" min-width="160"><template #default="{ row }"><span class="mono">{{ row.occurred_at }}</span></template></el-table-column>
         <el-table-column label="role" prop="role" min-width="100" />
