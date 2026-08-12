@@ -132,7 +132,7 @@ async def ensure_pipeline_seed(session, *, cohort_key: str = DEFAULT_COHORT_KEY)
         "INSERT INTO trading.release_manifests "
         "(release_name,config_version_id,strategy_version_id,execution_spec_version_id,"
         "capital_permission_manifest_id,git_sha,image_digest,db_revision,total_hash,status) "
-        "VALUES (:n,:cfg,:strategy,:execution,:permission,'pipeline','img','head',:h,'active') "
+        "VALUES (:n,:cfg,:strategy,:execution,:permission,'pipeline','img','b1000071',:h,'active') "
         "RETURNING id",
         {"n": f"{cohort_key}-release", "cfg": config_id, "strategy": strategy_id,
          "execution": execution_id, "permission": permission_id,
