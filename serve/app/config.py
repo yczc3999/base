@@ -28,6 +28,8 @@ PROFILE_FIELDS: dict[str, tuple[str, str, str]] = {
     "cognition": ("DB_COGNITION_POOL_SIZE", "DB_COGNITION_POOL_OVERFLOW", "DB_COGNITION_STMT_TIMEOUT_S"),
     "evaluation": ("DB_EVALUATION_POOL_SIZE", "DB_EVALUATION_POOL_OVERFLOW", "DB_EVALUATION_STMT_TIMEOUT_S"),
     "replay": ("DB_REPLAY_POOL_SIZE", "DB_REPLAY_POOL_OVERFLOW", "DB_REPLAY_STMT_TIMEOUT_S"),
+    "reconciliation": ("DB_RECONCILIATION_POOL_SIZE", "DB_RECONCILIATION_POOL_OVERFLOW", "DB_RECONCILIATION_STMT_TIMEOUT_S"),
+    "outbox": ("DB_OUTBOX_POOL_SIZE", "DB_OUTBOX_POOL_OVERFLOW", "DB_OUTBOX_STMT_TIMEOUT_S"),
 }
 
 
@@ -132,7 +134,8 @@ class Settings(BaseSettings):
 
     # ---- V2 分进程连接池 profile ----
     # api-admin: 后台读模型/配置发布；market-ingest: 行情热路径；execution: 下单/心跳；
-    # cognition: 研究/AI；evaluation: 标签/指标/归档；replay: 回放（默认并发 2）。
+    # cognition: 研究/AI；evaluation: 标签/指标/归档；replay: 回放（默认并发 2）；
+    # reconciliation: 订单/账本/链对账；outbox: 发布/清扫/消费（WP-07C 常驻运行时装配）。
     # WP-07A Admin read-plane 的 32 并发门要求 api pool 可同时承载 32 个
     # request UoW；24 个常驻 + 8 个 overflow，在默认全局预算中仍保留 20 个连接。
     DB_API_POOL_SIZE: int = Field(24, ge=1)
@@ -153,6 +156,12 @@ class Settings(BaseSettings):
     DB_REPLAY_POOL_SIZE: int = Field(2, ge=1)
     DB_REPLAY_POOL_OVERFLOW: int = Field(1, ge=0)
     DB_REPLAY_STMT_TIMEOUT_S: int = Field(30, ge=1)
+    DB_RECONCILIATION_POOL_SIZE: int = Field(2, ge=1)
+    DB_RECONCILIATION_POOL_OVERFLOW: int = Field(1, ge=0)
+    DB_RECONCILIATION_STMT_TIMEOUT_S: int = Field(30, ge=1)
+    DB_OUTBOX_POOL_SIZE: int = Field(2, ge=1)
+    DB_OUTBOX_POOL_OVERFLOW: int = Field(1, ge=0)
+    DB_OUTBOX_STMT_TIMEOUT_S: int = Field(30, ge=1)
 
     # Redis
     REDIS_HOST: str = "localhost"
@@ -325,7 +334,7 @@ class Settings(BaseSettings):
 
     @property
     def pool_profile_names(self) -> tuple[str, ...]:
-        """六个独立进程 profile 的固定顺序。"""
+        """八个独立进程 profile 的固定顺序（WP-07C 增 reconciliation/outbox）。"""
         return tuple(PROFILE_FIELDS)
 
     def pool_profile(self, name: str) -> PoolProfile:

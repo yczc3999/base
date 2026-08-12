@@ -79,6 +79,7 @@ def test_default_profiles_and_values(clean_env):
     s = Settings(_env_file=None)
     assert s.pool_profile_names == (
         "api", "market", "execution", "cognition", "evaluation", "replay",
+        "reconciliation", "outbox",
     )
     expected = {
         "api": (24, 8, 2),
@@ -87,6 +88,8 @@ def test_default_profiles_and_values(clean_env):
         "cognition": (3, 2, 5),
         "evaluation": (3, 1, 30),
         "replay": (2, 1, 30),
+        "reconciliation": (2, 1, 30),
+        "outbox": (2, 1, 30),
     }
     for name, (size, overflow, stmt) in expected.items():
         p = s.pool_profile(name)
@@ -168,10 +171,11 @@ def test_default_budget(clean_env):
     assert b.per_profile == {
         "api": 32, "market": 10, "execution": 6,
         "cognition": 5, "evaluation": 4, "replay": 3,
+        "reconciliation": 3, "outbox": 3,
     }
-    assert b.total == 60
+    assert b.total == 66
     assert b.limit == 80
-    assert b.remaining == 20
+    assert b.remaining == 14
     assert b.is_within_limit() is True
 
 
@@ -179,7 +183,7 @@ def test_budget_with_replicas(clean_env):
     s = Settings(_env_file=None)
     b = s.connection_budget(replica_counts={"market": 2})
     assert b.per_profile["market"] == 20
-    assert b.total == 70
+    assert b.total == 76
     assert b.is_within_limit() is True
 
 

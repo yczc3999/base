@@ -24,7 +24,10 @@ from app.services.database import (
     get_db,
 )
 
-PROFILE_NAMES = ("api", "market", "execution", "cognition", "evaluation", "replay")
+PROFILE_NAMES = (
+    "api", "market", "execution", "cognition", "evaluation", "replay",
+    "reconciliation", "outbox",
+)
 
 
 def _pool(engine: AsyncEngine):
@@ -37,8 +40,8 @@ def _pool(engine: AsyncEngine):
 def test_six_profiles_have_independent_engines():
     engines = DatabaseEngines(settings)
     built = [engines.engine(name) for name in PROFILE_NAMES]
-    assert len(set(id(e) for e in built)) == 6
-    assert engines.engine_count() == 6
+    assert len(set(id(e) for e in built)) == 8
+    assert engines.engine_count() == 8
     asyncio.run(engines.dispose())
 
 
@@ -146,9 +149,9 @@ def test_no_legacy_20_10_pattern():
 def test_engine_registry_budget():
     engines = DatabaseEngines(settings)
     b = engines.budget()
-    assert b.total == 60
+    assert b.total == 66
     assert b.limit == 80
-    assert b.remaining == 20
+    assert b.remaining == 14
     assert b.is_within_limit() is True
     asyncio.run(engines.dispose())
 

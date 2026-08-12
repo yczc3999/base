@@ -46,6 +46,7 @@
 | WP-06 | 0052 Polygon/relayer/settlement | ✅ DONE，审查通过 | `wp-06-polygon-relayer-settlement.md` | `a2280e003d02a9799e263efbef5f1de504f79e2a5e0f94564b6c9a133263f868` | 2026-08-12 |
 | WP-07A | Admin API + frontend types/query scaffolding | ✅ DONE，审查通过 | `wp-07a-admin-read-api-typed-data-layer.md` | `881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` | 2026-08-12 |
 | WP-07B | 14 菜单页、5 详情页与交互 | ✅ DONE | `wp-07b-admin-pages.md` | `4c399c5afd1b950098d50c552c1850f21bf471acab7523433a4779f1255c19ad` | 2026-08-12 |
+| WP-07C | 常驻运行时装配 Checkpoint A（outbox 传输层 + supervisor 骨架） | ✅ DONE | `wp-07c-resident-runtime.md` | `a776d1c2c227be31d60f7af8a827e7931719ef14da5197dc109a00ffd5e5be11` | 2026-08-12 |
 | WP-08 | 0090 分区/归档/perf harness/alerts/soak | ⏳ pending | — | — | — |
 
 ## 审查方式
