@@ -43,6 +43,25 @@ def _read_secret(env_key: str) -> str:
     return value
 
 
+def _join(base_url: str, endpoint: str) -> str:
+    """拼接 base_url 与 endpoint，去除重复的版本前缀。
+
+    driver 的 endpoint 自包含路径（xai/packy 用 ``/v1/chat/completions``，
+    deepseek/kimi 用 ``/chat/completions``），而 base_url 含 ``/v1`` 版本前缀。
+    两者同时带 ``/v1`` 时会拼出 ``/v1/v1/``。这里在端点以 base 尾路径开头时去重，
+    不改冻结的 driver、也不猜真实 base 是否含版本段。
+    """
+    base = base_url.rstrip("/")
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
+    # base 尾段（如 "/v1"）若恰是 endpoint 的前缀，去重一次。
+    if "/" in base:
+        tail = base[base.rindex("/"):]
+        if tail and endpoint.startswith(tail + "/"):
+            endpoint = endpoint[len(tail):]
+    return base + endpoint
+
+
 def build_transport_factory(
     *,
     base_url_overrides: dict[str, str] | None = None,
@@ -69,7 +88,7 @@ def build_transport_factory(
             json: Any = None,
             timeout: float | None = None,
         ) -> tuple[int, Any]:
-            url = f"{base_url}{endpoint}"
+            url = _join(base_url, endpoint)
             merged = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             # driver 传入的 header 不含凭证；合并但不允许覆盖 Authorization。
             for key, value in (headers or {}).items():

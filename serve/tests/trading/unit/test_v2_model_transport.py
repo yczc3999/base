@@ -60,7 +60,7 @@ def test_base_url_override_applies(monkeypatch):
     )
     transport = factory("packy")
     status, body = _run(transport(endpoint="/v1/chat/completions", headers={}, json={}))
-    assert captured["url"] == "https://relay.example/v1/v1/chat/completions"
+    assert captured["url"] == "https://relay.example/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer sk-packy"
 
 

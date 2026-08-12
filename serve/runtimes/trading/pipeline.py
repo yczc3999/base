@@ -137,7 +137,7 @@ class PipelineDriver:
         row = (
             await session.execute(
                 text(
-                    "SELECT id, best_bid, best_ask, liquidity, rules, end_at "
+                    "SELECT id, best_bid, best_ask, liquidity, end_date, question "
                     "FROM trading.pm_markets WHERE id=:m"
                 ),
                 {"m": market_id},
@@ -173,8 +173,8 @@ class PipelineDriver:
         audit = self._audit_policy
         r0_input = R0Input(
             market_metadata={"market_id": market_id},
-            end_at=quote.get("end_at"),
-            rule_completeness=Decimal("1") if quote.get("rules") else Decimal("0"),
+            end_at=quote.get("end_date"),
+            rule_completeness=Decimal("1") if quote.get("question") else None,
             best_bid=quote.get("best_bid"),
             best_ask=quote.get("best_ask"),
             minimum_deployable_capacity=quote.get("liquidity"),
