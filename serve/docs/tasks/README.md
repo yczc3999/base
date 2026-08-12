@@ -8,7 +8,7 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-07A` |
-| 状态 | `READY` |
+| 状态 | `DONE（待审）` |
 | 任务文档 | [`wp-07a-admin-read-api-typed-data-layer.md`](wp-07a-admin-read-api-typed-data-layer.md) |
 | 交付 manifest | `serve/docs/manifests/wp-07a-admin-read-api-typed-data-layer.md` |
 | 前置实现 | `WP-06` 已 ACCEPTED；head=`b1000052`；manifest SHA=`a2280e00…f868` |
