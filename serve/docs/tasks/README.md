@@ -7,16 +7,16 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-07A` |
-| 状态 | `DONE（待审）` |
-| 任务文档 | [`wp-07a-admin-read-api-typed-data-layer.md`](wp-07a-admin-read-api-typed-data-layer.md) |
-| 交付 manifest | `serve/docs/manifests/wp-07a-admin-read-api-typed-data-layer.md` |
-| 前置实现 | `WP-06` 已 ACCEPTED；head=`b1000070`；manifest SHA=`a2280e00…f868` |
-| 本任务范围 | Admin 全域只读 API、RBAC、HMAC keyset cursor、artifact Range、typed frontend API/query data layer、`0070` 权限与索引 |
-| 内部 checkpoint | A API/cursor/RBAC freeze、B PostgreSQL read plane、C frontend typed API/query、D integration/perf/security/manifest；一个 manifest |
-| 关键边界 | 只读 data layer；不创建页面/菜单/视觉 token；不自行发明 66-field config 或 mutation 语义；真实 network/chain/money=0 |
-| 交付证据 | 14 域 typed read、stable `as_of` keyset lost/dup=0、权限与 artifact 双门、frontend AbortSignal/query key、100,006 行容量门 |
-| 后续 | WP-07A 接受后，先由用户确认 palette/语义色/字体/密度/圆角与 Episode Detail 高保真预览，再创建 WP-07B |
+| Task | `WP-07B` |
+| 状态 | `BLOCKED_PRODUCT_VISUAL_DECISION` |
+| 任务文档 | —（未创建；产品视觉确认前禁止创建） |
+| 交付 manifest | — |
+| 前置实现 | `WP-07A` 已 ACCEPTED；code commit=`280afcc`；head=`b1000070`；manifest SHA=`881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` |
+| 已接受范围 | Admin 全域只读 API、RBAC、HMAC keyset cursor、artifact Range、typed frontend API/query data layer、`0070` 权限与索引 |
+| 接受证据 | 135 unit/config + 50 真 PG + 19 router；1794 trading、2005 full；frontend 20/lint/build；clean perf 20/20 PASS |
+| 当前 blocker | 用户尚未确认产品专属 palette、语义颜色、字体、密度/spacing、圆角 token 与一张真实 Episode Detail 高保真预览 |
+| 关键边界 | 严格平面、大块纯色；无阴影、渐变、glass/blur、highlight、浮卡或 lift/scale；确认前不创建 WP-07B task/页面 |
+| 后续 | 展示视觉 token 与 Episode Detail 高保真预览并取得用户明确确认后，才创建 WP-07B READY 合同 |
 
 ## 固定交接协议
 
@@ -67,4 +67,4 @@
 | `WP-04` | DONE | ACCEPTED | 审查修复提交 `8ff2067`；63 unit + 57 真 PG/replay、1375 trading、1586 full，均 0 skip/fail；clean perf keyset 100,006 行 p99=3.254ms、scientific replay p99=21.218ms、rebuild hash一致且 lost/dup=0、498.493 q/s；生产 policy、CAS/full cashflow、midpoint/vector exclusion、exact cohort/五层/replay/cursor/DB guard 全关；manifest SHA `c22daa47…` |
 | `WP-05` | DONE | ACCEPTED | 审查修复 `f53888f` + 性能证据 `5588576`；1566 trading、1777 full，均 0 skip/fail；clean perf 3024 intents/60.006s=50.395/s，WS p99=5.185ms、1k reconcile p99=91.043ms、pool peak exec2/recon1、fake/real=4706/0；Vault identity、fund consumption、全副作用 fencing、UNKNOWN 恢复、CONFIRMED trade、heartbeat hard-stop、NegRisk/clock/egress 全关；manifest SHA `04e365b4…c2fc9`；进入 WP-06 |
 | `WP-06` | DONE | ACCEPTED | 初交 `de79edc`；审查修复 `53b4744`；108 unit/contract + 43 真 PG、1717 trading、1928 full，均 0 skip/fail；clean perf 660 ops/60.005s=10.999/s、1000 UNKNOWN 两轮全等且 blind resend=0、pool p95=.020ms、fake/real=215560/0；ABI/真实 registry、runtime/TX/finality/effect、Vault、wrong-chain、post-final audit 全关；manifest SHA `a2280e00…f868`；进入 WP-07A |
-| `WP-07A` | DONE | 待审 | 实现 `a1718c2`；64 定向 + 1781 trading + 1992 full 0 skip/fail；clean perf 深页 p95 77.2ms/100,008 行、32 并发 74.2 req/s、pool wait p95 0.73ms、traversal lost/dup=0；RBAC/keyset 快照/查询链/artifact Range/frontend AbortSignal 全关；manifest SHA `ac777dd3…8130`；WP-07B BLOCKED_PRODUCT_VISUAL_DECISION |
+| `WP-07A` | DONE | ACCEPTED | 初交 `a1718c2`；审查修复 `280afcc`；135 unit/config + 50 真 PG + 19 router、1794 trading、2005 full，均 0 skip/fail；frontend 20 passed、lint 0 error、build pass；clean perf 20/20 PASS，100,008 行，深页 p95/p99=14.911/18.545ms，32 workers 60.177s、97.429 req/s、pool p95=.048ms，traversal lost/dup/out-of-snapshot=0；首屏 filter/as_of、3 endpoint、exact seed、read-only/RBAC/cache、AI artifact、timeline/zstd Range、DTO/frontend/shared 401 与真实 SLO harness 全关；manifest SHA `881ab05c…eb1`；WP-07B 保持 BLOCKED_PRODUCT_VISUAL_DECISION |

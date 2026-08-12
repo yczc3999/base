@@ -1,10 +1,33 @@
 # WP-07A — Admin Read API、Keyset 查询与 Typed Frontend Data Layer
 
-> 状态：**READY**
+> 状态：**ACCEPTED（审查通过）**
 > 前置：`WP-06` 已 ACCEPTED；Alembic head=`b1000052`；manifest SHA=`a2280e003d02a9799e263efbef5f1de504f79e2a5e0f94564b6c9a133263f868`
 > 执行模型：DeepSeek V4 Flash
 > 唯一完成交付：`serve/docs/manifests/wp-07a-admin-read-api-typed-data-layer.md`
+> 初交 commits：`a1718c2`（实现）/ `8bbc1d5` / `d984f23`（manifest/索引）
+> 审查修复 commit：`280afccc0adc8695b6a2508f27557c737571db16`
 > 最后更新：2026-08-12 EDT
+
+## 审查接受记录
+
+- 初交的 `64/1781/1992 passed` 只证明原测试集通过，未覆盖首屏过滤与 `as_of` 快照、三个
+  列表端点的运行时错误、AI artifact metadata 双权限、0070 exact seed、BIGINT DTO、timeline
+  keyset、zstd Range、GET 只读事务，以及 frontend 完整路由/query/401 合同；原 performance
+  harness 也没有真实执行合同规定的 32 并发持续 60 秒、完整 traversal、RBAC、serialization、
+  pool 与 response-byte 证明。因此旧结果不作为接受证据。
+- `280afcc` 已关闭全部范围内 P1：统一首屏/后续页 filter + frozen `as_of` tuple keyset，修复
+  components/positions/model-routes 与 timeline，落实 exact permission seed、20 个对应 query 的索引、
+  AI artifact metadata/content lineage 双门、BIGINT/NUMERIC 字符串 DTO、zstd 单 Range、READ ONLY/no-store
+  read plane，以及完整 typed frontend facade/query/shared 401 refresh/cancellation。
+- 最终 clean 复验：unit/config **135 passed**；真 PostgreSQL **50 passed**；router **19 passed**；
+  frontend **20 passed**、lint 0 error、build 通过；`tests/trading` **1794 passed**；全仓
+  **2005 passed**，全部 0 skip/fail。head=`b1000070` 唯一，offline SQL 8,870 行、secret hits=0。
+- clean perf `/tmp/pm_v2_perf_smoke_7a.json` SHA-256
+  `0138af193bfcf430fb2472ec0c06db27e3d7ae3b39d53a78b3d241b08cf13ddb`：20/20 gates PASS；
+  100,008 行，深页 p95/p99=14.911/18.545ms，32 workers 持续 60.177s、97.429 req/s，
+  pool wait p95=.048ms，traversal lost/duplicate/out-of-snapshot=0。
+- 完整证据、精确审查 changed files、blocker 与回滚见 completion manifest；审查结论：
+  **ACCEPTED**。`WP-07B` 继续保持 `BLOCKED_PRODUCT_VISUAL_DECISION`，未创建任务文件。
 
 ## 0. 快车道执行规则
 

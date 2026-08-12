@@ -5,7 +5,8 @@
 
 ## 当前状态
 
-> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05：✅ COMPLETE；WP-06：✅ ACCEPTED**；`WP-07A` ⏳ pending。
+> **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05 / WP-06 / WP-07A：✅ ACCEPTED**；
+> `WP-07B` ⛔ `BLOCKED_PRODUCT_VISUAL_DECISION`（任务文件尚未创建）。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -43,7 +44,7 @@
 | WP-04 | 0040/0041 label/evaluation/replay/promotion/read projections | ✅ DONE，审查通过 | `wp-04-learning-evaluation-read-projections.md` | `c22daa477f748354538c484fff5957e237a0f03db39907c2767580e957bf638a` | 2026-08-11 |
 | WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ✅ DONE，审查通过 | `wp-05-execution-readiness-private-clob.md` | `04e365b4b1c18dc529dd2f6aa73c0cccf29c6a6cab5487787776f74a9bdc2fc9` | 2026-08-11 |
 | WP-06 | 0052 Polygon/relayer/settlement | ✅ DONE，审查通过 | `wp-06-polygon-relayer-settlement.md` | `a2280e003d02a9799e263efbef5f1de504f79e2a5e0f94564b6c9a133263f868` | 2026-08-12 |
-| WP-07A | Admin API + frontend types/query scaffolding | ✅ DONE | `wp-07a-admin-read-api-typed-data-layer.md` | `ac777dd365b78736988069676a53bd1f0a9c5e3f4374ca6a043d1081bd9f8130` | 2026-08-12 |
+| WP-07A | Admin API + frontend types/query scaffolding | ✅ DONE，审查通过 | `wp-07a-admin-read-api-typed-data-layer.md` | `881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` | 2026-08-12 |
 | WP-07B | 14 菜单页、5 详情页与交互 | ⛔ BLOCKED_PRODUCT_VISUAL_DECISION | — | — | — |
 | WP-08 | 0090 分区/归档/perf harness/alerts/soak | ⏳ pending | — | — | — |
 
@@ -77,4 +78,5 @@ PY
 
 ## 依赖链
 
-`WP-00` → `WP-01A` → `WP-01B` → `WP-01C` → `WP-02` → `WP-03` → `WP-04` → `WP-05` → `WP-06`；`WP-07A/07B` 依赖各域对应 WP；`WP-08` 依赖全部。
+`WP-00` → `WP-01A` → `WP-01B` → `WP-01C` → `WP-02` → `WP-03` → `WP-04` → `WP-05` →
+`WP-06` → `WP-07A`；`WP-07B` 等待产品视觉确认，`WP-08` 依赖全部。
