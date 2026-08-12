@@ -100,11 +100,21 @@ def _seed(url):
             " role, attempt_no, experiment_variant, requested_provider, requested_route, "
             " requested_model, network_policy, context_class, taint_report, input_manifest, "
             " input_manifest_hash, lifecycle_state, tool_count, search_count, cost_estimated, "
-            " pricing_snapshot, request_artifact_ref, raw_response_artifact_ref, "
+            " pricing_snapshot, input_tokens, cache_tokens, output_tokens, reasoning_tokens, "
+            " request_artifact_ref, raw_response_artifact_ref, "
             " parsed_output_artifact_ref) "
             "VALUES (7, '2026-08-12T00:00:00Z', repeat('a',64), 2, 'scoring', 'scorer', 1, 'baseline', "
             " 'deepseek', 'primary', 'deepseek-v4', 'NONE', 'CONTRACT', '{}', '{}', repeat('f',64), "
-            " 'PLANNED', 0, 0, 0, '{}', 'sha-1', 'sha-2', 'sha-3')"))
+            " 'PLANNED', 0, 0, 0, '{}', 9007199254740993, 9007199254740994, "
+            " 9007199254740995, 9007199254740996, 'sha-1', 'sha-2', 'sha-3')"))
+        c.execute(text(
+            "INSERT INTO trading.replay_runs (run_key,replay_kind,manifest_hash,code_hash,seed,"
+            "input_artifact_hash,output_artifact_hash) VALUES ('replay-bigint','original',"
+            "repeat('1',64),repeat('2',64),9007199254740997,repeat('3',64),repeat('4',64))"))
+        c.execute(text(
+            "INSERT INTO trading.ops_health_current (metric_name,metric_value,status,as_of,"
+            "source_high_watermark,projection_version,projection_hash) VALUES "
+            "('health',123.45,'ok',now(),9007199254740998,1,repeat('5',64))"))
     eng.dispose()
 
 
@@ -134,7 +144,7 @@ async def env(temp_pg_db):
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
+            yield {"client": client, "url": temp_pg_db.url}
     finally:
         app.dependency_overrides.clear()
         reset_admin_logic(None)
@@ -150,7 +160,7 @@ def _assert_no_sensitive(body_text: str):
 
 @pytest.mark.anyio
 async def test_market_detail_chain(env):
-    resp = await env.get("/api/admin/v2/markets/1")
+    resp = await env["client"].get("/api/admin/v2/markets/1")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["market"]["id"] == "1"          # BIGINT → string
@@ -162,7 +172,7 @@ async def test_market_detail_chain(env):
 
 @pytest.mark.anyio
 async def test_episode_detail_chain(env):
-    resp = await env.get("/api/admin/v2/episodes/2")
+    resp = await env["client"].get("/api/admin/v2/episodes/2")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["episode"]["id"] == "2"
@@ -173,7 +183,7 @@ async def test_episode_detail_chain(env):
 
 @pytest.mark.anyio
 async def test_decision_detail_chain(env):
-    resp = await env.get("/api/admin/v2/decisions/3")
+    resp = await env["client"].get("/api/admin/v2/decisions/3")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["decision"]["id"] == "3"
@@ -186,7 +196,7 @@ async def test_decision_detail_chain(env):
 
 @pytest.mark.anyio
 async def test_ai_detail_compound_identity_and_no_raw(env):
-    resp = await env.get("/api/admin/v2/ai-invocations/7?occurred_at=2026-08-12T00:00:00Z")
+    resp = await env["client"].get("/api/admin/v2/ai-invocations/7?occurred_at=2026-08-12T00:00:00Z")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["invocation"]["id"] == "7"
@@ -197,11 +207,15 @@ async def test_ai_detail_compound_identity_and_no_raw(env):
     assert data["invocation"]["request_artifact_ref"] == "sha-1"  # hash 引用允许
     assert "input_manifest" not in raw                            # 大 JSON 不内联
     assert "pricing_snapshot" not in raw                          # 定价快照不内联
+    assert data["invocation"]["input_tokens"] == "9007199254740993"
+    assert data["invocation"]["cache_tokens"] == "9007199254740994"
+    assert data["invocation"]["output_tokens"] == "9007199254740995"
+    assert data["invocation"]["reasoning_tokens"] == "9007199254740996"
 
 
 @pytest.mark.anyio
 async def test_execution_trace_chain(env):
-    resp = await env.get("/api/admin/v2/execution/3/trace")
+    resp = await env["client"].get("/api/admin/v2/execution/3/trace")
     assert resp.status_code == 200
     trace = resp.json()["data"]["items"]
     kinds = {item["kind"] for item in trace}
@@ -211,7 +225,7 @@ async def test_execution_trace_chain(env):
 
 @pytest.mark.anyio
 async def test_list_items_are_summary_projection(env):
-    resp = await env.get("/api/admin/v2/markets")
+    resp = await env["client"].get("/api/admin/v2/markets")
     data = resp.json()["data"]
     assert data["has_more"] is False
     assert len(data["items"]) == 1
@@ -223,6 +237,73 @@ async def test_list_items_are_summary_projection(env):
 
 
 @pytest.mark.anyio
+async def test_execution_fact_pages_mark_authoritative_and_snapshot(env):
+    resp = await env["client"].get("/api/admin/v2/execution/intents")
+    data = resp.json()["data"]
+    assert data["authoritative"] is True
+    assert data["as_of"].endswith("Z")
+
+
+@pytest.mark.anyio
 async def test_unknown_detail_404(env):
-    resp = await env.get("/api/admin/v2/markets/999999")
+    resp = await env["client"].get("/api/admin/v2/markets/999999")
     assert resp.json()["code"] == 404
+
+
+@pytest.mark.anyio
+async def test_dashboard_projection_contract_and_no_store(env):
+    resp = await env["client"].get("/api/admin/v2/dashboard")
+    assert resp.headers["Cache-Control"] == "private, no-store"
+    block = resp.json()["data"]["blocks"]["ops_health_current"]
+    assert block["source_high_watermark"] == "9007199254740998"
+    assert block["projection_version"] == 1
+    assert block["projection_hash"] == "5" * 64
+    assert block["freshness_status"] == "fresh"
+    assert block["rows"][0]["id"] == "1"
+    from decimal import Decimal
+
+    assert Decimal(block["rows"][0]["metric_value"]) == Decimal("123.45")
+
+
+@pytest.mark.anyio
+async def test_replay_seed_bigint_is_string(env):
+    listing = (await env["client"].get("/api/admin/v2/replay")).json()["data"]
+    assert listing["items"][0]["seed"] == "9007199254740997"
+    detail = (await env["client"].get("/api/admin/v2/replay/1")).json()["data"]
+    assert detail["seed"] == "9007199254740997"
+
+
+@pytest.mark.anyio
+async def test_episode_timeline_uses_real_tuple_keyset(env):
+    """第二页不得重复第一页；asc/desc 都由 SQL tuple keyset 执行。"""
+    eng = create_engine(env["url"], poolclass=NullPool)
+    with eng.begin() as c:
+        c.execute(text("SET LOCAL session_replication_role = replica"))
+        for i in range(8):
+            c.execute(text(
+                "INSERT INTO trading.information_snapshots "
+                "(snapshot_key,episode_id,gate,content,content_hash,created_at) "
+                "VALUES (:key,2,'R1','{}',:hash,"
+                "'2026-08-12T01:00:00Z'::timestamptz + make_interval(secs => :i))"
+            ), {"key": f"timeline-{i}", "hash": f"{i + 100:064x}", "i": i})
+    eng.dispose()
+
+    first = (await env["client"].get(
+        "/api/admin/v2/episodes/2/timeline", params={"limit": 3}
+    )).json()["data"]
+    second = (await env["client"].get(
+        "/api/admin/v2/episodes/2/timeline",
+        params={"limit": 3, "cursor": first["next_cursor"]},
+    )).json()["data"]
+    ids1 = {item["id"] for item in first["items"]}
+    ids2 = {item["id"] for item in second["items"]}
+    assert len(ids1) == 3 and len(ids2) == 3
+    assert ids1.isdisjoint(ids2)
+    assert second["as_of"] == first["as_of"]
+
+    asc = (await env["client"].get(
+        "/api/admin/v2/episodes/2/timeline", params={"limit": 3, "direction": "asc"}
+    )).json()["data"]
+    assert [item["created_at"] for item in asc["items"]] == sorted(
+        item["created_at"] for item in asc["items"]
+    )

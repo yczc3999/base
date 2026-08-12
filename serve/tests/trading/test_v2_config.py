@@ -81,7 +81,7 @@ def test_default_profiles_and_values(clean_env):
         "api", "market", "execution", "cognition", "evaluation", "replay",
     )
     expected = {
-        "api": (5, 2, 2),
+        "api": (24, 8, 2),
         "market": (8, 2, 5),
         "execution": (5, 1, 5),
         "cognition": (3, 2, 5),
@@ -98,7 +98,7 @@ def test_application_name_and_capacity(clean_env):
     s = Settings(_env_file=None)
     assert s.pool_profile("api").application_name == "pollymarket_v2_api"
     assert s.pool_profile("market").application_name == "pollymarket_v2_market"
-    assert s.pool_profile("api").per_instance_capacity == 7
+    assert s.pool_profile("api").per_instance_capacity == 32
     assert s.pool_profile("replay").per_instance_capacity == 3
 
 
@@ -166,12 +166,12 @@ def test_default_budget(clean_env):
     b = s.connection_budget()
     assert isinstance(b, ConnectionBudget)
     assert b.per_profile == {
-        "api": 7, "market": 10, "execution": 6,
+        "api": 32, "market": 10, "execution": 6,
         "cognition": 5, "evaluation": 4, "replay": 3,
     }
-    assert b.total == 35
+    assert b.total == 60
     assert b.limit == 80
-    assert b.remaining == 45
+    assert b.remaining == 20
     assert b.is_within_limit() is True
 
 
@@ -179,7 +179,7 @@ def test_budget_with_replicas(clean_env):
     s = Settings(_env_file=None)
     b = s.connection_budget(replica_counts={"market": 2})
     assert b.per_profile["market"] == 20
-    assert b.total == 45
+    assert b.total == 70
     assert b.is_within_limit() is True
 
 

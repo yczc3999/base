@@ -1,5 +1,6 @@
 import { requestV2 } from '../request'
-import type { CursorPage, PageParams, ComponentRow } from './types'
+import { pathSegment } from './path'
+import type { ComponentDetail, ComponentRow, CursorPage, PageParams } from './types'
 
 export async function fetchComponents(
   params: PageParams,
@@ -8,6 +9,6 @@ export async function fetchComponents(
   return requestV2<CursorPage<ComponentRow>>({ url: '/admin/v2/components', params, signal })
 }
 
-export async function fetchComponent(id: string, signal?: AbortSignal): Promise<unknown> {
-  return requestV2<unknown>({ url: '/admin/v2/components/{id}'.replace('{id}', id), signal })
+export async function fetchComponent(id: string, signal?: AbortSignal): Promise<ComponentDetail> {
+  return requestV2<ComponentDetail>({ url: `/admin/v2/components/${pathSegment(id)}`, signal })
 }

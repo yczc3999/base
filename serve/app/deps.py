@@ -22,6 +22,7 @@
 """
 
 from fastapi import Request, Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.logics.base import BizError
 from app.utils.token import verify_token
@@ -100,6 +101,27 @@ async def require_client(auth: AuthInfo = Depends(require_auth)) -> AuthInfo:
     return auth
 
 
+async def get_admin_read_db(
+    db: AsyncSession = Depends(get_db),
+):
+    """WP-07A Admin GET 专用只读 UoW。
+
+    同一请求内 Controller 与 RBAC 依赖共享这个 FastAPI dependency，因此权限查询、
+    read-plane SQL 与 artifact lineage 判定处于同一个 PostgreSQL snapshot/UoW。显式
+    ``SET TRANSACTION READ ONLY`` 让任何误接入的 cache/业务写入在数据库层 fail closed；
+    ``session.info`` 同时通知 legacy 权限逻辑绕过 Redis cache 写路径。
+    """
+    # FastAPI dependency overrides of ``get_db`` may yield test doubles; real
+    # AsyncSession stores request-local flags on ``sync_session.info``.
+    info = getattr(db, "info", None)
+    if info is None and hasattr(db, "sync_session"):
+        info = db.sync_session.info
+    if info is not None:
+        info["admin_read_only"] = True
+    await db.execute(text("SET TRANSACTION READ ONLY"))
+    yield db
+
+
 def require_perms(*perms: str):
     """
     权限校验依赖工厂
@@ -147,7 +169,7 @@ def require_all_perms(*perms: str):
     """
     async def _check_perms(
         auth: AuthInfo = Depends(require_admin),
-        db: AsyncSession = Depends(get_db),
+        db: AsyncSession = Depends(get_admin_read_db),
     ):
         if auth.is_super_admin:
             return auth

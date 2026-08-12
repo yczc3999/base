@@ -228,13 +228,23 @@ async def _admin_read_observe(request, call_next):
         started = time.perf_counter()
         response = await call_next(request)
         elapsed = time.perf_counter() - started
+        response.headers["Cache-Control"] = "private, no-store"
         endpoint = _v2_endpoint_label(request.url.path)
         result = "ok" if response.status_code < 400 else "error"
         ADMIN_QUERY_SECONDS.labels(endpoint=endpoint, result=result).observe(elapsed)
-        size = len(response.body) if hasattr(response, "body") and response.body else 0
+        size = _response_size(response)
         ADMIN_RESPONSE_BYTES.labels(endpoint=endpoint, result=result).observe(size)
         return response
     return await call_next(request)
+
+
+def _response_size(response) -> int:
+    """不消费 StreamingResponse body；优先使用 ASGI 已生成的 Content-Length。"""
+    raw = response.headers.get("content-length")
+    if raw and raw.isdigit():
+        return int(raw)
+    body = getattr(response, "body", None)
+    return len(body) if body is not None else 0
 
 
 def _v2_endpoint_label(path: str) -> str:

@@ -1,13 +1,14 @@
 import { requestV2 } from '../request'
-import type { CursorPage, PageParams, DecisionRow } from './types'
+import { pathSegment } from './path'
+import type { CursorPage, DecisionDetail, DecisionFilters, DecisionRow, PageParams } from './types'
 
 export async function fetchDecisions(
-  params: PageParams,
+  params: PageParams<DecisionFilters>,
   signal?: AbortSignal,
 ): Promise<CursorPage<DecisionRow>> {
   return requestV2<CursorPage<DecisionRow>>({ url: '/admin/v2/decisions', params, signal })
 }
 
-export async function fetchDecision(id: string, signal?: AbortSignal): Promise<unknown> {
-  return requestV2<unknown>({ url: '/admin/v2/decisions/{id}'.replace('{id}', id), signal })
+export async function fetchDecision(id: string, signal?: AbortSignal): Promise<DecisionDetail> {
+  return requestV2<DecisionDetail>({ url: `/admin/v2/decisions/${pathSegment(id)}`, signal })
 }

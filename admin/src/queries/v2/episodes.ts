@@ -1,30 +1,41 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, EpisodeRow } from '@/api/v2/types'
-import { fetchEpisodes } from '@/api/v2/episodes'
-import { v2QueryKeys } from './queryKeys'
-
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
-}
+import { toValue } from 'vue'
+import { fetchEpisode, fetchEpisodes, fetchEpisodeTimeline } from '@/api/v2/episodes'
+import type { EpisodeFilters } from '@/api/v2/types'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
 export function useEpisodesPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<EpisodeRow>>>,
+  input: PageQueryInput<EpisodeFilters>,
+  options?: V2QueryOptions,
 ) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.episodes(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchEpisodes(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+  return useCursorPageQuery('episodes', 'list', input, fetchEpisodes, options)
+}
+
+export function useEpisode(id: ReactiveValue<string>, options?: V2QueryOptions) {
+  return useDetailQuery(
+    'episodes',
+    'detail',
+    [id],
+    (signal) => fetchEpisode(toValue(id), signal),
+    options,
+  )
+}
+
+export function useEpisodeTimeline(
+  id: ReactiveValue<string>,
+  input: PageQueryInput,
+  options?: V2QueryOptions,
+) {
+  return useCursorPageQuery(
+    'episodes',
+    () => `timeline:${toValue(id)}`,
+    input,
+    (params, signal) => fetchEpisodeTimeline(toValue(id), params, signal),
+    options,
+  )
 }

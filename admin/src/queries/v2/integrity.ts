@@ -1,30 +1,35 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, IntegrityRow } from '@/api/v2/types'
-import { fetchIntegrity } from '@/api/v2/integrity'
-import { v2QueryKeys } from './queryKeys'
+import { toValue } from 'vue'
+import { fetchAlerts, fetchIntegrityRuntime, fetchIntegrityWorkflow } from '@/api/v2/integrity'
+import type { AlertFilters, WorkflowAggregateType } from '@/api/v2/types'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
+export function useIntegrityRuntime(options?: V2QueryOptions) {
+  return useDetailQuery('integrity', 'runtime', [], fetchIntegrityRuntime, options)
 }
 
-export function useIntegrityPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<IntegrityRow>>>,
+export function useAlertsPage(input: PageQueryInput<AlertFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('integrity', 'alerts', input, fetchAlerts, options)
+}
+
+export function useIntegrityWorkflow(
+  aggregateType: ReactiveValue<WorkflowAggregateType>,
+  aggregateId: ReactiveValue<string>,
+  options?: V2QueryOptions,
 ) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.integrity(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchIntegrity(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+  return useDetailQuery(
+    'integrity',
+    'workflow',
+    [aggregateType, aggregateId],
+    (signal) => fetchIntegrityWorkflow(toValue(aggregateType), toValue(aggregateId), signal),
+    options,
+  )
 }
+
+/** Compatibility alias now points at the real alerts endpoint. */
+export const useIntegrityPage = useAlertsPage

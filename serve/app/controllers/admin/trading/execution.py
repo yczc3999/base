@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.controllers.admin.trading.common import get_admin_logic, get_admin_repo
 from app.db.cursor import CursorError
-from app.deps import AuthInfo, require_all_perms
-from app.services.database import get_db
+from app.deps import AuthInfo, get_admin_read_db, require_all_perms
 from app.utils.response import fail, ok
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/v2/execution/intents")
-async def list_intents(request: Request, session: AsyncSession = Depends(get_db),
+async def list_intents(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                        auth: AuthInfo = Depends(require_all_perms("v2:execution:view"))):
     try:
         page = await get_admin_logic().page(
@@ -24,11 +23,12 @@ async def list_intents(request: Request, session: AsyncSession = Depends(get_db)
         )
     except CursorError as exc:
         return fail(str(exc), 400)
+    page["authoritative"] = True
     return ok(page)
 
 
 @router.get("/v2/execution/orders")
-async def list_orders(request: Request, session: AsyncSession = Depends(get_db),
+async def list_orders(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                       auth: AuthInfo = Depends(require_all_perms("v2:execution:view"))):
     try:
         page = await get_admin_logic().page(
@@ -37,11 +37,12 @@ async def list_orders(request: Request, session: AsyncSession = Depends(get_db),
         )
     except CursorError as exc:
         return fail(str(exc), 400)
+    page["authoritative"] = True
     return ok(page)
 
 
 @router.get("/v2/execution/positions")
-async def list_positions(request: Request, session: AsyncSession = Depends(get_db),
+async def list_positions(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                          auth: AuthInfo = Depends(require_all_perms("v2:execution:view"))):
     try:
         page = await get_admin_logic().page(
@@ -51,11 +52,12 @@ async def list_positions(request: Request, session: AsyncSession = Depends(get_d
         )
     except CursorError as exc:
         return fail(str(exc), 400)
+    page["authoritative"] = True
     return ok(page)
 
 
 @router.get("/v2/execution/ledger")
-async def list_ledger(request: Request, session: AsyncSession = Depends(get_db),
+async def list_ledger(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                       auth: AuthInfo = Depends(require_all_perms("v2:execution:view"))):
     try:
         page = await get_admin_logic().page(
@@ -64,11 +66,12 @@ async def list_ledger(request: Request, session: AsyncSession = Depends(get_db),
         )
     except CursorError as exc:
         return fail(str(exc), 400)
+    page["authoritative"] = True
     return ok(page)
 
 
 @router.get("/v2/execution/{decision_id}/trace")
-async def decision_trace(decision_id: int, session: AsyncSession = Depends(get_db),
+async def decision_trace(decision_id: int, session: AsyncSession = Depends(get_admin_read_db),
                          auth: AuthInfo = Depends(require_all_perms("v2:execution:view"))):
     trace = await get_admin_repo().decision_trace(session, decision_id)
     return ok({"items": trace})

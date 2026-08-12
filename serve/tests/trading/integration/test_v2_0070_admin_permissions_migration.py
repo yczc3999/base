@@ -72,7 +72,7 @@ def test_empty_upgrade_only_indexes(temp_pg_db):
     _run(command.upgrade, V70, url)
     nidx = _query(url, "SELECT count(*) FROM pg_indexes WHERE schemaname='trading' "
                        "AND indexname LIKE 'ix_v2_admin_%'")
-    assert nidx == [(17,)]
+    assert nidx == [(20,)]
     # menus 表不存在 → 无权限行
     has_menu = _query(url, "SELECT to_regclass('public.menus') IS NOT NULL")
     assert has_menu == [(False,)]
@@ -113,7 +113,7 @@ def test_seed_idempotent_and_indexes(temp_pg_db):
     assert perms == EXPECTED_PERMS
     nidx = _query(url, "SELECT count(*) FROM pg_indexes WHERE schemaname='trading' "
                        "AND indexname LIKE 'ix_v2_admin_%'")
-    assert nidx == [(17,)]
+    assert nidx == [(20,)]
 
 
 def test_slug_conflict_fails(temp_pg_db):
@@ -135,6 +135,41 @@ def test_seed_first_upgrade_slug_conflict_fails(temp_pg_db):
     _execute(url,
         "INSERT INTO public.menus (parent_id, type, slug, label, perms, is_visible) "
         "VALUES (0, 2, 'v2-markets-view', 'WRONG-LABEL', 'v2:wrong:perm', false)")
+    with pytest.raises(Exception, match="v2_wp07a_permission_slug_conflict"):
+        _run(command.upgrade, V70, url)
+
+
+def test_seed_first_upgrade_rejects_allowed_permission_swapped_to_wrong_slug(temp_pg_db):
+    """允许集合内的 perm 也必须与其 slug/label 精确对应，不能互换。"""
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_base(url)
+    _execute(
+        url,
+        "INSERT INTO public.menus (parent_id,type,slug,label,is_visible,status) "
+        "VALUES (0,0,'v2-admin','V2 Admin Read',false,1)",
+    )
+    directory_id = _query(url, "SELECT id FROM public.menus WHERE slug='v2-admin'")[0][0]
+    _execute(
+        url,
+        "INSERT INTO public.menus (parent_id,type,slug,label,perms,is_visible,status) "
+        "VALUES (:p,2,'v2-markets-view','Markets','v2:episodes:view',false,1)",
+        {"p": directory_id},
+    )
+    with pytest.raises(Exception, match="v2_wp07a_permission_slug_conflict"):
+        _run(command.upgrade, V70, url)
+
+
+def test_seed_first_upgrade_rejects_duplicate_permission_on_foreign_slug(temp_pg_db):
+    """受管 permission 出现在非受管 slug 上同样是 seed 冲突。"""
+    url = temp_pg_db.url
+    _run(command.upgrade, V52, url)
+    _seed_base(url)
+    _execute(
+        url,
+        "INSERT INTO public.menus (parent_id,type,slug,label,perms,is_visible,status) "
+        "VALUES (0,2,'foreign-v2-market','Foreign','v2:markets:view',false,1)",
+    )
     with pytest.raises(Exception, match="v2_wp07a_permission_slug_conflict"):
         _run(command.upgrade, V70, url)
 

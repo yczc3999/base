@@ -63,6 +63,7 @@ async def env(temp_pg_db):
     import shutil
     shutil.rmtree("/tmp/wp07a-artifacts-test", ignore_errors=True)
     sha = _put_artifact(temp_pg_db.url, b"0123456789abcdef" * 20, "application/octet-stream")
+    zstd_sha = _put_artifact(temp_pg_db.url, b"Z" * 20_000, "application/octet-stream")
     from app.main import app
     from app.services.database import get_db
     from app.db.cursor import CursorCodec, derive_key
@@ -85,7 +86,7 @@ async def env(temp_pg_db):
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            yield {"client": client, "sha": sha, "total": 320}
+            yield {"client": client, "sha": sha, "zstd_sha": zstd_sha, "total": 320}
     finally:
         app.dependency_overrides.clear()
         reset_admin_logic(None)
@@ -100,7 +101,7 @@ async def test_metadata_no_content_no_path(env):
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["content_hash"] == env["sha"]
-    assert data["content_length"] == env["total"]
+    assert data["content_length"] == str(env["total"])
     # 无存储路径/凭证
     raw = resp.text
     assert "locator" not in raw and "storage_driver" not in raw and "bucket" not in raw
@@ -117,6 +118,17 @@ async def test_single_range_206(env):
     assert resp.headers["Content-Range"] == f"bytes 0-9/{env['total']}"
     assert resp.headers["Accept-Ranges"] == "bytes"
     assert resp.headers["ETag"] == f'"{env["sha"]}"'
+
+
+@pytest.mark.anyio
+async def test_zstd_original_byte_range_206(env):
+    resp = await env["client"].get(
+        f"/api/admin/v2/artifacts/{env['zstd_sha']}/content",
+        headers={"Range": "bytes=100-109"},
+    )
+    assert resp.status_code == 206
+    assert resp.content == b"Z" * 10
+    assert resp.headers["Content-Range"] == "bytes 100-109/20000"
 
 
 @pytest.mark.anyio

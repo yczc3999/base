@@ -1,30 +1,23 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, ComponentRow } from '@/api/v2/types'
-import { fetchComponents } from '@/api/v2/components'
-import { v2QueryKeys } from './queryKeys'
+import { toValue } from 'vue'
+import { fetchComponent, fetchComponents } from '@/api/v2/components'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
+export function useComponentsPage(input: PageQueryInput, options?: V2QueryOptions) {
+  return useCursorPageQuery('components', 'list', input, fetchComponents, options)
 }
 
-export function useComponentsPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<ComponentRow>>>,
-) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.components(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchComponents(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+export function useComponent(id: ReactiveValue<string>, options?: V2QueryOptions) {
+  return useDetailQuery(
+    'components',
+    'detail',
+    [id],
+    (signal) => fetchComponent(toValue(id), signal),
+    options,
+  )
 }

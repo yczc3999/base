@@ -1,9 +1,33 @@
 import { requestV2 } from '../request'
-import type { CursorPage, PageParams, IntegrityRow } from './types'
+import { pathSegment } from './path'
+import type {
+  AlertFilters,
+  AlertRow,
+  CursorPage,
+  IntegrityChain,
+  PageParams,
+  RuntimeSnapshot,
+  WorkflowAggregateType,
+} from './types'
 
-export async function fetchIntegrity(
-  params: PageParams,
+export function fetchIntegrityRuntime(signal?: AbortSignal): Promise<RuntimeSnapshot> {
+  return requestV2({ url: '/admin/v2/integrity/runtime', signal })
+}
+
+export function fetchAlerts(
+  params: PageParams<AlertFilters>,
   signal?: AbortSignal,
-): Promise<CursorPage<IntegrityRow>> {
-  return requestV2<CursorPage<IntegrityRow>>({ url: '/admin/v2/integrity', params, signal })
+): Promise<CursorPage<AlertRow>> {
+  return requestV2({ url: '/admin/v2/integrity/alerts', params, signal })
+}
+
+export function fetchIntegrityWorkflow(
+  aggregateType: WorkflowAggregateType,
+  aggregateId: string,
+  signal?: AbortSignal,
+): Promise<IntegrityChain> {
+  return requestV2({
+    url: `/admin/v2/integrity/workflows/${pathSegment(aggregateType)}/${pathSegment(aggregateId)}`,
+    signal,
+  })
 }

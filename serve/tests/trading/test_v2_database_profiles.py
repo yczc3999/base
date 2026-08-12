@@ -8,9 +8,11 @@ lifespan dispose、legacy get_db/async_session 兼容、禁止 20+10。
 """
 
 import asyncio
+import os
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
 
 from app.config import settings
 from app.services import database as db
@@ -53,8 +55,8 @@ def test_lazy_creation():
 def test_api_pool_parameters():
     engines = DatabaseEngines(settings)
     pool = _pool(engines.engine("api"))
-    assert pool._pool.maxsize == 5          # pool_size
-    assert pool._max_overflow == 2          # max_overflow
+    assert pool._pool.maxsize == 24         # pool_size
+    assert pool._max_overflow == 8          # max_overflow
     assert pool._pre_ping is True           # pool_pre_ping
     assert pool._timeout == 3.0             # pool_timeout
     assert pool._recycle == 1800            # pool_recycle
@@ -72,8 +74,9 @@ def test_engine_url_is_asyncpg():
 
 def test_connect_args_application_name():
     engines = DatabaseEngines(settings)
-    assert engines.connect_args("api")["application_name"] == "pollymarket_v2_api"
-    assert engines.connect_args("replay")["application_name"] == "pollymarket_v2_replay"
+    assert engines.connect_args("api")["server_settings"]["application_name"] == "pollymarket_v2_api"
+    assert engines.connect_args("replay")["server_settings"]["application_name"] == "pollymarket_v2_replay"
+    assert "application_name" not in engines.connect_args("api")
     asyncio.run(engines.dispose())
 
 
@@ -94,8 +97,38 @@ def test_server_settings_timeouts_per_profile():
 def test_build_connect_args_roundtrip():
     profile = settings.pool_profile("execution")
     args = build_connect_args(settings, profile)
-    assert args["application_name"] == "pollymarket_v2_execution"
+    assert args["server_settings"]["application_name"] == "pollymarket_v2_execution"
+    assert "application_name" not in args
     assert args["server_settings"]["statement_timeout"] == "5000"
+
+
+def test_real_asyncpg_connect_accepts_server_settings_application_name():
+    """生产 shape 真连 asyncpg；回归顶层 application_name 导致 TypeError。"""
+    admin_url = os.environ.get("V2_TEST_ADMIN_DATABASE_URL")
+    if not admin_url:
+        pytest.skip("V2_TEST_ADMIN_DATABASE_URL not set")
+
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async_url = make_url(admin_url).set(drivername="postgresql+asyncpg")
+    profile = settings.pool_profile("api")
+    engine = create_async_engine(
+        async_url,
+        pool_size=1,
+        max_overflow=0,
+        connect_args=build_connect_args(settings, profile),
+    )
+
+    async def _check():
+        try:
+            async with engine.connect() as conn:
+                app_name = await conn.scalar(text("SELECT current_setting('application_name')"))
+                assert app_name == "pollymarket_v2_api"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_check())
 
 
 # ---------------- 禁止 legacy 20+10 ----------------
@@ -113,9 +146,9 @@ def test_no_legacy_20_10_pattern():
 def test_engine_registry_budget():
     engines = DatabaseEngines(settings)
     b = engines.budget()
-    assert b.total == 35
+    assert b.total == 60
     assert b.limit == 80
-    assert b.remaining == 45
+    assert b.remaining == 20
     assert b.is_within_limit() is True
     asyncio.run(engines.dispose())
 

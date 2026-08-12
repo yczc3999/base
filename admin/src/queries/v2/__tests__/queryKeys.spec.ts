@@ -1,42 +1,105 @@
-/**
- * WP-07A Checkpoint C —— query key 隔离 filter/cursor/asOf。
- *
- * query key 至少含 domain/endpoint/normalized filters/cursor/asOf；
- * filter 改变时 query key 改变（调用方须清空 cursor/asOf，此处验证 key 结构隔离）。
- */
-import { describe, it, expect } from 'vitest'
-import { v2QueryKeys } from '../queryKeys'
+import { describe, expect, it, vi } from 'vitest'
+import type { CursorPage } from '@/api/v2/types'
+
+vi.mock('@/api/request', () => ({
+  isRequestCanceled: (error: { name?: string }) => error?.name === 'AbortError',
+}))
+import {
+  createPageAnchor,
+  keepPreviousCursorPage,
+  reconcilePageAnchor,
+} from '../page'
+import { normalizeFilters, v2QueryKeys } from '../queryKeys'
+
+const AS_OF = '2026-08-12T00:00:00Z'
+
+function page(items: string[]): CursorPage<{ id: string }> {
+  return {
+    items: items.map((id) => ({ id })),
+    next_cursor: 'next',
+    has_more: true,
+    as_of: AS_OF,
+    filter_hash: 'a'.repeat(64),
+  }
+}
 
 describe('v2QueryKeys', () => {
-  it('keys are isolated by domain', () => {
-    const markets = v2QueryKeys.markets({}, null, null)
-    const episodes = v2QueryKeys.episodes({}, null, null)
-    expect(markets[1]).toBe('markets')
-    expect(episodes[1]).toBe('episodes')
-    expect(markets).not.toEqual(episodes)
+  it('contains domain, exact endpoint, normalized filters, direction, limit, cursor and asOf', () => {
+    const key = v2QueryKeys.page(
+      'evaluation',
+      'labels',
+      { state: 'OPEN' },
+      'desc',
+      50,
+      'cursor',
+      AS_OF,
+    )
+    expect(key).toEqual([
+      'v2-admin-read',
+      'evaluation',
+      'labels',
+      { state: 'OPEN' },
+      'desc',
+      50,
+      'cursor',
+      AS_OF,
+    ])
   })
 
-  it('keys differ when filters change', () => {
-    const a = v2QueryKeys.markets({ neg_risk: 'true' }, null, null)
-    const b = v2QueryKeys.markets({ neg_risk: 'false' }, null, null)
-    expect(a).not.toEqual(b)
+  it('canonicalizes key order and equivalent wire values', () => {
+    expect(normalizeFilters({ neg_risk: true, closed: 'false' })).toEqual(
+      normalizeFilters({ closed: false, neg_risk: 'true' }),
+    )
   })
 
-  it('keys differ when cursor changes', () => {
-    const a = v2QueryKeys.markets({}, 'tok-a', null)
-    const b = v2QueryKeys.markets({}, 'tok-b', null)
-    expect(a).not.toEqual(b)
+  it('isolates domains and concrete endpoints', () => {
+    const intents = v2QueryKeys.page('execution', 'intents', {}, 'desc', 50, null, null)
+    const orders = v2QueryKeys.page('execution', 'orders', {}, 'desc', 50, null, null)
+    const episodes = v2QueryKeys.page('episodes', 'list', {}, 'desc', 50, null, null)
+    expect(intents).not.toEqual(orders)
+    expect(intents).not.toEqual(episodes)
+  })
+})
+
+describe('cursor/asOf invalidation', () => {
+  it('drops cursor and asOf atomically when filter identity changes', () => {
+    const current = createPageAnchor('closed=false', 'old-cursor', AS_OF)
+    expect(reconcilePageAnchor(current, 'closed=true', 'old-cursor', AS_OF)).toEqual({
+      identity: 'closed=true',
+      cursor: null,
+      asOf: null,
+    })
   })
 
-  it('keys differ when asOf changes', () => {
-    const a = v2QueryKeys.markets({}, null, '2026-08-12T00:00:00Z')
-    const b = v2QueryKeys.markets({}, null, '2026-08-12T00:01:00Z')
-    expect(a).not.toEqual(b)
+  it('fails closed when cursor and asOf are not supplied as a pair', () => {
+    expect(createPageAnchor('same', 'cursor', null)).toEqual({
+      identity: 'same',
+      cursor: null,
+      asOf: null,
+    })
+  })
+})
+
+describe('placeholder isolation', () => {
+  it('keeps the first page only while loading its next cursor in the same snapshot', () => {
+    const previousData = page(['first-filter'])
+    const previousKey = v2QueryKeys.page('markets', 'list', { closed: false }, 'desc', 50, null, null)
+    const currentKey = v2QueryKeys.page(
+      'markets',
+      'list',
+      { closed: false },
+      'desc',
+      50,
+      'next',
+      AS_OF,
+    )
+    expect(keepPreviousCursorPage(previousData, { queryKey: previousKey }, currentKey)).toBe(previousData)
   })
 
-  it('normalized filters are order-insensitive for stability', () => {
-    // 对象字面量顺序不影响 ===（同一引用）。此处仅验证 key 结构含 filters 段。
-    const key = v2QueryKeys.markets({ neg_risk: 'true', closed: 'false' }, null, null)
-    expect(key).toHaveLength(5)
+  it('never flashes data from the previous filter', () => {
+    const previousData = page(['closed=false'])
+    const previousKey = v2QueryKeys.page('markets', 'list', { closed: false }, 'desc', 50, null, null)
+    const currentKey = v2QueryKeys.page('markets', 'list', { closed: true }, 'desc', 50, null, null)
+    expect(keepPreviousCursorPage(previousData, { queryKey: previousKey }, currentKey)).toBeUndefined()
   })
 })

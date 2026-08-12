@@ -44,7 +44,7 @@ def _seed_markets(url, n: int, *, offset: int = 0):
                 " active, closed, accepting_orders, neg_risk, volume, liquidity, "
                 " content_hash, raw_artifact_ref, created_at) "
                 "VALUES (:g, :q, :s, :t, false, false, true, false, 0, 0, :h, :r, "
-                " now() + make_interval(secs => :s)::interval)"
+                " now() - make_interval(secs => :s)::interval)"
             ), {"g": str(i), "q": f"q-{i}", "s": f"mkt-{i}", "t": f"tok-{i}",
                 "h": f"{i:064x}", "r": f"raw-{i}", "s": float(i)})
     eng.dispose()
@@ -199,6 +199,13 @@ async def test_cursor_tamper_and_mismatch_400(env):
                             params={"limit": "10", "cursor": cursor, "neg_risk": "true"})
     assert resp.json()["code"] == 400
 
+    # 换 direction：desc cursor 不得用于 asc 查询
+    resp = await client.get(
+        "/api/admin/v2/markets",
+        params={"limit": "10", "cursor": cursor, "direction": "asc"},
+    )
+    assert resp.json()["code"] == 400
+
     # 超长
     resp = await client.get("/api/admin/v2/markets",
                             params={"limit": "10", "cursor": "x" * 5000})
@@ -222,6 +229,66 @@ async def test_unknown_filter_400(env):
     client = env["client"]
     resp = await client.get("/api/admin/v2/markets", params={"bogus": "1"})
     assert resp.json()["code"] == 400
+
+
+@pytest.mark.anyio
+async def test_first_page_filter_applies_and_rows_are_bounded_by_as_of(env):
+    """首屏也必须应用 filter；冻结 snapshot 后不得返回未来 sort_time。"""
+    client = env["client"]
+    eng = create_engine(env["url"], poolclass=NullPool)
+    with eng.begin() as c:
+        c.execute(text("SET LOCAL session_replication_role = replica"))
+        c.execute(text(
+            "INSERT INTO trading.pm_markets (gamma_market_id, question, slug, ticker, "
+            "active, closed, accepting_orders, neg_risk, volume, liquidity, content_hash, "
+            "raw_artifact_ref, created_at) VALUES "
+            "('future','future','future','future',true,false,true,false,0,0,repeat('f',64),"
+            " 'future',now()+interval '1 day'),"
+            "('closed','closed','closed','closed',false,true,false,false,0,0,repeat('e',64),"
+            " 'closed',now()-interval '1 day')"
+        ))
+    eng.dispose()
+
+    resp = await client.get("/api/admin/v2/markets", params={"closed": "true"})
+    data = resp.json()["data"]
+    assert [item["gamma_market_id"] for item in data["items"]] == ["closed"]
+    assert all(item["closed"] is True for item in data["items"])
+    assert "future" not in {item["gamma_market_id"] for item in data["items"]}
+
+
+@pytest.mark.anyio
+async def test_tuple_lists_no_longer_raise_500(env):
+    """components/positions/model-routes 与 Logic.page 使用同一 tuple 接口。"""
+    for path in (
+        "/api/admin/v2/components",
+        "/api/admin/v2/execution/positions",
+        "/api/admin/v2/model-routes",
+    ):
+        resp = await env["client"].get(path)
+        assert resp.json()["code"] == 0, (path, resp.text)
+
+
+@pytest.mark.anyio
+async def test_market_tuple_keyset_orders_both_directions(env):
+    client = env["client"]
+    for direction, reverse in (("asc", False), ("desc", True)):
+        first = (await client.get(
+            "/api/admin/v2/markets",
+            params={"limit": "7", "direction": direction},
+        )).json()["data"]
+        second = (await client.get(
+            "/api/admin/v2/markets",
+            params={
+                "limit": "7",
+                "direction": direction,
+                "cursor": first["next_cursor"],
+            },
+        )).json()["data"]
+        first_keys = [(row["created_at"], int(row["id"])) for row in first["items"]]
+        assert first_keys == sorted(first_keys, reverse=reverse)
+        assert {row["id"] for row in first["items"]}.isdisjoint(
+            row["id"] for row in second["items"]
+        )
 
 
 @pytest.mark.anyio

@@ -37,14 +37,14 @@ def build_connect_args(cfg: Settings, profile: PoolProfile) -> dict[str, Any]:
     PG 这些参数以毫秒计。
     """
     server_settings = {
+        # asyncpg.connect() 不接受顶层 application_name kwarg；PostgreSQL
+        # runtime parameter 必须随 server_settings 下发。
+        "application_name": profile.application_name,
         "statement_timeout": str(profile.statement_timeout_s * 1000),
         "lock_timeout": str(cfg.DB_LOCK_TIMEOUT_S * 1000),
         "idle_in_transaction_session_timeout": str(cfg.DB_IDLE_IN_TX_TIMEOUT_S * 1000),
     }
-    return {
-        "application_name": profile.application_name,
-        "server_settings": server_settings,
-    }
+    return {"server_settings": server_settings}
 
 
 def build_engine(cfg: Settings, profile_name: str) -> AsyncEngine:

@@ -1,30 +1,18 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, EvaluationRow } from '@/api/v2/types'
-import { fetchEvaluation } from '@/api/v2/evaluation'
-import { v2QueryKeys } from './queryKeys'
+import { fetchLabels, fetchMetrics, fetchPromotions } from '@/api/v2/evaluation'
+import type { LabelFilters, StatusFilters } from '@/api/v2/types'
+import { useCursorPageQuery, type PageQueryInput, type V2QueryOptions } from './page'
 
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
+export function useLabelsPage(input: PageQueryInput<LabelFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('evaluation', 'labels', input, fetchLabels, options)
 }
 
-export function useEvaluationPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<EvaluationRow>>>,
-) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.evaluation(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchEvaluation(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+export function useMetricsPage(input: PageQueryInput<StatusFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('evaluation', 'metrics', input, fetchMetrics, options)
 }
+
+export function usePromotionsPage(input: PageQueryInput<StatusFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('evaluation', 'promotions', input, fetchPromotions, options)
+}
+
+/** Compatibility alias now points at the labels endpoint. */
+export const useEvaluationPage = useLabelsPage

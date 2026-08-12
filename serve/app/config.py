@@ -130,11 +130,13 @@ class Settings(BaseSettings):
     DB_LOCK_TIMEOUT_S: int = Field(1, ge=0, description="lock_timeout（秒，下发为毫秒）")
     DB_IDLE_IN_TX_TIMEOUT_S: int = Field(5, ge=0, description="idle_in_transaction_session_timeout（秒）")
 
-    # ---- V2 分进程连接池 profile（默认值来自设计 §8.3 首版建议）----
+    # ---- V2 分进程连接池 profile ----
     # api-admin: 后台读模型/配置发布；market-ingest: 行情热路径；execution: 下单/心跳；
     # cognition: 研究/AI；evaluation: 标签/指标/归档；replay: 回放（默认并发 2）。
-    DB_API_POOL_SIZE: int = Field(5, ge=1)
-    DB_API_POOL_OVERFLOW: int = Field(2, ge=0)
+    # WP-07A Admin read-plane 的 32 并发门要求 api pool 可同时承载 32 个
+    # request UoW；24 个常驻 + 8 个 overflow，在默认全局预算中仍保留 20 个连接。
+    DB_API_POOL_SIZE: int = Field(24, ge=1)
+    DB_API_POOL_OVERFLOW: int = Field(8, ge=0)
     DB_API_STMT_TIMEOUT_S: int = Field(2, ge=1)
     DB_MARKET_POOL_SIZE: int = Field(8, ge=1)
     DB_MARKET_POOL_OVERFLOW: int = Field(2, ge=0)

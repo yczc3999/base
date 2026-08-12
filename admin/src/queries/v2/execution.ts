@@ -1,30 +1,48 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, ExecutionRow } from '@/api/v2/types'
-import { fetchExecution } from '@/api/v2/execution'
-import { v2QueryKeys } from './queryKeys'
+import { toValue } from 'vue'
+import {
+  fetchExecutionTrace,
+  fetchIntents,
+  fetchLedger,
+  fetchOrders,
+  fetchPositions,
+} from '@/api/v2/execution'
+import type { LedgerFilters, StatusFilters } from '@/api/v2/types'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
+export function useIntentsPage(input: PageQueryInput<StatusFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('execution', 'intents', input, fetchIntents, options)
 }
 
-export function useExecutionPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<ExecutionRow>>>,
+export function useOrdersPage(input: PageQueryInput<StatusFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('execution', 'orders', input, fetchOrders, options)
+}
+
+export function usePositionsPage(input: PageQueryInput, options?: V2QueryOptions) {
+  return useCursorPageQuery('execution', 'positions', input, fetchPositions, options)
+}
+
+export function useLedgerPage(input: PageQueryInput<LedgerFilters>, options?: V2QueryOptions) {
+  return useCursorPageQuery('execution', 'ledger', input, fetchLedger, options)
+}
+
+export function useExecutionTrace(
+  decisionId: ReactiveValue<string>,
+  options?: V2QueryOptions,
 ) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.execution(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchExecution(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+  return useDetailQuery(
+    'execution',
+    'trace',
+    [decisionId],
+    (signal) => fetchExecutionTrace(toValue(decisionId), signal),
+    options,
+  )
 }
+
+/** Compatibility alias now points at the real intents endpoint. */
+export const useExecutionPage = useIntentsPage

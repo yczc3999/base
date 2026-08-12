@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.controllers.admin.trading.common import get_admin_logic, get_admin_repo
 from app.db.cursor import CursorError
-from app.deps import AuthInfo, require_all_perms
-from app.services.database import get_db
+from app.deps import AuthInfo, get_admin_read_db, require_all_perms
 from app.utils.response import fail, ok
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/v2/costs")
-async def list_costs(request: Request, session: AsyncSession = Depends(get_db),
+async def list_costs(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                      auth: AuthInfo = Depends(require_all_perms("v2:costs:view"))):
     try:
         page = await get_admin_logic().page(

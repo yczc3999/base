@@ -13,10 +13,10 @@ v2_0070 —— WP-07A Checkpoint A：Admin Read API 权限目录与 keyset 查�
     超级管理员仍按 Base 规则绕过。
   - slug/perms 冲突但内容不全等时 RAISE（seed 唯一性 fail-closed）；不依赖固定 menu ID
     （目录 id 由 RETURNING 取得，BUTTON parent_id 引用实际 id）。
-  - 为 keyset 分页查询创建 17 个 ``(sort_key, id)`` composite index（名称/列序与
+  - 为 keyset 分页查询创建 20 个 ``(sort_key, id)`` composite index（名称/列序与
     admin_read SQL query 一一对应；不预建 WP-08 通用归档索引）。
 - ``downgrade``：fail-closed preflight（存在 role_menus 绑定到 0070 权限菜单 → 整次拒绝；
-  0070 目标 index 缺失或 trading 未知表出现 → 拒绝），drop 17 个 index，DELETE 0070
+  0070 目标 index 缺失或 trading 未知表出现 → 拒绝），drop 20 个 index，DELETE 0070
   权限行与目录。不修改任何 trading facts。
 
 fixed literal DDL；不 import live ORM 生成 DDL；无密钥/signature 明文。
@@ -58,12 +58,15 @@ _V2_PERMISSIONS = (
 # keyset composite index：(index_name, table, columns) —— 与 admin_read 查询一一对应。
 _KEYSET_INDEXES = (
     ("ix_v2_admin_pm_markets_keyset", "pm_markets", "(created_at, id)"),
+    ("ix_v2_admin_forecast_components_keyset", "forecast_components", "(created_at, id)"),
     ("ix_v2_admin_forecast_episodes_keyset", "forecast_episodes", "(created_at, id)"),
     ("ix_v2_admin_ai_invocations_keyset", "ai_invocations", "(occurred_at, id)"),
     ("ix_v2_admin_trade_decisions_keyset", "trade_decisions", "(created_at, id)"),
     ("ix_v2_admin_intents_keyset", "economic_action_intents", "(created_at, id)"),
     ("ix_v2_admin_exchange_orders_keyset", "exchange_orders", "(created_at, id)"),
+    ("ix_v2_admin_positions_keyset", "positions", "(updated_at, id)"),
     ("ix_v2_admin_ledger_keyset", "ledger_transactions", "(created_at, id)"),
+    ("ix_v2_admin_model_role_bindings_keyset", "model_role_bindings", "(created_at, id)"),
     ("ix_v2_admin_costs_keyset", "operating_cost_entries", "(created_at, id)"),
     ("ix_v2_admin_runtime_config_keyset", "runtime_config_versions", "(created_at, id)"),
     ("ix_v2_admin_release_keyset", "release_manifests", "(created_at, id)"),
@@ -81,6 +84,26 @@ _ALL_SLUGS = ", ".join(
     f"'{slug}'" for slug, _label, _perms in ((_V2_MENU_DIR_SLUG, "", ""), *_V2_PERMISSIONS)
 )
 _ALL_PERMS = ", ".join(f"'{perms}'" for _slug, _label, perms in _V2_PERMISSIONS)
+_V2_DIRECTORY_ID_SQL = (
+    "(SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')"
+)
+_EXACT_DIRECTORY_MATCH = (
+    "(m.slug = 'v2-admin' AND m.parent_id = 0 AND m.type = 0 "
+    "AND m.label = 'V2 Admin Read' AND m.perms IS NULL "
+    "AND m.is_visible = false AND m.sort = 0 AND m.status = 1)"
+)
+_EXACT_PERMISSION_MATCHES = " OR ".join(
+    "(m.slug = '{slug}' AND m.parent_id = {directory_id} AND m.type = 2 "
+    "AND m.label = '{label}' AND m.perms = '{perms}' "
+    "AND m.is_visible = false AND m.sort = 0 AND m.status = 1)".format(
+        slug=slug,
+        directory_id=_V2_DIRECTORY_ID_SQL,
+        label=label,
+        perms=perms,
+    )
+    for slug, label, perms in _V2_PERMISSIONS
+)
+_EXACT_MENU_MATCHES = f"({_EXACT_DIRECTORY_MATCH} OR {_EXACT_PERMISSION_MATCHES})"
 
 
 # b1000052 已存在的 trading 关系（0070 downgrade preflight allowlist）。
@@ -155,7 +178,7 @@ BEGIN
      WHERE i.schemaname = 'trading'
        AND i.indexname NOT IN ({_KEYSET_INDEX_NAMES})
        AND i.indexname LIKE 'ix_v2_admin_%';
-    -- 反向：要求 17 个 index 都存在
+    -- 反向：要求 20 个 index 都存在
     SELECT string_agg(name, ', ' ORDER BY name) INTO missing_index FROM (
         SELECT unnest(ARRAY[{_KEYSET_INDEX_NAMES}]) AS name
         EXCEPT
@@ -195,8 +218,8 @@ BEGIN
         SELECT string_agg(m.slug, ', ' ORDER BY m.slug)
           INTO tampered_menu
           FROM public.menus m
-         WHERE m.slug IN ('v2-admin', 'v2-dashboard-view', 'v2-markets-view', 'v2-components-view', 'v2-episodes-view', 'v2-decisions-view', 'v2-execution-view', 'v2-models-view', 'v2-ai-view', 'v2-ai-artifact', 'v2-costs-view', 'v2-config-view', 'v2-release-view', 'v2-evaluation-view', 'v2-replay-view', 'v2-integrity-view', 'v2-artifact-read')
-           AND NOT ((m.slug = 'v2-admin' AND m.type = 0 AND m.is_visible = false AND m.label = 'V2 Admin Read') OR (m.slug = 'v2-dashboard-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Dashboard' AND m.perms = 'v2:dashboard:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-markets-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Markets' AND m.perms = 'v2:markets:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-components-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Components' AND m.perms = 'v2:components:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-episodes-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Episodes' AND m.perms = 'v2:episodes:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-decisions-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Decisions' AND m.perms = 'v2:decisions:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-execution-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Execution' AND m.perms = 'v2:execution:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-models-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Models' AND m.perms = 'v2:models:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-ai-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'AI Invocations' AND m.perms = 'v2:ai:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-ai-artifact' AND m.type = 2 AND m.is_visible = false AND m.label = 'AI Artifacts' AND m.perms = 'v2:ai:artifact' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-costs-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Costs' AND m.perms = 'v2:costs:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-config-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Strategy Config' AND m.perms = 'v2:config:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-release-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Releases' AND m.perms = 'v2:release:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-evaluation-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Evaluation' AND m.perms = 'v2:evaluation:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-replay-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Replay' AND m.perms = 'v2:replay:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-integrity-view' AND m.type = 2 AND m.is_visible = false AND m.label = 'Integrity' AND m.perms = 'v2:integrity:view' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')) OR (m.slug = 'v2-artifact-read' AND m.type = 2 AND m.is_visible = false AND m.label = 'Artifacts' AND m.perms = 'v2:artifact:read' AND m.parent_id = (SELECT id FROM public.menus d WHERE d.slug = 'v2-admin')));
+         WHERE (m.slug IN ({_ALL_SLUGS}) OR m.perms IN ({_ALL_PERMS}))
+           AND NOT {_EXACT_MENU_MATCHES};
         IF tampered_menu IS NOT NULL THEN
             RAISE EXCEPTION 'v2_wp07a_menu_tampered:%', tampered_menu USING ERRCODE='55000';
         END IF;
@@ -231,7 +254,9 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM public.menus
          WHERE slug = '{_V2_MENU_DIR_SLUG}'
-           AND NOT (type = 0 AND is_visible = false AND label = '{_V2_MENU_DIR_LABEL}')
+           AND NOT (parent_id = 0 AND type = 0 AND is_visible = false
+                    AND label = '{_V2_MENU_DIR_LABEL}' AND perms IS NULL
+                    AND sort = 0 AND status = 1)
     ) THEN
         RAISE EXCEPTION 'v2_wp07a_menu_slug_conflict:{_V2_MENU_DIR_SLUG}'
         USING ERRCODE='55000';
@@ -244,16 +269,12 @@ BEGIN
 {perm_values}
            ) AS v(slug, type, label, perms)
      WHERE NOT EXISTS (SELECT 1 FROM public.menus m WHERE m.slug = v.slug);
-    -- 冲突但内容不全等 → fail
+    -- slug 必须逐项对应精确 label/perms；仅“perms 属于允许集合”不足以
+    -- 阻止两个 permission slug 互换权限。
     IF EXISTS (
         SELECT 1 FROM public.menus m
-         WHERE m.slug IN ({_ALL_SLUGS})
-           AND NOT (
-               (m.slug = '{_V2_MENU_DIR_SLUG}' AND m.type = 0 AND m.is_visible = false
-                AND m.label = '{_V2_MENU_DIR_LABEL}')
-               OR (m.parent_id = v2_dir AND m.type = 2 AND m.is_visible = false
-                   AND m.label <> '' AND m.perms IN ({_ALL_PERMS}))
-           )
+         WHERE (m.slug IN ({_ALL_SLUGS}) OR m.perms IN ({_ALL_PERMS}))
+           AND NOT {_EXACT_MENU_MATCHES}
     ) THEN
         RAISE EXCEPTION 'v2_wp07a_permission_slug_conflict'
         USING ERRCODE='55000';

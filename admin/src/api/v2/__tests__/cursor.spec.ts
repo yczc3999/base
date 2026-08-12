@@ -27,8 +27,8 @@ describe('buildPageParams', () => {
     const withLimit13 = buildPageParams({}, 'tok', 13, 'desc')
     expect(withLimit7.cursor).toBe('tok')
     expect(withLimit13.cursor).toBe('tok')
-    expect(withLimit7.limit).toBe('7')
-    expect(withLimit13.limit).toBe('13')
+    expect(withLimit7.limit).toBe(7)
+    expect(withLimit13.limit).toBe(13)
   })
 
   it('omits cursor when null', () => {

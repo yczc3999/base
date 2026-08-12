@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.controllers.admin.trading.common import get_admin_logic, get_admin_repo
 from app.db.cursor import CursorError
-from app.deps import AuthInfo, require_all_perms
-from app.services.database import get_db
+from app.deps import AuthInfo, get_admin_read_db, require_all_perms
 from app.utils.response import fail, ok
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +32,7 @@ async def integrity_runtime(request: Request, auth: AuthInfo = Depends(require_a
 
 
 @router.get("/v2/integrity/alerts")
-async def list_alerts(request: Request, session: AsyncSession = Depends(get_db),
+async def list_alerts(request: Request, session: AsyncSession = Depends(get_admin_read_db),
                       auth: AuthInfo = Depends(require_all_perms("v2:integrity:view"))):
     try:
         page = await get_admin_logic().page(
@@ -47,7 +46,7 @@ async def list_alerts(request: Request, session: AsyncSession = Depends(get_db),
 
 @router.get("/v2/integrity/workflows/{aggregate_type}/{aggregate_id}")
 async def integrity_workflow(aggregate_type: str, aggregate_id: str, request: Request,
-                             session: AsyncSession = Depends(get_db),
+                             session: AsyncSession = Depends(get_admin_read_db),
                              auth: AuthInfo = Depends(require_all_perms("v2:integrity:view"))):
     if aggregate_type not in _ALLOWED_AGG_TYPES:
         return fail("aggregate_type_not_allowed", 400)

@@ -27,7 +27,7 @@ export function buildPageParams(
   direction?: 'asc' | 'desc',
 ): Record<string, unknown> {
   const params: Record<string, unknown> = { ...base }
-  if (limit !== undefined) params.limit = String(limit)
+  if (limit !== undefined) params.limit = limit
   if (direction !== undefined) params.direction = direction
   if (cursor) params.cursor = cursor
   return params

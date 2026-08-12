@@ -77,6 +77,13 @@ class AdminReadLogic:
     def parse_filters(self, params: dict, *, allowed: frozenset[str]) -> dict:
         """显式 allowlist；未知 filter → CursorError(400)，不静默忽略。"""
         out: dict = {}
+        # Starlette QueryParams.items() 会把重复 query key 折叠为最后一个值；先用
+        # multi_items/getlist 检测，避免 cursor/filter 身份产生歧义。
+        getlist = getattr(params, "getlist", None)
+        if callable(getlist):
+            for key in dict(params).keys():
+                if len(getlist(key)) != 1:
+                    raise CursorError(f"filter_multi_value:{key}")
         for key, value in params.items():
             if key in ("cursor", "limit", "direction"):
                 continue
@@ -84,7 +91,19 @@ class AdminReadLogic:
                 raise CursorError(f"unknown_filter:{key}")
             if isinstance(value, list):
                 raise CursorError(f"filter_multi_value:{key}")
-            out[key] = value
+            # QueryParams 的标量均为字符串；布尔过滤在 Logic 边界规范化，避免
+            # asyncpg 接收 str→boolean 时 500，也保证 filter_hash 语义唯一。
+            if key in {"closed", "neg_risk"}:
+                if isinstance(value, bool):
+                    out[key] = value
+                elif str(value).lower() == "true":
+                    out[key] = True
+                elif str(value).lower() == "false":
+                    out[key] = False
+                else:
+                    raise CursorError(f"filter_boolean_invalid:{key}")
+            else:
+                out[key] = value
         return out
 
     # ---- as_of / filter_hash ----
@@ -143,6 +162,7 @@ class AdminReadLogic:
         allowed_filters: frozenset[str],
         repo_fn: ListFn,
         sort_time_col: str = "created_at",
+        fixed_filters: dict | None = None,
     ) -> dict:
         """列表分页：解析 → 首屏冻结 as_of / 后续复用 → keyset 查询 → next_cursor。
 
@@ -151,7 +171,10 @@ class AdminReadLogic:
         """
         direction = self.parse_direction(params.get("direction"))
         limit = self.clamp_limit(params.get("limit"))
-        filters = self.parse_filters(params, allowed=allowed_filters)
+        filters = {
+            **(fixed_filters or {}),
+            **self.parse_filters(params, allowed=allowed_filters),
+        }
         token = params.get("cursor")
 
         if token:
@@ -169,7 +192,7 @@ class AdminReadLogic:
         cursor_id = cursor.id if cursor else None
         rows, has_more = await repo_fn(
             session, cursor_st=cursor_st, cursor_id=cursor_id,
-            direction=direction, limit=limit, **filters,
+            direction=direction, limit=limit, as_of=as_of, **filters,
         )
         if rows and has_more:
             last = rows[-1]

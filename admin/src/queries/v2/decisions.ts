@@ -1,30 +1,27 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, DecisionRow } from '@/api/v2/types'
-import { fetchDecisions } from '@/api/v2/decisions'
-import { v2QueryKeys } from './queryKeys'
-
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
-}
+import { toValue } from 'vue'
+import { fetchDecision, fetchDecisions } from '@/api/v2/decisions'
+import type { DecisionFilters } from '@/api/v2/types'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
 export function useDecisionsPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<DecisionRow>>>,
+  input: PageQueryInput<DecisionFilters>,
+  options?: V2QueryOptions,
 ) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.decisions(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchDecisions(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+  return useCursorPageQuery('decisions', 'list', input, fetchDecisions, options)
+}
+
+export function useDecision(id: ReactiveValue<string>, options?: V2QueryOptions) {
+  return useDetailQuery(
+    'decisions',
+    'detail',
+    [id],
+    (signal) => fetchDecision(toValue(id), signal),
+    options,
+  )
 }

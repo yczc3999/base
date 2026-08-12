@@ -1,30 +1,27 @@
-import { useQuery, type UseQueryOptions } from '@tanstack/vue-query'
-import type { CursorPage, PageParams, ConfigRow } from '@/api/v2/types'
-import { fetchConfiguration } from '@/api/v2/configuration'
-import { v2QueryKeys } from './queryKeys'
-
-export interface PageQueryInput {
-  filters?: Record<string, unknown>
-  cursor?: string | null
-  asOf?: string | null
-  limit?: number
-  direction?: 'asc' | 'desc'
-}
+import { toValue } from 'vue'
+import { fetchConfigDetail, fetchConfiguration } from '@/api/v2/configuration'
+import type { StatusFilters } from '@/api/v2/types'
+import {
+  useCursorPageQuery,
+  useDetailQuery,
+  type PageQueryInput,
+  type ReactiveValue,
+  type V2QueryOptions,
+} from './page'
 
 export function useConfigurationPage(
-  input: PageQueryInput,
-  options?: Partial<UseQueryOptions<CursorPage<ConfigRow>>>,
+  input: PageQueryInput<StatusFilters>,
+  options?: V2QueryOptions,
 ) {
-  const params: PageParams = {
-    ...(input.filters ?? {}),
-    cursor: input.cursor ?? undefined,
-    limit: input.limit ?? 50,
-    direction: input.direction ?? 'desc',
-  }
-  return useQuery({
-    queryKey: v2QueryKeys.configuration(input.filters ?? {}, input.cursor ?? null, input.asOf ?? null),
-    queryFn: ({ signal }) => fetchConfiguration(params, signal),
-    placeholderData: (prev) => prev,  // 翻页保留上一页数据
-    ...options,
-  })
+  return useCursorPageQuery('configuration', 'list', input, fetchConfiguration, options)
+}
+
+export function useConfigDetail(id: ReactiveValue<string>, options?: V2QueryOptions) {
+  return useDetailQuery(
+    'configuration',
+    'detail',
+    [id],
+    (signal) => fetchConfigDetail(toValue(id), signal),
+    options,
+  )
 }

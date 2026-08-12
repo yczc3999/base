@@ -68,11 +68,12 @@ def test_projection_block_requires_hash_and_status():
 def test_artifact_metadata_no_storage_path_leak():
     meta = ArtifactMetadata(
         content_hash="a" * 64, content_type="application/json",
-        content_length=10, lineage=[], stored_at="2026-08-12T00:00:00Z",
+        content_length="10", lineage=[], stored_at="2026-08-12T00:00:00Z",
     )
     # 无 locator/path/bucket credential 字段
     assert "locator" not in meta.model_dump()
     assert "storage_driver" not in meta.model_dump()
+    assert meta.content_length == "10"
 
 
 def test_artifact_content_response_range_fields():

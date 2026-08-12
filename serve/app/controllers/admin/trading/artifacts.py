@@ -14,10 +14,9 @@ from fastapi import APIRouter, Depends, Request, Response
 
 from app.config import settings
 from app.controllers.admin.trading.common import get_admin_repo
-from app.deps import AuthInfo, require_all_perms
+from app.deps import AuthInfo, get_admin_read_db, require_all_perms
 from app.services.artifact_store.contracts import ArtifactRef, build_locator
 from app.services.artifact_store.factory import build_artifact_store
-from app.services.database import get_db
 from app.utils.response import fail, ok
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,18 +45,21 @@ def _parse_range(header: str | None, total: int) -> tuple[int, int] | None:
 
 
 @router.get("/v2/artifacts/{content_hash}/metadata")
-async def artifact_metadata(content_hash: str, session: AsyncSession = Depends(get_db),
+async def artifact_metadata(content_hash: str, session: AsyncSession = Depends(get_admin_read_db),
                             auth: AuthInfo = Depends(require_all_perms("v2:artifact:read"))):
     if not re.fullmatch(r"[0-9a-f]{64}", content_hash):
         return fail("content_hash_invalid", 400)
     meta = await get_admin_repo().artifact_metadata(session, content_hash)
     if meta is None:
         return fail("not_found", 404)
+    if await get_admin_repo().is_ai_artifact(session, content_hash):
+        if not await _has_ai_artifact_perm(session, auth):
+            return fail("无权限", 403)
     lineage = await get_admin_repo().artifact_lineage(session, content_hash)
     return ok({
         "content_hash": meta["content_hash"],
         "content_type": meta["content_type"],
-        "content_length": meta["content_length"],
+        "content_length": str(meta["content_length"]),
         "lineage": lineage,
         "stored_at": meta["stored_at"],
     })
@@ -65,14 +67,14 @@ async def artifact_metadata(content_hash: str, session: AsyncSession = Depends(g
 
 @router.get("/v2/artifacts/{content_hash}/content")
 async def artifact_content(content_hash: str, request: Request,
-                           session: AsyncSession = Depends(get_db),
+                           session: AsyncSession = Depends(get_admin_read_db),
                            auth: AuthInfo = Depends(require_all_perms("v2:artifact:read"))):
     if not re.fullmatch(r"[0-9a-f]{64}", content_hash):
         return fail("content_hash_invalid", 400)
     # AI artifact 附加权限：v2:ai:artifact
     is_ai = await get_admin_repo().is_ai_artifact(session, content_hash)
     if is_ai:
-        user = await _has_ai_artifact_perm(auth)
+        user = await _has_ai_artifact_perm(session, auth)
         if not user:
             return fail("无权限", 403)
     meta = await get_admin_repo().artifact_metadata(session, content_hash)
@@ -98,9 +100,19 @@ async def artifact_content(content_hash: str, request: Request,
         storage_version=meta["storage_version"],
         locator=build_locator(content_hash, meta["compression"]),
     )
+    # DB snapshot/RBAC/metadata 已全部取得；对象存储 I/O 前释放 api pool 连接，
+    # 避免 local/S3 latency 占用 read transaction。
+    await session.rollback()
     store = build_artifact_store(settings)
-    # ArtifactStore.get_range 是半开区间 [start, end)；HTTP Range 为闭区间 [start, end]
-    data = store.get_range(ref, start, end + 1)
+    if ref.compression == "none":
+        # ArtifactStore.get_range 是半开区间 [start, end)；HTTP Range 为闭区间。
+        data = store.get_range(ref, start, end + 1)
+    else:
+        # zstd artifact 的 Range 语义针对原文 bytes。ArtifactStore.get_bytes() 的
+        # 解压与读取均受 ARTIFACT_MAX_OBJECT_BYTES 硬上限约束，并验证 size/SHA；
+        # 解压后仅切出 ≤1 MiB 的已校验区间。
+        decoded = store.get_bytes(ref, verify=True)
+        data = decoded[start:end + 1]
     return Response(
         content=data,
         status_code=206,
@@ -113,14 +125,11 @@ async def artifact_content(content_hash: str, request: Request,
     )
 
 
-async def _has_ai_artifact_perm(auth: AuthInfo) -> bool:
+async def _has_ai_artifact_perm(session: AsyncSession, auth: AuthInfo) -> bool:
     """校验当前用户（非超管）是否具备 v2:ai:artifact；超管直接通过。"""
     if getattr(auth, "is_super_admin", False):
         return True
-    from app.services.database import async_session
-
     from app.logics.admin_user import admin_user_logic
 
-    async with async_session() as session:
-        perms = await admin_user_logic.get_user_perms(session, auth.user_id)
+    perms = await admin_user_logic.get_user_perms(session, auth.user_id)
     return "v2:ai:artifact" in perms

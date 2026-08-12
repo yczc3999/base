@@ -1,8 +1,8 @@
 import { requestV2 } from '../request'
-import type { CursorPage, PageParams, CostRow } from './types'
+import type { CostFilters, CostRow, CursorPage, PageParams } from './types'
 
 export async function fetchCosts(
-  params: PageParams,
+  params: PageParams<CostFilters>,
   signal?: AbortSignal,
 ): Promise<CursorPage<CostRow>> {
   return requestV2<CursorPage<CostRow>>({ url: '/admin/v2/costs', params, signal })

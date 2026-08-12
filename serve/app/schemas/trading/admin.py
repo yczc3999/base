@@ -43,9 +43,10 @@ class ProjectionBlock(BaseModel):
 
     as_of: str
     source_high_watermark: str | None = None
-    projection_version: int
-    projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: int | None = None
+    projection_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     freshness_status: str = Field(pattern="^(fresh|stale|missing)$")
+    rows: list[dict] = Field(default_factory=list)
 
 
 class DashboardResponse(BaseModel):
@@ -54,7 +55,6 @@ class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     blocks: dict[str, ProjectionBlock]
-    authoritative: dict[str, Authoritative]
     as_of: str
 
 
@@ -75,7 +75,7 @@ class ArtifactMetadata(BaseModel):
 
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     content_type: str
-    content_length: int = Field(ge=0)
+    content_length: str = Field(pattern=r"^\d+$")
     lineage: list[dict] = Field(default_factory=list)
     stored_at: str | None = None
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from starlette.datastructures import QueryParams
 
 from app.db.cursor import CursorError, derive_key
 from app.logics.trading.admin_read import AdminReadLogic, MAX_LIMIT
@@ -27,6 +28,14 @@ def test_known_filters_accepted():
     out = LOGIC.parse_filters({"status": "active", "cursor": "tok", "limit": "10"},
                               allowed=frozenset({"status"}))
     assert out == {"status": "active"}  # cursor/limit 被剔除
+
+
+def test_duplicate_query_key_rejected_before_queryparams_collapse():
+    with pytest.raises(CursorError, match="filter_multi_value:status"):
+        LOGIC.parse_filters(
+            QueryParams("status=active&status=closed"),
+            allowed=frozenset({"status"}),
+        )
 
 
 def test_direction_allowlist():

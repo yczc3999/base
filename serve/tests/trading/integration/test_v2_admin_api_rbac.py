@@ -147,6 +147,48 @@ async def test_ai_artifact_double_permission(env):
 
 
 @pytest.mark.anyio
+async def test_ai_artifact_metadata_also_requires_double_permission(env):
+    """metadata/lineage 也是 AI artifact read；generic hash 路径不得绕过附加权限。"""
+    from app.repositories.trading.admin_read import AdminReadRepository
+
+    original_ai = AdminReadRepository.is_ai_artifact
+    original_meta = AdminReadRepository.artifact_metadata
+
+    async def fake_is_ai(self, session, content_hash):
+        return True
+
+    async def fake_meta(self, session, content_hash):
+        return {
+            "content_hash": content_hash,
+            "content_type": "application/json",
+            "content_length": 2,
+            "stored_size": 2,
+            "compression": "none",
+            "storage_driver": "local",
+            "storage_version": "cas/v1",
+            "stored_at": "2026-08-12T00:00:00Z",
+        }
+
+    AdminReadRepository.is_ai_artifact = fake_is_ai
+    AdminReadRepository.artifact_metadata = fake_meta
+    try:
+        env["state"]["perms"] = {"v2:artifact:read"}
+        _status, body = await _get(
+            env, "/api/admin/v2/artifacts/" + "a" * 64 + "/metadata"
+        )
+        assert body["code"] == 403
+
+        env["state"]["perms"] = {"v2:artifact:read", "v2:ai:artifact"}
+        _status, body = await _get(
+            env, "/api/admin/v2/artifacts/" + "a" * 64 + "/metadata"
+        )
+        assert body["code"] == 0
+    finally:
+        AdminReadRepository.is_ai_artifact = original_ai
+        AdminReadRepository.artifact_metadata = original_meta
+
+
+@pytest.mark.anyio
 async def test_legacy_runtime_still_requires_admin_monitor(env):
     env["state"]["perms"] = {"admin:monitor:list"}
     _status, body = await _get(env, "/api/admin/trading/runtime")
