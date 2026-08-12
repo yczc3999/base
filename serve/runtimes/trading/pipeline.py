@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable
 
@@ -65,6 +66,7 @@ class PipelineDriver:
         self._workflow_repo = WorkflowRepository()
         self._screening = ScreeningLogic(self._cohort_repo, self._workflow_repo)
         self._state = TradingStateMachine(self._workflow_repo)
+        self._last_frame = None  # 最近一次成功 COMPLETE frame 的归属（含 markets）
 
     async def run(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -79,6 +81,7 @@ class PipelineDriver:
         if self._policy.sense_enabled:
             summary["sense"] = await self._safe(self._sense)
         if self._policy.screen_enabled:
+            summary["enroll"] = await self._safe(self._enroll)
             summary["screen"] = await self._safe(self._screen)
         if self._policy.ai_enabled:
             summary["opportunities"] = await self._safe(self._advance_opportunities)
@@ -100,11 +103,60 @@ class PipelineDriver:
         if self._ingestor is None:
             return {"stage": "sense", "ok": False, "reason": "ingestor_not_configured"}
         result = await self._ingestor.run_once()
+        if getattr(result, "status", None) == "COMPLETE":
+            self._last_frame = result  # 保存成功 frame 归属（含 markets）
         return {
             "stage": "sense", "ok": True,
             "frame_id": getattr(result, "frame_id", None),
             "status": getattr(result, "status", None),
         }
+
+    # ---- Stage 1a：登记（frame → cohort membership）----
+
+    async def _enroll(self) -> dict[str, Any]:
+        """把最近一次 COMPLETE frame 的 markets 登记进每个 OPEN cohort（发现即登记）。
+
+        这是 §3.1 worker 3 的「登记」环节：用 frame 的显式归属（db id + 规范化
+        content）构造 HydratedUniverseFrameInput，调 ScreeningLogic.enroll_frame
+        写 universe_memberships；R0 筛选（_screen）据此才能查到待筛 market。
+        """
+        frame = self._last_frame
+        if frame is None or getattr(frame, "markets", None) is None:
+            return {"stage": "enroll", "ok": True, "reason": "no_complete_frame"}
+        if frame.status != "COMPLETE":
+            return {"stage": "enroll", "ok": True, "reason": "frame_not_complete"}
+
+        from app.schemas.trading.workflow import (
+            HydratedFrameMarketInput,
+            HydratedUniverseFrameInput,
+        )
+
+        hydrated = HydratedUniverseFrameInput(
+            frame_id=frame.frame_id,
+            content_hash=frame.content_hash,
+            artifact_object_id=frame.artifact_id,
+            artifact_ref=frame.artifact_ref,
+            markets=[
+                HydratedFrameMarketInput(market_id=m.market_id, metadata=m.metadata)
+                for m in frame.markets
+            ],
+        )
+        enrolled = 0
+        async with UnitOfWork(self._sessions("market")) as uow:
+            for cohort_id in await self._open_cohorts(uow.session):
+                g0 = await self._screening.run_g0(uow, cohort_id=cohort_id)
+                if not g0.ok:
+                    continue
+                await self._screening.enroll_frame(
+                    uow,
+                    cohort_id=cohort_id,
+                    frame=hydrated,
+                    observed_at=datetime.now(timezone.utc),
+                    ingested_at=datetime.now(timezone.utc),
+                    g0=g0,
+                )
+                enrolled += 1
+        return {"stage": "enroll", "ok": True, "cohorts": enrolled, "markets": len(hydrated.markets)}
 
     # ---- Stage 1：筛选（G0/R0 → parent opportunity）----
 

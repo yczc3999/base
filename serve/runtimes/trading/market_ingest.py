@@ -186,6 +186,11 @@ class FrameRunResult:
     total_markets: int
     error_reason: str | None
     outbox_event_id: str | None
+    # frame 完整归属（成功路径）：供 pipeline 构造 HydratedUniverseFrameInput 做 cohort 登记。
+    content_hash: str | None
+    artifact_id: int | None
+    artifact_ref: str | None
+    markets: tuple  # AppliedMarket 元组（db id + 规范化 content）
 
 
 @dataclass(frozen=True)
@@ -314,7 +319,7 @@ class UniverseIngestor:
                     fencing_token=fencing_token,
                     completed_at=completed_at,
                 )
-                await self._universe.apply_frame_diff(
+                diff_result = await self._universe.apply_frame_diff(
                     commit_uow,
                     events=events,
                     markets=markets,
@@ -367,6 +372,10 @@ class UniverseIngestor:
                 total_markets=total_markets,
                 error_reason=None,
                 outbox_event_id=outbox_event_id,
+                content_hash=content_hash,
+                artifact_id=artifact_id,
+                artifact_ref=manifest_ref.sha256,
+                markets=tuple(diff_result.markets),
             )
         except asyncio.CancelledError:
             # Leave the OPEN frame and durable cursor pages for lease-based takeover.
@@ -427,6 +436,10 @@ class UniverseIngestor:
                 total_markets=total_markets,
                 error_reason=reason,
                 outbox_event_id=None,
+                content_hash=None,
+                artifact_id=None,
+                artifact_ref=None,
+                markets=(),
             )
 
     async def _ensure_gamma_epoch(self, frame_id: int, at: datetime) -> int:

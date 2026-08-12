@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -58,6 +58,18 @@ class UniversePolicy:
 
 
 @dataclass(frozen=True)
+class AppliedMarket:
+    """frame diff 应用后单个 market 的权威归属：db id + 规范化 content。
+
+    这是 frame → market 关联的显式载体；pipeline 据此把 market 登记进 cohort
+    membership（enroll_frame），不再靠事后反查或丢弃后猜测。
+    """
+
+    market_id: int
+    metadata: dict
+
+
+@dataclass(frozen=True)
 class ApplyDiffResult:
     events_upserted: int
     markets_new: int
@@ -66,6 +78,7 @@ class ApplyDiffResult:
     tokens_upserted: int
     eligible_count: int
     lifecycle_events: int
+    markets: list[AppliedMarket] = field(default_factory=list)
 
 
 def market_normalized_content(market: GammaMarket) -> dict[str, Any]:
@@ -254,6 +267,7 @@ class UniverseLogic:
         tokens_upserted = 0
         eligible_count = 0
         lifecycle_events = 0
+        applied_markets: list[AppliedMarket] = []
         event_artifact_refs = event_artifact_refs or {}
         market_artifact_refs = market_artifact_refs or {}
         market_event_ids = market_event_ids or {}
@@ -417,6 +431,9 @@ class UniverseLogic:
                 if inserted:
                     lifecycle_events += 1
 
+            # frame → market 显式归属：db id + 规范化 content（供 cohort 登记/enroll）。
+            applied_markets.append(AppliedMarket(market_id=db_id, metadata=content))
+
         # ``closed=false`` 的 COMPLETE frame 会让刚关闭的市场从结果集中消失；
         # 缺失不能证明结算，但必须立刻撤销旧 eligibility（V1 事故的直接防线）。
         await self._market.invalidate_absent_markets(
@@ -433,4 +450,5 @@ class UniverseLogic:
             tokens_upserted=tokens_upserted,
             eligible_count=eligible_count,
             lifecycle_events=lifecycle_events,
+            markets=applied_markets,
         )
