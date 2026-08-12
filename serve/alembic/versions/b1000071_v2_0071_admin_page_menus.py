@@ -30,53 +30,90 @@ depends_on: Union[str, Sequence[str], None] = None
 
 _MENU_DIR_SLUG = "v2-admin"
 
-# (slug, label, path, template_path, perms, is_visible)
+# (slug, label, path, template_path, perms, is_visible, sort)
 _PAGES = (
     ("v2-page-dashboard", "Dashboard", "/v2/dashboard", "v2/dashboard/index",
-     "v2:dashboard:view", True),
+     "v2:dashboard:view", True, 1),
     ("v2-page-markets", "Markets", "/v2/markets", "v2/markets/index",
-     "v2:markets:view", True),
+     "v2:markets:view", True, 2),
     ("v2-page-components", "Components", "/v2/components", "v2/components/index",
-     "v2:components:view", True),
+     "v2:components:view", True, 3),
     ("v2-page-episodes", "Episodes", "/v2/episodes", "v2/episodes/index",
-     "v2:episodes:view", True),
+     "v2:episodes:view", True, 4),
     ("v2-page-decisions", "Decisions", "/v2/decisions", "v2/decisions/index",
-     "v2:decisions:view", True),
+     "v2:decisions:view", True, 5),
     ("v2-page-execution", "Execution", "/v2/execution", "v2/execution/index",
-     "v2:execution:view", True),
+     "v2:execution:view", True, 6),
     ("v2-page-models-ai", "Models & AI", "/v2/models-ai", "v2/models-ai/index",
-     "v2:models:view", True),
+     "v2:models:view", True, 7),
     ("v2-page-ai-invocations", "AI Invocations", "/v2/ai-invocations",
-     "v2/ai-invocations/index", "v2:ai:view", True),
+     "v2/ai-invocations/index", "v2:ai:view", True, 8),
     ("v2-page-costs", "Costs", "/v2/costs", "v2/costs/index",
-     "v2:costs:view", True),
+     "v2:costs:view", True, 9),
     ("v2-page-config", "Strategy Config", "/v2/config", "v2/config/index",
-     "v2:config:view", True),
+     "v2:config:view", True, 10),
     ("v2-page-releases", "Releases", "/v2/releases", "v2/releases/index",
-     "v2:release:view", True),
+     "v2:release:view", True, 11),
     ("v2-page-evaluation", "Evaluation", "/v2/evaluation", "v2/evaluation/index",
-     "v2:evaluation:view", True),
+     "v2:evaluation:view", True, 12),
     ("v2-page-replay", "Replay", "/v2/replay", "v2/replay/index",
-     "v2:replay:view", True),
+     "v2:replay:view", True, 13),
     ("v2-page-integrity", "Integrity", "/v2/integrity", "v2/integrity/index",
-     "v2:integrity:view", True),
+     "v2:integrity:view", True, 14),
     # 隐藏详情页（is_visible=false；不占侧边菜单）
     ("v2-page-market-detail", "Market Detail", "/v2/markets/:id",
-     "v2/markets/detail", "v2:markets:view", False),
+     "v2/markets/detail", "v2:markets:view", False, 101),
     ("v2-page-component-detail", "Component Detail", "/v2/components/:id",
-     "v2/components/detail", "v2:components:view", False),
+     "v2/components/detail", "v2:components:view", False, 102),
     ("v2-page-episode-detail", "Episode Detail", "/v2/episodes/:id",
-     "v2/episodes/detail", "v2:episodes:view", False),
+     "v2/episodes/detail", "v2:episodes:view", False, 103),
     ("v2-page-decision-detail", "Decision Detail", "/v2/decisions/:id",
-     "v2/decisions/detail", "v2:decisions:view", False),
+     "v2/decisions/detail", "v2:decisions:view", False, 104),
     ("v2-page-ai-detail", "AI Invocation Detail", "/v2/ai-invocations/:id",
-     "v2/ai-invocations/detail", "v2:ai:view", False),
+     "v2/ai-invocations/detail", "v2:ai:view", False, 105),
     ("v2-page-artifacts", "Artifacts", "/v2/artifacts/:content_hash",
-     "v2/artifacts/detail", "v2:artifact:read", False),
+     "v2/artifacts/detail", "v2:artifact:read", False, 106),
 )
 
 _ALL_SLUGS = ", ".join(f"'{slug}'" for slug, *_ in _PAGES)
-_ALL_PERMS = ", ".join(f"'{perms}'" for *_page, perms, _vis in _PAGES)
+
+
+def _sql_path(path: str) -> str:
+    """Render route paths without ``:name`` being parsed as SQL bind params."""
+    if ":" not in path:
+        return f"'{path}'"
+    prefix, parameter = path.split(":", 1)
+    return f"'{prefix}' || chr(58) || '{parameter}'"
+
+
+_PAGE_VALUES_SQL = ",\n            ".join(
+    "('{slug}','{label}',{path},'{template}','{perms}',{visible},{sort})".format(
+        slug=slug,
+        label=label,
+        path=_sql_path(path),
+        template=template_path,
+        perms=perms,
+        visible=str(is_visible).lower(),
+        sort=sort,
+    )
+    for slug, label, path, template_path, perms, is_visible, sort in _PAGES
+)
+
+_EXACT_PAGE_MATCHES = " OR ".join(
+    "(m.slug = '{slug}' AND m.parent_id = v2_dir AND m.type = 1 "
+    "AND m.label = '{label}' AND m.path = {path} "
+    "AND m.template_path = '{template}' AND m.perms = '{perms}' "
+    "AND m.is_visible = {visible} AND m.sort = {sort} AND m.status = 1)".format(
+        slug=slug,
+        label=label,
+        path=_sql_path(path),
+        template=template_path,
+        perms=perms,
+        visible=str(is_visible).lower(),
+        sort=sort,
+    )
+    for slug, label, path, template_path, perms, is_visible, sort in _PAGES
+)
 
 # b1000070 已存在的 trading 关系（0071 downgrade preflight allowlist）。
 _PRE_0071_RELATIONS = (
@@ -131,6 +168,7 @@ DECLARE bound_count bigint;
         missing_menu text;
         unknown_objects text;
         tampered_menu text;
+        v2_dir bigint;
 BEGIN
     -- 存在 role_menus 绑定到 0071 菜单 → 整次拒绝
     IF to_regclass('public.menus') IS NOT NULL AND to_regclass('public.role_menus') IS NOT NULL THEN
@@ -144,6 +182,10 @@ BEGIN
     END IF;
     -- 0071 目标菜单必须全部存在
     IF to_regclass('public.menus') IS NOT NULL THEN
+        SELECT id INTO v2_dir FROM public.menus WHERE slug = '{_MENU_DIR_SLUG}';
+        IF v2_dir IS NULL THEN
+            RAISE EXCEPTION 'v2_wp07b_parent_missing:{_MENU_DIR_SLUG}' USING ERRCODE='55000';
+        END IF;
         SELECT string_agg(name, ', ' ORDER BY name) INTO missing_menu FROM (
             SELECT unnest(ARRAY[{_ALL_SLUGS}]) AS name
             EXCEPT
@@ -152,32 +194,11 @@ BEGIN
         IF missing_menu IS NOT NULL THEN
             RAISE EXCEPTION 'v2_wp07b_menu_missing:%', missing_menu USING ERRCODE='55000';
         END IF;
-        -- 0071 菜单行内容被篡改（path/template_path/perms/parent 与 seed 定义不符）→ 拒绝
+        -- 任一受管字段被篡改（含 slug↔permission 互换）均拒绝。
         SELECT string_agg(m.slug, ', ' ORDER BY m.slug) INTO tampered_menu
           FROM public.menus m
          WHERE m.slug IN ({_ALL_SLUGS})
-           AND NOT (
-               (m.slug = 'v2-page-dashboard' AND m.type = 1 AND m.path = '/v2/dashboard' AND m.template_path = 'v2/dashboard/index' AND m.perms = 'v2:dashboard:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-markets' AND m.type = 1 AND m.path = '/v2/markets' AND m.template_path = 'v2/markets/index' AND m.perms = 'v2:markets:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-components' AND m.type = 1 AND m.path = '/v2/components' AND m.template_path = 'v2/components/index' AND m.perms = 'v2:components:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-episodes' AND m.type = 1 AND m.path = '/v2/episodes' AND m.template_path = 'v2/episodes/index' AND m.perms = 'v2:episodes:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-decisions' AND m.type = 1 AND m.path = '/v2/decisions' AND m.template_path = 'v2/decisions/index' AND m.perms = 'v2:decisions:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-execution' AND m.type = 1 AND m.path = '/v2/execution' AND m.template_path = 'v2/execution/index' AND m.perms = 'v2:execution:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-models-ai' AND m.type = 1 AND m.path = '/v2/models-ai' AND m.template_path = 'v2/models-ai/index' AND m.perms = 'v2:models:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-ai-invocations' AND m.type = 1 AND m.path = '/v2/ai-invocations' AND m.template_path = 'v2/ai-invocations/index' AND m.perms = 'v2:ai:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-costs' AND m.type = 1 AND m.path = '/v2/costs' AND m.template_path = 'v2/costs/index' AND m.perms = 'v2:costs:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-config' AND m.type = 1 AND m.path = '/v2/config' AND m.template_path = 'v2/config/index' AND m.perms = 'v2:config:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-releases' AND m.type = 1 AND m.path = '/v2/releases' AND m.template_path = 'v2/releases/index' AND m.perms = 'v2:release:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-evaluation' AND m.type = 1 AND m.path = '/v2/evaluation' AND m.template_path = 'v2/evaluation/index' AND m.perms = 'v2:evaluation:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-replay' AND m.type = 1 AND m.path = '/v2/replay' AND m.template_path = 'v2/replay/index' AND m.perms = 'v2:replay:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-integrity' AND m.type = 1 AND m.path = '/v2/integrity' AND m.template_path = 'v2/integrity/index' AND m.perms = 'v2:integrity:view' AND m.is_visible = true) OR
-               (m.slug = 'v2-page-market-detail' AND m.type = 1 AND m.path = '/v2/markets/' || ':' || 'id' AND m.template_path = 'v2/markets/detail' AND m.perms = 'v2:markets:view' AND m.is_visible = false) OR
-               (m.slug = 'v2-page-component-detail' AND m.type = 1 AND m.path = '/v2/components/' || ':' || 'id' AND m.template_path = 'v2/components/detail' AND m.perms = 'v2:components:view' AND m.is_visible = false) OR
-               (m.slug = 'v2-page-episode-detail' AND m.type = 1 AND m.path = '/v2/episodes/' || ':' || 'id' AND m.template_path = 'v2/episodes/detail' AND m.perms = 'v2:episodes:view' AND m.is_visible = false) OR
-               (m.slug = 'v2-page-decision-detail' AND m.type = 1 AND m.path = '/v2/decisions/' || ':' || 'id' AND m.template_path = 'v2/decisions/detail' AND m.perms = 'v2:decisions:view' AND m.is_visible = false) OR
-               (m.slug = 'v2-page-ai-detail' AND m.type = 1 AND m.path = '/v2/ai-invocations/' || ':' || 'id' AND m.template_path = 'v2/ai-invocations/detail' AND m.perms = 'v2:ai:view' AND m.is_visible = false) OR
-               (m.slug = 'v2-page-artifacts' AND m.type = 1 AND m.path = '/v2/artifacts/' || ':' || 'content_hash' AND m.template_path = 'v2/artifacts/detail' AND m.perms = 'v2:artifact:read' AND m.is_visible = false)
-           );
+           AND NOT ({_EXACT_PAGE_MATCHES});
         IF tampered_menu IS NOT NULL THEN
             RAISE EXCEPTION 'v2_wp07b_menu_tampered:%', tampered_menu USING ERRCODE='55000';
         END IF;
@@ -223,69 +244,22 @@ BEGIN
         RETURN;
     END IF;
     SELECT id INTO v2_dir FROM public.menus WHERE slug = '{_MENU_DIR_SLUG}';
+    IF v2_dir IS NULL THEN
+        RAISE EXCEPTION 'v2_wp07b_parent_missing:{_MENU_DIR_SLUG}' USING ERRCODE='55000';
+    END IF;
     -- 14 菜单页 + 5 隐藏详情 + artifacts 隐藏路由
     INSERT INTO public.menus (parent_id, type, slug, label, path, template_path, perms,
                               is_visible, sort, status)
     SELECT v2_dir, 1, v.slug, v.label, v.path, v.template_path, v.perms, v.is_visible, v.sort, 1
       FROM (VALUES
-            ('v2-page-dashboard','Dashboard','/v2/dashboard','v2/dashboard/index','v2:dashboard:view',true,1),
-            ('v2-page-markets','Markets','/v2/markets','v2/markets/index','v2:markets:view',true,2),
-            ('v2-page-components','Components','/v2/components','v2/components/index','v2:components:view',true,3),
-            ('v2-page-episodes','Episodes','/v2/episodes','v2/episodes/index','v2:episodes:view',true,4),
-            ('v2-page-decisions','Decisions','/v2/decisions','v2/decisions/index','v2:decisions:view',true,5),
-            ('v2-page-execution','Execution','/v2/execution','v2/execution/index','v2:execution:view',true,6),
-            ('v2-page-models-ai','Models & AI','/v2/models-ai','v2/models-ai/index','v2:models:view',true,7),
-            ('v2-page-ai-invocations','AI Invocations','/v2/ai-invocations','v2/ai-invocations/index','v2:ai:view',true,8),
-            ('v2-page-costs','Costs','/v2/costs','v2/costs/index','v2:costs:view',true,9),
-            ('v2-page-config','Strategy Config','/v2/config','v2/config/index','v2:config:view',true,10),
-            ('v2-page-releases','Releases','/v2/releases','v2/releases/index','v2:release:view',true,11),
-            ('v2-page-evaluation','Evaluation','/v2/evaluation','v2/evaluation/index','v2:evaluation:view',true,12),
-            ('v2-page-replay','Replay','/v2/replay','v2/replay/index','v2:replay:view',true,13),
-            ('v2-page-integrity','Integrity','/v2/integrity','v2/integrity/index','v2:integrity:view',true,14),
-            ('v2-page-market-detail','Market Detail','/v2/markets/' || ':' || 'id','v2/markets/detail','v2:markets:view',false,101),
-            ('v2-page-component-detail','Component Detail','/v2/components/' || ':' || 'id','v2/components/detail','v2:components:view',false,102),
-            ('v2-page-episode-detail','Episode Detail','/v2/episodes/' || ':' || 'id','v2/episodes/detail','v2:episodes:view',false,103),
-            ('v2-page-decision-detail','Decision Detail','/v2/decisions/' || ':' || 'id','v2/decisions/detail','v2:decisions:view',false,104),
-            ('v2-page-ai-detail','AI Invocation Detail','/v2/ai-invocations/' || ':' || 'id','v2/ai-invocations/detail','v2:ai:view',false,105),
-            ('v2-page-artifacts','Artifacts','/v2/artifacts/' || ':' || 'content_hash','v2/artifacts/detail','v2:artifact:read',false,106)
+            {_PAGE_VALUES_SQL}
       ) AS v(slug, label, path, template_path, perms, is_visible, sort)
      WHERE NOT EXISTS (SELECT 1 FROM public.menus m WHERE m.slug = v.slug);
-    -- slug 冲突但内容不全等 → fail
+    -- 受管 slug 必须逐项精确对应 label/route/permission/可见性/排序。
     IF EXISTS (
         SELECT 1 FROM public.menus m
          WHERE m.slug IN ({_ALL_SLUGS})
-           AND NOT (m.parent_id = v2_dir AND m.type = 1
-                    AND m.path = (SELECT p.path FROM (VALUES
-                        ('v2-page-dashboard','/v2/dashboard'),('v2-page-markets','/v2/markets'),
-                        ('v2-page-components','/v2/components'),('v2-page-episodes','/v2/episodes'),
-                        ('v2-page-decisions','/v2/decisions'),('v2-page-execution','/v2/execution'),
-                        ('v2-page-models-ai','/v2/models-ai'),('v2-page-ai-invocations','/v2/ai-invocations'),
-                        ('v2-page-costs','/v2/costs'),('v2-page-config','/v2/config'),
-                        ('v2-page-releases','/v2/releases'),('v2-page-evaluation','/v2/evaluation'),
-                        ('v2-page-replay','/v2/replay'),('v2-page-integrity','/v2/integrity'),
-                        ('v2-page-market-detail','/v2/markets/' || ':' || 'id'),
-                        ('v2-page-component-detail','/v2/components/' || ':' || 'id'),
-                        ('v2-page-episode-detail','/v2/episodes/' || ':' || 'id'),
-                        ('v2-page-decision-detail','/v2/decisions/' || ':' || 'id'),
-                        ('v2-page-ai-detail','/v2/ai-invocations/' || ':' || 'id'),
-                        ('v2-page-artifacts','/v2/artifacts/' || ':' || 'content_hash')
-                    ) AS p(slug, path) WHERE p.slug = m.slug)
-                    AND m.template_path = (SELECT t.template_path FROM (VALUES
-                        ('v2-page-dashboard','v2/dashboard/index'),('v2-page-markets','v2/markets/index'),
-                        ('v2-page-components','v2/components/index'),('v2-page-episodes','v2/episodes/index'),
-                        ('v2-page-decisions','v2/decisions/index'),('v2-page-execution','v2/execution/index'),
-                        ('v2-page-models-ai','v2/models-ai/index'),('v2-page-ai-invocations','v2/ai-invocations/index'),
-                        ('v2-page-costs','v2/costs/index'),('v2-page-config','v2/config/index'),
-                        ('v2-page-releases','v2/releases/index'),('v2-page-evaluation','v2/evaluation/index'),
-                        ('v2-page-replay','v2/replay/index'),('v2-page-integrity','v2/integrity/index'),
-                        ('v2-page-market-detail','v2/markets/detail'),
-                        ('v2-page-component-detail','v2/components/detail'),
-                        ('v2-page-episode-detail','v2/episodes/detail'),
-                        ('v2-page-decision-detail','v2/decisions/detail'),
-                        ('v2-page-ai-detail','v2/ai-invocations/detail'),
-                        ('v2-page-artifacts','v2/artifacts/detail')
-                    ) AS t(slug, template_path) WHERE t.slug = m.slug)
-                    AND m.perms IN ({_ALL_PERMS}))
+           AND NOT ({_EXACT_PAGE_MATCHES})
     ) THEN
         RAISE EXCEPTION 'v2_wp07b_menu_slug_conflict' USING ERRCODE='55000';
     END IF;
