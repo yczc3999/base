@@ -127,10 +127,73 @@ def build_dispatch(ctx: SupervisorContext) -> TradingEventDispatch:
     )
 
 
-def default_specs() -> list[RuntimeSpec]:
-    """默认注册的全部常驻 runtime（当前先完整装配 outbox 三件套）。
+def _build_universe_ingestor(ctx: SupervisorContext, config_release_id: int):
+    """装配 UniverseIngestor（Stage 0 感知）。gamma 走公网 REST，无需凭证。"""
+    from app.logics.trading.universe import UniverseLogic
+    from app.outbox.repository import OutboxRepository
+    from app.repositories.trading.market import MarketRepository
+    from app.repositories.trading.market_stream import MarketStreamRepository
+    from app.services.polymarket import PolymarketService
+    from app.db.uow import UnitOfWork
+    from runtimes.trading.market_ingest import UniverseIngestor
 
-    其余 runtime（market_ingest/cognition/execution/evaluation/replay/reconciliation）
-    的重型 provider/vault 依赖在后续 checkpoint 装配；此处先把传输层（outbox）常驻化。
+    market_repo = MarketRepository()
+    stream_repo = MarketStreamRepository()
+    service = PolymarketService()  # 公网 Gamma，无需 key
+    session_factory = ctx.session_factory_for("market")
+
+    def uow_factory():
+        return UnitOfWork(session_factory)
+
+    return UniverseIngestor(
+        gamma=service.gamma(),
+        artifacts=ctx.artifacts,
+        uow_factory=uow_factory,
+        market_repo=market_repo,
+        stream_repo=stream_repo,
+        universe=UniverseLogic(market_repo),
+        outbox_repo=OutboxRepository(),
+        config_release_id=config_release_id,
+    )
+
+
+def _pipeline_spec() -> RuntimeSpec:
+    """pipeline driver：sensing + screening（G0/R0）。AI 段默认门控。"""
+    from app.config import settings
+    from runtimes.trading.pipeline import PipelineDriver, PipelinePolicy
+
+    def build(ctx: SupervisorContext):
+        policy = PipelinePolicy(
+            ai_enabled=getattr(settings, "PM_V2_PIPELINE_AI_ENABLED", False),
+            screen_enabled=True,
+            sense_enabled=True,
+        )
+        from runtimes.trading.seed import ensure_pipeline_seed
+
+        # 懒装配：种子 + ingestor 在 driver 首次 run 时建立（build 不在 async 上下文）。
+        class _LazyPipeline:
+            async def run(self, stop_event):
+                from app.db.uow import UnitOfWork
+                async with UnitOfWork(ctx.session_factory_for("market")) as uow:
+                    seed = await ensure_pipeline_seed(uow.session)
+                ingestor = _build_universe_ingestor(ctx, seed.release_id)
+                driver = PipelineDriver(
+                    sessions_factory=ctx.session_factory_for,
+                    universe_ingestor=ingestor,
+                    cognition_runtime=None,  # AI 段后续接（ai_enabled 门控）
+                    policy=policy,
+                )
+                await driver.run(stop_event)
+
+        return _LazyPipeline().run
+
+    return RuntimeSpec("pipeline", "market", build)
+
+
+def default_specs() -> list[RuntimeSpec]:
+    """默认注册的全部常驻 runtime：outbox 传输三件套 + pipeline 驱动器（感知+筛选）。
+
+    cognition/execution/evaluation/reconciliation/replay 的 AI/vault 依赖在 pipeline
+    ai_enabled 放行后接入（见 pipeline.py Stage 2+）。
     """
-    return [*_outbox_specs()]
+    return [*_outbox_specs(), _pipeline_spec()]

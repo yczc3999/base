@@ -1,0 +1,246 @@
+"""Trading pipeline driver（WP-07C Checkpoint B）。
+
+常驻驱动器：按 §1.1 状态机把 sensing→screening→opportunity→episode→cognition→
+decision→shadow execution 串起来。**认知/决策链由本驱动器主动推进（状态机表轮询），
+不经 outbox 触发**（outbox 只承载事后事实通知）。
+
+阶段（每阶段一个 UoW、append-only、fail closed；任一阶段异常不中断其他阶段）：
+- Stage 0 ``_sense``：``UniverseIngestor.run_once`` 拉取 universe frame（market pool）。
+- Stage 1 ``_screen``：对 confirmed membership 跑 G0/R0；R0=select 建 parent
+  ``decision_opportunity``。
+- Stage 2 ``_advance_opportunities``：OPEN opportunity → G1/G2 → G2 pass 建 episode。
+  G1/G2 的 contract/component 解析是 AI 产出，由 ``ai_enabled`` 门控。
+- Stage 3 ``_advance_episodes``：ROUTED episode → CognitionRuntime G4→G5A→G5B→G6（AI）。
+- Stage 4 ``_advance_decisions``：G6 commit 后 → reveal → G7A/G7B → shadow execution。
+
+verifier 已移除（产品决议：不接入 Gemini，证据链不强制第二核验）。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any, Callable
+
+from sqlalchemy import text
+
+from app.db.uow import UnitOfWork
+from app.logics.trading.screening import ScreeningLogic
+from app.orchestrator.trading_state_machine import TradingStateMachine
+from app.repositories.trading.cohort import CohortRepository
+from app.repositories.trading.workflow import WorkflowRepository
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PipelinePolicy:
+    """驱动节奏与 AI 门控。"""
+
+    interval_s: float = 30.0
+    sense_enabled: bool = True
+    screen_enabled: bool = True
+    ai_enabled: bool = False           # G1/G2/G4-G7（默认关，不烧钱）
+    screen_batch: int = 50
+
+
+class PipelineDriver:
+    """常驻 pipeline 驱动器。依赖注入，不持有全局状态。"""
+
+    def __init__(
+        self,
+        *,
+        sessions_factory: Callable[[str], Any],
+        universe_ingestor: Any | None = None,
+        cognition_runtime: Any | None = None,
+        policy: PipelinePolicy | None = None,
+    ) -> None:
+        self._sessions = sessions_factory
+        self._ingestor = universe_ingestor
+        self._cognition = cognition_runtime
+        self._policy = policy or PipelinePolicy()
+        self._cohort_repo = CohortRepository()
+        self._workflow_repo = WorkflowRepository()
+        self._screening = ScreeningLogic(self._cohort_repo, self._workflow_repo)
+        self._state = TradingStateMachine(self._workflow_repo)
+
+    async def run(self, stop_event: asyncio.Event) -> None:
+        while not stop_event.is_set():
+            await self.run_once()
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=self._policy.interval_s)
+            except asyncio.TimeoutError:
+                pass
+
+    async def run_once(self) -> dict[str, Any]:
+        summary: dict[str, Any] = {}
+        if self._policy.sense_enabled:
+            summary["sense"] = await self._safe(self._sense)
+        if self._policy.screen_enabled:
+            summary["screen"] = await self._safe(self._screen)
+        if self._policy.ai_enabled:
+            summary["opportunities"] = await self._safe(self._advance_opportunities)
+            summary["episodes"] = await self._safe(self._advance_episodes)
+            summary["decisions"] = await self._safe(self._advance_decisions)
+        return summary
+
+    async def _safe(self, stage: Callable[[], Any]) -> dict[str, Any]:
+        name = stage.__name__.lstrip("_")
+        try:
+            return await stage()
+        except Exception as exc:  # noqa: BLE001 - 单阶段 fail closed，循环不中断
+            logger.exception("pipeline_stage_failed stage=%s", name)
+            return {"stage": name, "ok": False, "reason": type(exc).__name__}
+
+    # ---- Stage 0：感知 ----
+
+    async def _sense(self) -> dict[str, Any]:
+        if self._ingestor is None:
+            return {"stage": "sense", "ok": False, "reason": "ingestor_not_configured"}
+        result = await self._ingestor.run_once()
+        return {
+            "stage": "sense", "ok": True,
+            "frame_id": getattr(result, "frame_id", None),
+            "status": getattr(result, "status", None),
+        }
+
+    # ---- Stage 1：筛选（G0/R0 → parent opportunity）----
+
+    async def _open_cohorts(self, session) -> list[int]:
+        rows = (
+            await session.execute(
+                text("SELECT id FROM trading.evaluation_cohorts WHERE status='OPEN' ORDER BY id")
+            )
+        ).all()
+        return [r[0] for r in rows]
+
+    async def _unscreened_markets(self, session, cohort_id: int) -> list[int]:
+        """cohort 内已确认 membership 但尚无 screening_episode 的 market。"""
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT um.market_id FROM trading.universe_memberships um "
+                    "WHERE um.cohort_id=:c AND um.confirmed_frame_id IS NOT NULL "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM trading.screening_episodes se "
+                    "  WHERE se.cohort_id=um.cohort_id AND se.market_id=um.market_id"
+                    ") ORDER BY um.market_id LIMIT :lim"
+                ),
+                {"c": cohort_id, "lim": self._policy.screen_batch},
+            )
+        ).all()
+        return [r[0] for r in rows]
+
+    async def _market_quote(self, session, market_id: int) -> dict[str, Any] | None:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id, best_bid, best_ask, liquidity, rules, end_at "
+                    "FROM trading.pm_markets WHERE id=:m"
+                ),
+                {"m": market_id},
+            )
+        ).mappings().first()
+        return dict(row) if row else None
+
+    async def _screen(self) -> dict[str, Any]:
+        processed = selected = 0
+        async with UnitOfWork(self._sessions("market")) as uow:
+            cohorts = await self._open_cohorts(uow.session)
+            for cohort_id in cohorts:
+                g0 = await self._screening.run_g0(uow, cohort_id=cohort_id)
+                if not g0.ok:
+                    continue
+                for market_id in await self._unscreened_markets(uow.session, cohort_id):
+                    quote = await self._market_quote(uow.session, market_id)
+                    if quote is None:
+                        continue
+                    r0 = await self._screen_market(uow, cohort_id, market_id, quote, g0)
+                    processed += 1
+                    if r0 is not None and r0.result == "SELECT":
+                        selected += 1
+                        await self._open_opportunity(uow, cohort_id, market_id, r0)
+        return {"stage": "screen", "ok": True, "processed": processed, "selected": selected}
+
+    async def _screen_market(self, uow, cohort_id, market_id, quote, g0):
+        """单市场 R0；规则完备度由 rules 是否非空近似（廉价筛选）。"""
+        from app.schemas.trading.workflow import (
+            R0Input, R0PolicyInput, RejectAuditPolicyInput,
+        )
+        policy = self._r0_policy
+        audit = self._audit_policy
+        r0_input = R0Input(
+            market_metadata={"market_id": market_id},
+            end_at=quote.get("end_at"),
+            rule_completeness=Decimal("1") if quote.get("rules") else Decimal("0"),
+            best_bid=quote.get("best_bid"),
+            best_ask=quote.get("best_ask"),
+            minimum_deployable_capacity=quote.get("liquidity"),
+        )
+        episode_no = await self._next_episode_no(uow, cohort_id, market_id)
+        return await self._screening.run_r0(
+            uow, cohort_id=cohort_id, market_id=market_id, episode_no=episode_no,
+            r0_input=r0_input, g0=g0, r0_policy=policy, audit_policy=audit,
+        )
+
+    async def _next_episode_no(self, uow, cohort_id, market_id) -> int:
+        row = (
+            await uow.session.execute(
+                text(
+                    "SELECT COALESCE(MAX(episode_no),0)+1 FROM trading.screening_episodes "
+                    "WHERE cohort_id=:c AND market_id=:m"
+                ),
+                {"c": cohort_id, "m": market_id},
+            )
+        ).scalar_one()
+        return int(row)
+
+    async def _open_opportunity(self, uow, cohort_id, market_id, r0) -> None:
+        """R0=select → 建 parent decision opportunity（DECISION 链）。"""
+        cohort = await self._cohort_repo.get_cohort(uow.session, cohort_id)
+        if cohort is None or r0.episode_id is None:
+            return
+        from datetime import datetime, timezone
+        await self._state.create_parent_opportunity(
+            uow, cohort_id=cohort_id, chain_type="DECISION",
+            objective_contract_id=cohort["objective_contract_id"],
+            strategy_version_id=cohort["strategy_version_id"],
+            source_screening_episode_id=r0.episode_id,
+            triggered_at=datetime.now(timezone.utc),
+            market_ids=[market_id],
+        )
+
+    # ---- Stage 2+：AI 推理段（默认关）----
+
+    async def _advance_opportunities(self) -> dict[str, Any]:
+        return {"stage": "opportunities", "ok": False, "reason": "ai_gated"}
+
+    async def _advance_episodes(self) -> dict[str, Any]:
+        return {"stage": "episodes", "ok": False, "reason": "ai_gated"}
+
+    async def _advance_decisions(self) -> dict[str, Any]:
+        return {"stage": "decisions", "ok": False, "reason": "ai_gated"}
+
+    # ---- 冻结策略（R0/audit 阈值；生产由 policy_freeze 读，此处给保守默认）----
+
+    @property
+    def _r0_policy(self):
+        from app.schemas.trading.workflow import R0PolicyInput
+        return R0PolicyInput(
+            policy_version=1,
+            minimum_rule_completeness=Decimal("0.5"),
+            maximum_research_cost=Decimal("100"),
+            require_two_sided_quote=False,
+            defer_recheck_condition="recheck",
+            reject_recheck_condition="reject",
+        )
+
+    @property
+    def _audit_policy(self):
+        from app.schemas.trading.workflow import RejectAuditPolicyInput
+        return RejectAuditPolicyInput(
+            policy_version=1, algorithm_version="v1", salt="pipeline",
+            reject_probability=Decimal("0"), defer_probability=Decimal("0"),
+        )

@@ -244,6 +244,10 @@ class Settings(BaseSettings):
     # 执行 egress 模式：shadow（fake transport，WP-05 唯一合法值）；真实 provider 激活阻塞。
     PM_V2_EXECUTION_EGRESS_MODE: str = "shadow"
 
+    # ---- V2 pipeline driver（WP-07C Checkpoint B）----
+    # AI 推理段（G1/G2/G4-G7）门控：默认关（不烧 AI 计费）；放行后接生产模型网关。
+    PM_V2_PIPELINE_AI_ENABLED: bool = False
+
     # ---- V2 Provider endpoint / timeout（WP-05；基础设施 typed 配置）----
     # 真实 provider 基址留空（fake-only）；激活前必须由部署显式注入。
     PM_V2_PROVIDER_BASE_URL: str = ""
