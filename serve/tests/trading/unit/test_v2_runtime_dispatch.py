@@ -1,7 +1,7 @@
 """WP-07C：outbox → trading handler 分发适配的单元测试（无 DB）。
 
-验证 :class:`runtimes.trading._dispatch.TradingEventDispatch` 的路由、
-事件重建与 fail-closed 边界；handler 用 fake 替身，不触 DB。
+验证修正后的语义：事实通知类 topic 默认安全确认；显式 kind 路由命中才调 handler；
+未注册 kind fail closed。
 """
 
 from __future__ import annotations
@@ -15,12 +15,8 @@ from app.outbox.contracts import create_envelope
 from runtimes.trading._dispatch import (
     ALL_TOPICS,
     TOPIC_BLIND_COMMIT,
-    TOPIC_CHAIN_SETTLEMENT_FINALIZED,
     TOPIC_MARKET_BOOK,
-    TOPIC_MARKET_CONFIG_REFRESH,
-    TOPIC_SHADOW_EXECUTION_TERMINALIZED,
     TOPIC_UNIVERSE_FRAME,
-    TOPIC_UNIVERSE_REFRESH,
     TradingEventDispatch,
 )
 
@@ -32,14 +28,12 @@ class _Result:
 
 
 class _RecordingHandler:
-    """记录被调用的 (event.kind, kwargs)，按预设返回 ok。"""
-
     def __init__(self, ok: bool = True):
         self.ok = ok
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[Any, dict[str, Any]]] = []
 
     async def handle(self, uow, event, **kwargs):
-        self.calls.append((getattr(event, "kind", None), kwargs))
+        self.calls.append((event, kwargs))
         return _Result(self.ok)
 
 
@@ -49,7 +43,7 @@ def _env(topic: str, payload: dict):
         schema_version=1,
         aggregate_type="t",
         aggregate_id="a-1",
-        idempotency_key=f"idem-{topic}",
+        idempotency_key=f"idem-{topic}-{payload.get('kind')}",
         payload=payload,
     )
 
@@ -64,76 +58,45 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def test_all_topics_cover_routing():
-    """每个订阅 topic 都必须能路由到一个 handler（不丢消息）。"""
+def test_fact_notifications_safely_acknowledged_without_handler():
+    """全部事实通知 topic：无 kind → 安全确认，且不调任何 handler。"""
     dispatch, handlers = _dispatch()
     for topic in ALL_TOPICS:
-        env = _env(topic, {"kind": "x", "episode_id": 1})
+        env = _env(topic, {"frame_id": 1, "episode_key": "e"})
         assert _run(dispatch.dispatch(env, uow=None)) is True, topic
-        assert any(h.calls for h in handlers.values()), topic
+    assert not any(h.calls for h in handlers.values()), "handler 不应被事实通知触发"
 
 
-def test_blind_commit_routes_to_decision_create():
+def test_registered_kind_invokes_handler():
     dispatch, handlers = _dispatch()
-    env = _env(TOPIC_BLIND_COMMIT, {"episode_id": 7})
+    dispatch.register_kind(
+        "do_thing",
+        handlers["decision"],
+        lambda payload: ("evt", payload),  # 简单事件工厂
+    )
+    env = _env(TOPIC_BLIND_COMMIT, {"kind": "do_thing", "x": 1})
     assert _run(dispatch.dispatch(env, uow=None)) is True
-    kind, kwargs = handlers["decision"].calls[0]
-    assert kind == "create"
-    assert kwargs.get("version_manifest_id") is None  # release_manifest_id 缺省 None
+    assert handlers["decision"].calls, "已注册 kind 应调用对应 handler"
 
 
-def test_market_book_routes_to_decision_market_relative():
-    dispatch, handlers = _dispatch()
-    env = _env(TOPIC_MARKET_BOOK, {"asset_id": "t1"})
-    assert _run(dispatch.dispatch(env, uow=None)) is True
-    assert handlers["decision"].calls[0][0] == "market_relative"
-
-
-def test_universe_frame_routes_to_evaluation():
-    dispatch, handlers = _dispatch()
-    for topic in (TOPIC_UNIVERSE_FRAME, TOPIC_UNIVERSE_REFRESH):
-        env = _env(topic, {"frame_id": 1})
-        assert _run(dispatch.dispatch(env, uow=None)) is True
-    assert handlers["evaluation"].calls[0][0] == "score_observation"
-
-
-def test_chain_settlement_routes_to_settlement():
-    dispatch, handlers = _dispatch()
-    env = _env(TOPIC_CHAIN_SETTLEMENT_FINALIZED, {"operation_key": "k"})
-    assert _run(dispatch.dispatch(env, uow=None)) is True
-    assert handlers["settlement"].calls[0][0] == "label_revision"
-
-
-def test_shadow_execution_routes_to_execution():
-    dispatch, handlers = _dispatch()
-    env = _env(TOPIC_SHADOW_EXECUTION_TERMINALIZED, {"execution_id": 3})
-    assert _run(dispatch.dispatch(env, uow=None)) is True
-    assert handlers["execution"].calls[0][0] == "shadow_fill"
-
-
-def test_market_config_refresh_routes_to_decision():
-    dispatch, handlers = _dispatch()
-    env = _env(TOPIC_MARKET_CONFIG_REFRESH, {"asset_id": "a"})
-    assert _run(dispatch.dispatch(env, uow=None)) is True
-    assert handlers["decision"].calls[0][0] == "market_relative"
-
-
-def test_unknown_topic_fail_closed():
+def test_unregistered_kind_fail_closed():
+    """显式 kind 但未注册路由 → fail closed（返回 False）。"""
     dispatch, _ = _dispatch()
-    env = _env("unknown.topic.v9", {"kind": "x"})
+    env = _env(TOPIC_MARKET_BOOK, {"kind": "never_registered"})
     assert _run(dispatch.dispatch(env, uow=None)) is False
 
 
 def test_handler_not_ok_propagates_false():
-    dispatch, _ = _dispatch(ok=False)
-    env = _env(TOPIC_BLIND_COMMIT, {"episode_id": 1})
+    dispatch, handlers = _dispatch(ok=False)
+    dispatch.register_kind("k", handlers["evaluation"], lambda p: ("e", p))
+    env = _env(TOPIC_UNIVERSE_FRAME, {"kind": "k"})
     assert _run(dispatch.dispatch(env, uow=None)) is False
 
 
-def test_handle_raises_on_not_ok_for_consumer():
-    """OutboxHandler.handle：dispatch 失败必须 raise（让 consumer 记 retry/dead）。"""
-    dispatch, _ = _dispatch(ok=False)
-    env = _env(TOPIC_BLIND_COMMIT, {"episode_id": 1})
+def test_handle_raises_on_failure_for_consumer():
+    dispatch, _ = _dispatch()
+    dispatch._KIND_ROUTES["bad"] = (_RecordingHandler(ok=False), lambda p: ("e", p))
+    env = _env(TOPIC_BLIND_COMMIT, {"kind": "bad"})
     try:
         _run(dispatch.handle(env, uow=None, fencing_token=0))
     except RuntimeError as exc:

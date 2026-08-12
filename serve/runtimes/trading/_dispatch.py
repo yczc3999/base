@@ -1,23 +1,25 @@
 """Outbox → trading handler 分发适配（WP-07C）。
 
-把 outbox 传输层的 ``OutboxEnvelope`` 翻译为 trading 域事件并调用对应
-``<X>Handler.handle(uow, event, …)``；把 ``HandlerResult.ok`` 映射为消费成功/失败，
-由 :class:`app.outbox.consumer.OutboxConsumer` 据此 complete / retry / dead。
+架构边界（修正后）：
+- **认知/决策/执行链由 pipeline driver 主动推进**（`runtimes/trading/pipeline.py`，
+  状态机表轮询），**不经 outbox 触发**。outbox 只承载**事后事实通知**——某 gate 已
+  封账/某帧已完成/某 fill 已终态——供下游投影/审计/告警消费。
+- 现有生产 topic（blind_commit / chain.settlement.finalized / shadow.execution.
+  terminalized / universe.frame / universe.refresh / market.book / market.config.
+  refresh）的 payload 是**事实摘要**（frame_id/episode_key/operation_key/…），
+  **不是** handler 的输入结构（DecisionEvent/EvaluationEvent 等需要 episode_id /
+  trade_decision_id / 强类型 input）。把这些摘要认真塞进 handler 会因字段不匹配
+  dead-letter——这是 Checkpoint A 初版的错误，本版纠正。
+- 因此本适配层对**事实通知类 topic 默认安全确认**（返回 ok=True，consumer 标记
+  complete），不驱业务。真正消费事实做投影/审计的 handler 用显式 ``kind`` 注册进
+  ``_KIND_ROUTES``，按需扩展——未知 kind / 缺字段 fail closed。
 
-设计边界（v2-implementation-contract §8 / ARCHITECTURE §3.1）：
-- Handler 只解析 event、调用一个 Logic/UoW、返回 completion；本适配层也只负责
-  envelope→event 的结构翻译与路由，**不写业务 SQL、不重算 Gate/PnL**。
-- outbox topic 是**事后事实通知**（blind_commit / chain.settlement / shadow.execution /
-  universe.frame / market.book …）。消费端把对应事实转发给域 handler，让域按
-  ``kind`` 决定是否推进 gate。未知 topic 或缺关键字段 → fail closed（返回 False），
-  由 consumer 记 retry/dead，绝不静默丢弃。
-- 事件 ``kind`` 与 payload 取自 envelope ``payload``；``payload["kind"]`` 约定由生产侧
-  写入（forecast/execution/settlement/market_ingest 的 create_envelope payload）。
+Handler 固定为 5 个域 handler 的工厂注入；只在显式 kind 路由命中时才调用。
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from app.db.uow import UnitOfWork
 from app.handlers.trading.cognition import CognitionEvent, CognitionHandler
@@ -27,7 +29,7 @@ from app.handlers.trading.execution import ExecutionEvent, ExecutionHandler
 from app.handlers.trading.settlement import SettlementEvent, SettlementHandler
 from app.outbox.contracts import OutboxEnvelope
 
-# 生产侧 topic（与 create_envelope 调用点对齐；改生产 topic 必须同步此表）。
+# 生产侧事实通知 topic（与 create_envelope 调用点对齐）。
 TOPIC_BLIND_COMMIT = "trading.blind_commit.v1"
 TOPIC_CHAIN_SETTLEMENT_FINALIZED = "chain.settlement.finalized"
 TOPIC_SHADOW_EXECUTION_TERMINALIZED = "shadow.execution.terminalized"
@@ -36,7 +38,7 @@ TOPIC_UNIVERSE_REFRESH = "universe.refresh"
 TOPIC_MARKET_BOOK = "market.book"
 TOPIC_MARKET_CONFIG_REFRESH = "market.config.refresh"
 
-# 消费端订阅的全部 outbox topic（7 个；未列出的 topic 不会被 consumer 订阅）。
+# 消费端订阅的全部 outbox topic（未列出的 topic 不会被 consumer 订阅）。
 ALL_TOPICS: tuple[str, ...] = (
     TOPIC_BLIND_COMMIT,
     TOPIC_CHAIN_SETTLEMENT_FINALIZED,
@@ -49,10 +51,11 @@ ALL_TOPICS: tuple[str, ...] = (
 
 
 class TradingEventDispatch:
-    """把 outbox envelope 分发到固定 trading handler 集合。
+    """把 outbox envelope 路由到 trading handler。
 
-    持有 5 个域 handler 的工厂注入；每次消费用 consumer 传入的 UoW 调 handler，
-    让业务写与 job completion 共用同一事务（OutboxConsumer 正确性边界）。
+    默认对事实通知安全确认；仅当 ``payload["kind"]`` 显式命中 ``_KIND_ROUTES``
+    且字段齐备时才调对应 handler。这样 outbox 不会因事实摘要 payload 与 handler
+    输入结构不匹配而 dead-letter，业务推进留给 pipeline driver。
     """
 
     def __init__(
@@ -69,6 +72,9 @@ class TradingEventDispatch:
         self._evaluation = evaluation
         self._execution = execution
         self._settlement = settlement
+        # 显式 kind → (handler, event 构造器)。只在事实需要驱动 handler 时登记；
+        # kind 由生产侧写入 payload["kind"]。缺省空表 = 全部安全确认。
+        self._KIND_ROUTES: dict[str, tuple[Any, Any]] = {}
 
     # ---- OutboxHandler 协议 ----
 
@@ -80,61 +86,28 @@ class TradingEventDispatch:
     ) -> None:
         result = await self.dispatch(envelope, uow)
         if result is not True:
-            # fail closed：让 consumer 记 retry/dead；reason 由日志侧探查，不透传敏感。
             raise RuntimeError("trading_dispatch_failed")
 
     async def dispatch(self, envelope: OutboxEnvelope, uow: UnitOfWork) -> bool:
-        """路由并按 topic 重建域事件；返回 True 表示 handler 接受（ok=True）。"""
+        """路由 envelope；默认安全确认（True），显式 kind 命中才调 handler。"""
         payload = envelope.payload or {}
-        topic = envelope.topic
-        handler, event = self._route(topic, payload)
-        if handler is None:
+        kind = payload.get("kind")
+        if kind is None:
+            return True  # 事实通知：安全确认，不驱业务
+        route = self._KIND_ROUTES.get(kind)
+        if route is None:
+            # 显式 kind 但未注册 → fail closed（不静默吞掉一个本该驱动的事件）。
             return False
-        # 部分 handler 需要 version_manifest_id / policy_hash；release_manifest_id 即版本清单。
+        handler, event_factory = route
+        event = event_factory(payload)
         return await self._call(handler, event, uow, envelope)
 
-    # ---- 路由：topic → (handler, event) ----
-
-    def _route(
-        self, topic: str, payload: dict[str, Any]
-    ) -> tuple[Any | None, Any | None]:
-        kind = payload.get("kind")
-        if topic == TOPIC_BLIND_COMMIT:
-            # 盲提交已封账 → 触发 reveal/decision 链（worker 7）。episode 由 payload 提供。
-            if kind is None:
-                kind = "create"
-            return self._decision, DecisionEvent(
-                kind=kind,
-                episode_id=payload.get("episode_id"),
-                payload=payload,
-            )
-        if topic == TOPIC_CHAIN_SETTLEMENT_FINALIZED:
-            return self._settlement, SettlementEvent(
-                kind=kind or "label_revision",
-                payload=payload,
-            )
-        if topic == TOPIC_SHADOW_EXECUTION_TERMINALIZED:
-            return self._execution, ExecutionEvent(
-                kind=kind or "shadow_fill",
-                payload=payload,
-            )
-        if topic in (TOPIC_UNIVERSE_FRAME, TOPIC_UNIVERSE_REFRESH):
-            # 行情/名册事实 → 评价/学习链（worker 8）按 kind 决定 enroll/score。
-            return self._evaluation, EvaluationEvent(
-                kind=kind or "score_observation",
-                payload=payload,
-            )
-        if topic in (TOPIC_MARKET_BOOK, TOPIC_MARKET_CONFIG_REFRESH):
-            # 实时 quote/tick → 决策链（worker 7 的 quote trigger，不新增 cognition episode）。
-            return self._decision, DecisionEvent(
-                kind=kind or "market_relative",
-                payload=payload,
-            )
-        return None, None
+    def register_kind(self, kind: str, handler: Any, event_factory: Any) -> None:
+        """注册一个显式 kind 的路由（pipeline/投影侧按需扩展）。"""
+        self._KIND_ROUTES[kind] = (handler, event_factory)
 
     async def _call(self, handler: Any, event: Any, uow: UnitOfWork, env: OutboxEnvelope) -> bool:
         kwargs: dict[str, Any] = {}
-        # cognition/decision 支持版本与策略 hash；其余 handler 只收 uow+event。
         if isinstance(event, (CognitionEvent, DecisionEvent)):
             kwargs["version_manifest_id"] = env.release_manifest_id
             policy_hash = (env.payload or {}).get("policy_hash")
