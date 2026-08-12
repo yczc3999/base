@@ -199,23 +199,52 @@ class PipelineDriver:
         return dict(row) if row else None
 
     async def _screen(self) -> dict[str, Any]:
-        processed = selected = 0
-        async with UnitOfWork(self._sessions("market")) as uow:
-            cohorts = await self._open_cohorts(uow.session)
-            for cohort_id in cohorts:
-                g0 = await self._screening.run_g0(uow, cohort_id=cohort_id)
-                if not g0.ok:
+        """对每 cohort 跑 G0，再对每 market 独立事务跑 R0+opportunity。
+
+        G0 只读（校验冻结配置），可在一个只读 UoW 内为所有 cohort 求值；
+        每个 market 的 R0 写入（screening_episode + gate_decision + opportunity）
+        用**独立 UoW**——单个 market 失败只回滚它自己，不拖累同 cohort 其余 market。
+        """
+        processed = selected = failed = 0
+        async with UnitOfWork(self._sessions("market")) as read_uow:
+            cohorts = await self._open_cohorts(read_uow.session)
+            g0s = {
+                cohort_id: await self._screening.run_g0(read_uow, cohort_id=cohort_id)
+                for cohort_id in cohorts
+            }
+        for cohort_id, g0 in g0s.items():
+            if not g0.ok:
+                continue
+            async with UnitOfWork(self._sessions("market")) as list_uow:
+                market_ids = await self._unscreened_markets(list_uow.session, cohort_id)
+                quotes = {
+                    market_id: await self._market_quote(list_uow.session, market_id)
+                    for market_id in market_ids
+                }
+            for market_id, quote in quotes.items():
+                if quote is None:
                     continue
-                for market_id in await self._unscreened_markets(uow.session, cohort_id):
-                    quote = await self._market_quote(uow.session, market_id)
-                    if quote is None:
-                        continue
-                    r0 = await self._screen_market(uow, cohort_id, market_id, quote, g0)
-                    processed += 1
-                    if r0 is not None and r0.result == "SELECT":
-                        selected += 1
-                        await self._open_opportunity(uow, cohort_id, market_id, r0)
-        return {"stage": "screen", "ok": True, "processed": processed, "selected": selected}
+                try:
+                    async with UnitOfWork(self._sessions("market")) as market_uow:
+                        r0 = await self._screen_market(
+                            market_uow, cohort_id, market_id, quote, g0
+                        )
+                        processed += 1
+                        if r0 is not None and r0.result == "SELECT":
+                            selected += 1
+                            await self._open_opportunity(
+                                market_uow, cohort_id, market_id, r0
+                            )
+                except Exception:  # noqa: BLE001 - 单 market 失败隔离，不拖累整批
+                    logger.exception(
+                        "pipeline_screen_market_failed cohort=%s market=%s",
+                        cohort_id, market_id,
+                    )
+                    failed += 1
+        return {
+            "stage": "screen", "ok": True,
+            "processed": processed, "selected": selected, "failed": failed,
+        }
 
     async def _screen_market(self, uow, cohort_id, market_id, quote, g0):
         """单市场 R0。policy 用单一事实源（runtimes.trading.policies），与 seed 冻结 hash 一致。"""
