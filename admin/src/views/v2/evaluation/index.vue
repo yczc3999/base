@@ -50,6 +50,11 @@ function next() {
       <el-tab-pane label="Metrics" name="metrics" />
       <el-tab-pane label="Promotions" name="promotions" />
     </el-tabs>
+    <div class="filterbar">
+      <el-input v-if="active === 'labels'" v-model="lb_f.state" clearable placeholder="label state" />
+      <el-input v-else-if="active === 'metrics'" v-model="mt_f.status" clearable placeholder="metric status" />
+      <el-input v-else v-model="pm_f.status" clearable placeholder="promotion status" />
+    </div>
     <PageState :loading="loading" :error="err" :denied="denied" :empty="!loading && !err && !rows.length" @retry="retry">
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column label="key" min-width="180"><template #default="{ row }"><span class="mono">{{ row.label_key || row.run_key || row.promotion_key }}</span></template></el-table-column>
@@ -68,6 +73,7 @@ function next() {
 <style scoped>
 .v2-tabs :deep(.el-tabs__item){color:var(--v2-ink-muted)}
 .v2-tabs :deep(.el-tabs__item.is-active){color:var(--v2-primary)}
+.filterbar{display:flex;margin-bottom:var(--v2-space-4)}.filterbar .el-input{width:180px}
 .pager{display:flex;justify-content:space-between;align-items:center;margin-top:var(--v2-space-3)}
 .link-btn{background:none;border:none;color:var(--v2-primary);text-decoration:underline;cursor:pointer;height:var(--v2-control-h)}
 .link-btn:disabled{color:var(--v2-ink-muted);cursor:not-allowed;text-decoration:none}

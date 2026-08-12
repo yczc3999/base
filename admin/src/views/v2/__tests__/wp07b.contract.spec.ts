@@ -77,6 +77,19 @@ describe('WP-07B keyset and state wiring', () => {
     expect(detail).toContain('enabled: computed(() => !missingOccurredAt.value)')
   })
 
+  it('wires the supported business filters and all Integrity tabs', () => {
+    expect(source('src/views/v2/execution/index.vue')).toContain('v-model="it_f.status"')
+    expect(source('src/views/v2/evaluation/index.vue')).toContain('v-model="lb_f.state"')
+    expect(source('src/views/v2/costs/index.vue')).toContain('v-model="filters.cost_kind"')
+    expect(source('src/views/v2/config/index.vue')).toContain('v-model="filters.status"')
+    expect(source('src/views/v2/releases/index.vue')).toContain('v-model="filters.status"')
+    const integrity = source('src/views/v2/integrity/index.vue')
+    expect(integrity).toContain('label="Alerts" name="alerts"')
+    expect(integrity).toContain('label="Workflows" name="workflows"')
+    expect(integrity).toContain('label="External Calls" name="external-calls"')
+    expect(integrity).toContain('useIntegrityWorkflow')
+  })
+
   it('does not label an episode id as a decision id', () => {
     const episode = source('src/views/v2/episodes/detail.vue')
     expect(episode).not.toMatch(/k:\s*'decision'\s*,\s*v:\s*ep\.id/)

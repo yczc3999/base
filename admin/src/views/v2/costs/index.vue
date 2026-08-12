@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
 import { PageState } from '../_shared'
 import { useCostsPage } from '@/queries/v2/costs'
@@ -7,13 +7,16 @@ import { useCostsPage } from '@/queries/v2/costs'
 const cursor = ref<string | null>(null)
 const asOf = ref<string | null>(null)
 const limit = ref(50)
-const { data, isLoading, isError, displayError, denied, refetch } = useCostsPage({ cursor: cursor, asOf: asOf, limit: limit })
+const filters = ref<Record<string, string>>({})
+const { data, isLoading, isError, displayError, denied, refetch } = useCostsPage({ filters, cursor, asOf, limit })
+watch(filters, () => { cursor.value = null; asOf.value = null }, { deep: true })
 const rows = computed(() => data.value?.items ?? [])
 const hasMore = computed(() => data.value?.has_more ?? false)
 function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
 </script>
 <template>
   <PageShell class="v2-page" title="Costs" :loading="isLoading" sub-title="成本 · 按类别">
+    <div class="filterbar"><el-input v-model="filters.cost_kind" clearable placeholder="cost kind" /></div>
     <PageState
 :loading="isLoading"
 :error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
@@ -33,6 +36,7 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
 </template>
 <style scoped>
 .pager{display:flex;justify-content:space-between;align-items:center;margin-top:var(--v2-space-3)}
+.filterbar{display:flex;margin-bottom:var(--v2-space-4)}.filterbar .el-input{width:180px}
 .link-btn{background:none;border:none;color:var(--v2-primary);text-decoration:underline;cursor:pointer;height:var(--v2-control-h)}
 .link-btn:disabled{color:var(--v2-ink-muted);cursor:not-allowed;text-decoration:none}
 .muted{color:var(--v2-ink-muted);font-size:12.5px}
