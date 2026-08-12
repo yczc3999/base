@@ -89,7 +89,7 @@ STABILITY_SNAPSHOT_PATH = (
     SERVE_DIR / "tests/trading/fixtures/p5_execution/stability_snapshot_v1.json"
 )
 # WP-05 完成后 head=b1000052；P-stability 在完整 head 上验证（与 ORM metadata 对齐）。
-HEAD = "b1000070"
+HEAD = "b1000071"
 
 # 固定时基：落在 20260811 partition，用于所有属于业务身份的事件时间。
 # opportunity/episode 的 opportunity_key 含 triggered_at，故该锚必须固定以保证

@@ -31,6 +31,7 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 V31 = "b1000051"
 V52 = "b1000052"
 V70 = "b1000070"
+V71 = "b1000071"
 
 
 def _run(cmd, revision, db_url):
