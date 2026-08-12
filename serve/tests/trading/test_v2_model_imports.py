@@ -254,6 +254,11 @@ EXPECTED = [
     "workflow_events",
     "external_call_attempts",
     "alert_events",
+    # WP-06 b1000052 chain settlement
+    "contract_registry",
+    "chain_operations",
+    "chain_operation_state_history",
+    "settlement_observations",
 ]
 
 

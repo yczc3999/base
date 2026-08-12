@@ -26,9 +26,10 @@ from app.repositories.trading.ledger import LedgerRepository
 
 SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-# WP-05 后 head=b1000051；本测试用 live ExecutionRepository（executions 含 account_id 列），
+# WP-05 后 head=b1000052；本测试用 live ExecutionRepository（executions 含 account_id 列），
 # 必须在 head schema 上跑，否则 UndefinedColumnError。
 V31 = "b1000051"
+V52 = "b1000052"
 
 
 def _run(cmd, revision, db_url):
@@ -46,7 +47,7 @@ def _run(cmd, revision, db_url):
 
 @pytest_asyncio.fixture
 async def ledger_env(temp_pg_db):
-    _run(command.upgrade, V31, temp_pg_db.url)
+    _run(command.upgrade, V52, temp_pg_db.url)
     admin = make_url(temp_pg_db.url)
     async_url = admin.set(drivername="postgresql+asyncpg").render_as_string(hide_password=False)
     engine = create_async_engine(async_url, pool_size=4, max_overflow=0)

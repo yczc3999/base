@@ -66,3 +66,159 @@ def apply_payout_lookup(ir: dict[str, Any], resolution_state: str) -> Decimal:
     if resolution_state not in ir:
         raise ValueError(f"payout_missing_state:{resolution_state}")
     return _to_decimal(ir[resolution_state], f"payout_{resolution_state}")
+
+
+# ======================================================================
+# WP-06 Checkpoint C —— CTF split/merge/redeem calldata 构建 + payout 一致性核验
+# calldata 为确定性 hex（Solidity ABI），与 p6 relayer golden 全等；caller 不可覆盖。
+# ======================================================================
+
+from eth_utils import keccak as _keccak
+
+
+def function_selector(signature: str) -> str:
+    """Solidity 函数选择器：keccak256(signature)[:4]。"""
+    return "0x" + _keccak(signature.encode()).hex()[:8]
+
+
+def _addr_arg(address: str) -> str:
+    """32-byte 左填充地址参数。"""
+    if not address.startswith("0x") or len(address) != 42:
+        raise ValueError(f"payout_address_invalid:{address!r}")
+    return address[2:].rjust(64, "0")
+
+
+def _uint_arg(value: int | str) -> str:
+    """32-byte uint 参数（非负十进制/十六进制）。"""
+    if isinstance(value, bool):
+        raise ValueError("payout_uint_bool_forbidden")
+    if isinstance(value, float):
+        raise ValueError("payout_uint_float_forbidden")
+    if isinstance(value, str):
+        value = int(value, 16) if value.startswith("0x") else int(value)
+    if value < 0:
+        raise ValueError("payout_uint_negative")
+    return format(int(value), "064x")
+
+
+def build_split_calldata(
+    *,
+    collateral_address: str,
+    condition_id: str,
+    parent_collection_id: str,
+    partition: list[str],
+    amount_base_units: int,
+    selector_override: str | None = None,
+) -> str:
+    """``splitPosition(address,bytes32,bytes32,uint256[],uint256)``。"""
+    selector = selector_override or function_selector(
+        "splitPosition(address,bytes32,bytes32,uint256[],uint256)"
+    )
+    if len(condition_id) != 66 or not condition_id.startswith("0x"):
+        raise ValueError("payout_condition_invalid")
+    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
+        raise ValueError("payout_parent_invalid")
+    if not partition:
+        raise ValueError("payout_partition_empty")
+    partition_args = "".join(_uint_arg(p) for p in partition)
+    return (
+        selector
+        + _addr_arg(collateral_address)
+        + condition_id[2:]
+        + parent_collection_id[2:]
+        + "0000000000000000000000000000000000000000000000000000000000000040"
+        + _uint_arg(len(partition))
+        + partition_args
+        + _uint_arg(amount_base_units)
+    )
+
+
+def build_merge_calldata(
+    *,
+    collateral_address: str,
+    condition_id: str,
+    parent_collection_id: str,
+    partition: list[str],
+    amount_base_units: int,
+    selector_override: str | None = None,
+) -> str:
+    """``mergePositions(address,bytes32,bytes32,uint256[],uint256)``。"""
+    selector = selector_override or function_selector(
+        "mergePositions(address,bytes32,bytes32,uint256[],uint256)"
+    )
+    if len(condition_id) != 66 or not condition_id.startswith("0x"):
+        raise ValueError("payout_condition_invalid")
+    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
+        raise ValueError("payout_parent_invalid")
+    if not partition:
+        raise ValueError("payout_partition_empty")
+    partition_args = "".join(_uint_arg(p) for p in partition)
+    return (
+        selector
+        + _addr_arg(collateral_address)
+        + condition_id[2:]
+        + parent_collection_id[2:]
+        + "0000000000000000000000000000000000000000000000000000000000000040"
+        + _uint_arg(len(partition))
+        + partition_args
+        + _uint_arg(amount_base_units)
+    )
+
+
+def build_redeem_calldata(
+    *,
+    collateral_address: str,
+    condition_id: str,
+    parent_collection_id: str,
+    partition: list[str],
+    selector_override: str | None = None,
+) -> str:
+    """``redeemPositions(address,bytes32,bytes32,uint256[])``（redeem 无 amount）。"""
+    selector = selector_override or function_selector(
+        "redeemPositions(address,bytes32,bytes32,uint256[])"
+    )
+    if len(condition_id) != 66 or not condition_id.startswith("0x"):
+        raise ValueError("payout_condition_invalid")
+    if len(parent_collection_id) != 66 or not parent_collection_id.startswith("0x"):
+        raise ValueError("payout_parent_invalid")
+    if not partition:
+        raise ValueError("payout_partition_empty")
+    partition_args = "".join(_uint_arg(p) for p in partition)
+    return (
+        selector
+        + _addr_arg(collateral_address)
+        + condition_id[2:]
+        + parent_collection_id[2:]
+        + "0000000000000000000000000000000000000000000000000000000000000020"
+        + _uint_arg(len(partition))
+        + partition_args
+    )
+
+
+def verify_payout_consistency(
+    *,
+    ctf_payout_outcome: str,
+    ctf_numerator: str,
+    ctf_denominator: str,
+    clob_winner: str | None,
+    clob_is_50_50: bool | None,
+) -> bool:
+    """CTF payout 与 CLOB winner/50-50 一致性核验。
+
+    - 50-50：payout 1/2 + 1/2 且 clob is_50_50=true（winner 可为空）。
+    - 二元：payout 1/0 且 clob winner 与 outcome_index 一致。
+    - 任一缺失/冲突 → False（进入 SETTLEMENT_CONFLICT）。
+    """
+    if clob_is_50_50 is True:
+        return ctf_numerator == "1" and ctf_denominator == "2" and (
+            clob_winner is None or clob_winner in ("YES", "NO")
+        )
+    if clob_is_50_50 is False:
+        if clob_winner is None:
+            return False
+        if clob_winner == ctf_payout_outcome:
+            return ctf_numerator == "1" and ctf_denominator == "1"
+        # 非 winner 面 payout 0/1
+        return ctf_numerator == "0" and ctf_denominator == "1"
+    # 缺 50-50 信号 → fail closed
+    return False

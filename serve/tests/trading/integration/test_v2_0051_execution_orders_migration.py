@@ -18,7 +18,8 @@ SERVE_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
 V50 = "b1000050"
 V51 = "b1000051"
-HEAD_REVISION = V51
+V52 = "b1000052"
+HEAD_REVISION = V52
 
 NEW_TABLES = [
     "execution_authorization_envelopes",

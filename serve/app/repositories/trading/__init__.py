@@ -12,7 +12,12 @@ from app.repositories.trading.market import MarketRepository
 from app.repositories.trading.market_stream import MarketStreamRepository
 from app.repositories.trading.semantics import SemanticsRepository
 from app.repositories.trading.workflow import WorkflowRepository
-from app.repositories.trading.settlement import SettlementRepository
+from app.repositories.trading.settlement import (
+    ChainOperationRepository,
+    ContractRegistryRepository,
+    SettlementObservationRepository,
+    SettlementRepository,
+)
 from app.repositories.trading.evaluation import EvaluationRepository
 from app.repositories.trading.audit import AuditRepository
 from app.repositories.trading.projection import ProjectionRepository
@@ -35,4 +40,8 @@ __all__ = [
     "ProjectionRepository",
     # WP-05
     "VaultRepository",
+    # WP-06
+    "ContractRegistryRepository",
+    "ChainOperationRepository",
+    "SettlementObservationRepository",
 ]

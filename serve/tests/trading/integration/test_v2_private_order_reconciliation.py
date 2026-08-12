@@ -53,7 +53,7 @@ from tests.trading.integration.test_v2_vault_accounts_funds import (
 
 SERVE_DIR = __import__("pathlib").Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-HEAD = "b1000051"
+HEAD = "b1000052"
 
 K1 = os.urandom(32)
 KEYRING = {("k1", "v1"): K1}

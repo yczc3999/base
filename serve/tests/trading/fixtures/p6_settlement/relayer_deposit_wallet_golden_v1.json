@@ -1,0 +1,198 @@
+{
+  "content_hash": "9bc6b6c4f6fdc235c357e2c26ff53e1bf5574614e4a32710b07327f137ba0a2c",
+  "base_url": "https://relayer-v2.polymarket.com",
+  "chain_id": 137,
+  "nonce": {
+    "request": {
+      "method": "GET",
+      "path": "/v1/account/transactions/params",
+      "params": {
+        "address": "0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21",
+        "type": "WALLET"
+      },
+      "headers_required": [
+        "RELAYER_API_KEY",
+        "RELAYER_API_KEY_ADDRESS"
+      ]
+    },
+    "response": {
+      "address": "0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21",
+      "nonce": "42"
+    },
+    "nonce_must_be": "non-empty decimal string"
+  },
+  "eip712": {
+    "domain": {
+      "name": "DepositWallet",
+      "version": "1",
+      "chainId": 137,
+      "verifyingContract": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07"
+    },
+    "types": {
+      "Call": [
+        {
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
+        }
+      ],
+      "Batch": [
+        {
+          "name": "wallet",
+          "type": "address"
+        },
+        {
+          "name": "nonce",
+          "type": "uint256"
+        },
+        {
+          "name": "deadline",
+          "type": "uint256"
+        },
+        {
+          "name": "calls",
+          "type": "Call[]"
+        }
+      ]
+    },
+    "primary_type": "Batch"
+  },
+  "deadline": {
+    "trusted_now": 1780000000,
+    "ttl_s": 600,
+    "deadline": 1780000600,
+    "rule": "deadline = trusted_now + 600s"
+  },
+  "submit": {
+    "path": "/submit",
+    "method": "POST",
+    "body": {
+      "type": "WALLET",
+      "from": "0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21",
+      "to": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
+      "nonce": "42",
+      "signature": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+      "metadata": "pm-v2-settlement/v1",
+      "depositWalletParams": {
+        "depositWallet": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
+        "deadline": "1780000600",
+        "calls": [
+          {
+            "target": "0xAdA100Db00Ca00073811820692005400218FcE1f",
+            "value": "0",
+            "data": "0x72ce4275000000000000000000000000C011a7E12a19f7B1f670d46F03B03f3342E82DFB77777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000f4240"
+          }
+        ]
+      }
+    },
+    "exact_serialized_body": "{\"type\":\"WALLET\",\"from\":\"0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21\",\"to\":\"0x00000000000Fb5C9ADea0298D729A0CB3823Cc07\",\"nonce\":\"42\",\"signature\":\"0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\",\"metadata\":\"pm-v2-settlement/v1\",\"depositWalletParams\":{\"depositWallet\":\"0x00000000000Fb5C9ADea0298D729A0CB3823Cc07\",\"deadline\":\"1780000600\",\"calls\":[{\"target\":\"0xAdA100Db00Ca00073811820692005400218FcE1f\",\"value\":\"0\",\"data\":\"0x72ce4275000000000000000000000000C011a7E12a19f7B1f670d46F03B03f3342E82DFB77777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000f4240\"}]}}",
+    "exact_serialized_body_sha256": "8a1d9050233f97016cbeefb88d9e5c40466d8c4eefa678eb73005b8d3d8bed3f",
+    "hmac": {
+      "algorithm": "hmac-sha256",
+      "secret_base64_decoded": true,
+      "input_template": "{timestamp}{UPPERCASE_METHOD}{path_without_query}{exact_serialized_body}",
+      "input": "1780000000POST/submit{\"type\":\"WALLET\",\"from\":\"0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21\",\"to\":\"0x00000000000Fb5C9ADea0298D729A0CB3823Cc07\",\"nonce\":\"42\",\"signature\":\"0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\",\"metadata\":\"pm-v2-settlement/v1\",\"depositWalletParams\":{\"depositWallet\":\"0x00000000000Fb5C9ADea0298D729A0CB3823Cc07\",\"deadline\":\"1780000600\",\"calls\":[{\"target\":\"0xAdA100Db00Ca00073811820692005400218FcE1f\",\"value\":\"0\",\"data\":\"0x72ce4275000000000000000000000000C011a7E12a19f7B1f670d46F03B03f3342E82DFB77777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000f4240\"}]}}",
+      "input_sha256": "a7f7ca7eaccfb292490b4ae2b8b74b57a8aa77e3b5a77381c33d25ace05a95fa",
+      "signature_b64_urlsafe_padded": true,
+      "expected_signature_b64": "Q5fU9Ehj9UMsJnFC01WSBgvFAkVrr4AZOWve0e-RHFg=",
+      "secret_not_in_fixture": true
+    },
+    "headers": [
+      "POLY_BUILDER_API_KEY",
+      "POLY_BUILDER_TIMESTAMP",
+      "POLY_BUILDER_PASSPHRASE",
+      "POLY_BUILDER_SIGNATURE"
+    ],
+    "header_secret_markers": {
+      "POLY_BUILDER_API_KEY": "secret-ref",
+      "POLY_BUILDER_TIMESTAMP": "unix-seconds",
+      "POLY_BUILDER_PASSPHRASE": "secret-ref",
+      "POLY_BUILDER_SIGNATURE": "computed"
+    }
+  },
+  "status": {
+    "path_template": "/v1/account/transactions/{transaction_id}",
+    "legacy_path": "/transaction?id=...",
+    "legacy_frozen_as": "DRIFT_NOT_USED",
+    "response": {
+      "transaction_id": "tx-0001",
+      "transaction_hash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+      "state": "CONFIRMED",
+      "error_msg": null
+    },
+    "response_failed": {
+      "transaction_id": "tx-0002",
+      "transaction_hash": "0x3434343434343434343434343434343434343434343434343434343434343434",
+      "state": "FAILED",
+      "error_msg": "gas estimation failed"
+    },
+    "states": {
+      "transient": [
+        "NEW",
+        "EXECUTED",
+        "MINED"
+      ],
+      "success_terminal": [
+        "CONFIRMED"
+      ],
+      "failure_terminal": [
+        "INVALID",
+        "FAILED"
+      ],
+      "confirmed_is_not_finality": true
+    }
+  },
+  "metadata": "pm-v2-settlement/v1",
+  "signature": {
+    "length_hex": 130,
+    "full_length": true,
+    "not_a_real_signature": true
+  },
+  "calldata": {
+    "split_standard": "0x72ce4275000000000000000000000000C011a7E12a19f7B1f670d46F03B03f3342E82DFB77777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000f4240",
+    "merge_standard": "0x9e7212ad0000000000000000000000004D97DCd97eC945f40cF65F87097ACe5EA047604577777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000f4240",
+    "redeem_standard": "0x01b7037c0000000000000000000000004D97DCd97eC945f40cF65F87097ACe5EA0476045777777777777777777777777777777777777777777777777777777777777777700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
+  },
+  "calldata_keccak": {
+    "split_standard": "0x26c253571491f87bb87e8f1ffc6922ca1f0583ef3727b9debf5ae14d55ade1a4",
+    "merge_standard": "0x100bbeed25f21d6785552aa839d943726b04fb33ceb9d0c9e6dfab6c250307c0",
+    "redeem_standard": "0x2ebc9064453e32a06c64e6eacc840cce25132d4c8c9c6dd4b7878de11ff5d0fa"
+  },
+  "amounts": {
+    "pusd_decimals": 6,
+    "pusd_base_units_per_pair": 1000000,
+    "partition": [
+      "1",
+      "2"
+    ],
+    "parent_collection_id": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "conditions": {
+    "condition_id": "0x7777777777777777777777777777777777777777777777777777777777777777",
+    "yes_token": "0x8888888888888888888888888888888888888888888888888888888888888888",
+    "no_token": "0x9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "adapters": {
+    "standard": "0xAdA100Db00Ca00073811820692005400218FcE1f",
+    "neg_risk": "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
+  },
+  "signer": {
+    "eoa": "0xf349e86e139c2dbebd459b7d82f1d08d5dc6bf21"
+  },
+  "selector": {
+    "split": "0x72ce4275",
+    "merge": "0x9e7212ad",
+    "redeem": "0x01b7037c",
+    "implementation": "0x5c60da1b",
+    "balance_of": "0x70a08231",
+    "allowance": "0xdd62ed3e",
+    "approve": "0x095ea7b3"
+  }
+}

@@ -157,3 +157,14 @@ __all__ = [
     "DataApiPosition",
     "DataApiPositions",
 ]
+
+from app.schemas.polymarket.chain import (
+    FinalityCheck,
+    JsonRpcResponse,
+    RelayerStatus,
+    RpcBlock,
+    RpcReceipt,
+    validate_address,
+    validate_hex_data,
+    validate_hex_quantity,
+)

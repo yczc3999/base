@@ -1,4 +1,4 @@
-"""WP-05 Checkpoint A —— P-stability 确定性重放（真 PostgreSQL，Alembic head=b1000051）。
+"""WP-05 Checkpoint A —— P-stability 确定性重放（真 PostgreSQL，Alembic head=b1000052）。
 
 对同一 frozen input（P2 decision → shadow execution → metric 链）两次确定性重放，断言
 universe / opportunity / episode identity / processing disposition / blind commit /
@@ -88,8 +88,8 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 STABILITY_SNAPSHOT_PATH = (
     SERVE_DIR / "tests/trading/fixtures/p5_execution/stability_snapshot_v1.json"
 )
-# WP-05 完成后 head=b1000051；P-stability 在完整 head 上验证（与 ORM metadata 对齐）。
-HEAD = "b1000051"
+# WP-05 完成后 head=b1000052；P-stability 在完整 head 上验证（与 ORM metadata 对齐）。
+HEAD = "b1000052"
 
 # 固定时基：落在 20260811 partition 且早于测试运行日（今天 2026-08-11）。
 # opportunity/episode 的 opportunity_key 含 triggered_at，故该锚必须固定以保证

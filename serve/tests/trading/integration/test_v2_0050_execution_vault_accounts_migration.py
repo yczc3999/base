@@ -20,7 +20,8 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 V41 = "b1000041"
 V50 = "b1000050"
 V51 = "b1000051"
-HEAD_REVISION = V51
+V52 = "b1000052"
+HEAD_REVISION = V52
 
 NEW_TABLES = [
     "pm_accounts", "pm_balance_allowance_snapshots", "account_funds_current",

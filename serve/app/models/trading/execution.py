@@ -90,6 +90,7 @@ class Execution(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
             name="ck_executions_unfilled_pair",
         ),
         Index("ix_executions_intent", "economic_action_intent_id"),
+        Index("ix_executions_chain_operation", "chain_operation_id"),
         UniqueConstraint(
             "order_id", "trade_id",
             name="uq_executions_outer_lineage",
@@ -144,6 +145,11 @@ class Execution(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     trade_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("trading.exchange_trades.id", name="fk_executions_exchange_trade"),
+    )
+    # WP-06 Checkpoint B lineage：chain settlement operation 引用（结算/兑换产生的一次性 fill）
+    chain_operation_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.chain_operations.id", name="fk_executions_chain_operation"),
     )
 
 

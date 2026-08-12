@@ -216,6 +216,13 @@ REASON_EGRESS_TRIPWIRE = "wire_egress_tripwire"
 REASON_ORDER_INDETERMINATE = "wire_order_indeterminate"
 
 
+class EgressTripwireError(PolymarketError):
+    """未注入 transport 时任何 wire 调用立即失败（socket/client 构造前）。"""
+
+    def __init__(self) -> None:
+        super().__init__(REASON_EGRESS_TRIPWIRE)
+
+
 @dataclass(frozen=True)
 class PrivateSubmitPolicy:
     """私有 submit 的 wire policy：强制单次发送、禁止盲重发。

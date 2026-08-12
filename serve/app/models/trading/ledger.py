@@ -70,6 +70,7 @@ class LedgerTransaction(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
         ),
         Index("ix_ledger_transactions_decision", "trade_decision_id"),
         Index("ix_ledger_transactions_execution", "execution_id"),
+        Index("ix_ledger_transactions_chain_operation", "chain_operation_id"),
         {"schema": TRADING_SCHEMA},
     )
 
@@ -109,6 +110,11 @@ class LedgerTransaction(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
     trade_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("trading.exchange_trades.id", name="fk_ledger_transactions_exchange_trade"),
+    )
+    # WP-06 Checkpoint B lineage：chain settlement 记账引用（FINALIZED 经济 effect 唯一）
+    chain_operation_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("trading.chain_operations.id", name="fk_ledger_transactions_chain_operation"),
     )
 
 

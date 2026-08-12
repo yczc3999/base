@@ -243,6 +243,22 @@ class Settings(BaseSettings):
     PM_V2_HEARTBEAT_INTERVAL_S: float = Field(5.0, gt=0)
     PM_V2_HEARTBEAT_DRIFT_MS: float = Field(500.0, ge=0)
 
+    # ---- V2 Polygon / Relayer（WP-06；基础设施 typed 配置，fake-only）----
+    # 真实 RPC/Relayer 端点留空（fake-only）；激活前必须由部署显式注入。
+    PM_V2_POLYGON_RPC_URLS: str = ""       # 逗号分隔（≥3 个 finalized 一致性节点）
+    PM_V2_POLYGON_CHAIN_ID: int = Field(137, ge=1)
+    PM_V2_POLYGON_FINALIZED_TAG: str = "finalized"
+    PM_V2_RELAYER_BASE_URL: str = ""
+    PM_V2_RELAYER_NONCE_TIMEOUT_S: float = Field(5.0, gt=0)
+    PM_V2_RELAYER_SUBMIT_TIMEOUT_S: float = Field(15.0, gt=0)
+    PM_V2_RELAYER_STATUS_TIMEOUT_S: float = Field(5.0, gt=0)
+    PM_V2_RELAYER_DEADLINE_TTL_S: int = Field(600, ge=1)
+    # registry 复核：启动与每次 chain operation 前必须 exact 匹配的 registry version。
+    PM_V2_CONTRACT_REGISTRY_VERSION: str = "polygon-mainnet-v1"
+    PM_V2_CONTRACT_REGISTRY_SNAPSHOT_BLOCK: int = Field(91842167, gt=0)
+    # 交易最大重试/未知恢复上界（fake-only：仅用于测试容量，不用于真实重发）。
+    PM_V2_CHAIN_RECOVERY_LIMIT: int = Field(200, ge=1)
+
     # CORS
     CORS_ORIGINS: str = "*"              # 允许的源，逗号分隔，"*"=全部
 
@@ -633,6 +649,39 @@ class Settings(BaseSettings):
         if self.RUNTIME_HEALTH_TIMEOUT_S <= 0:
             raise ValueError(
                 f"RUNTIME_HEALTH_TIMEOUT_S must be > 0, got {self.RUNTIME_HEALTH_TIMEOUT_S}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_chain_egress(self) -> "Settings":
+        """WP-06 fake-only 门：真实 Polygon RPC / Relayer URL 留空；激活前必须显式注入。
+
+        提供非空 URL 仅用于格式校验（fail-fast），不改变 fake-only 语义：运行时 Driver
+        默认 ``require_injected_transport=true``，缺 transport 即 ``wire_egress_tripwire``。
+        """
+        for name, value in (
+            ("PM_V2_POLYGON_RPC_URLS", self.PM_V2_POLYGON_RPC_URLS),
+            ("PM_V2_RELAYER_BASE_URL", self.PM_V2_RELAYER_BASE_URL),
+        ):
+            if not value:
+                continue
+            for part in value.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                if not part.startswith(("http://", "https://")):
+                    raise ValueError(
+                        f"{name} must be an absolute http(s) URL, got {part!r}"
+                    )
+        if self.PM_V2_POLYGON_CHAIN_ID != 137:
+            raise ValueError(
+                "PM_V2_POLYGON_CHAIN_ID must be 137 in WP-06 (only Polygon PoS supported), "
+                f"got {self.PM_V2_POLYGON_CHAIN_ID}"
+            )
+        if self.PM_V2_POLYGON_FINALIZED_TAG != "finalized":
+            raise ValueError(
+                f"PM_V2_POLYGON_FINALIZED_TAG must be 'finalized', "
+                f"got {self.PM_V2_POLYGON_FINALIZED_TAG!r}"
             )
         return self
 

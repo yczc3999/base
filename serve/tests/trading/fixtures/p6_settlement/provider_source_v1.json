@@ -1,0 +1,59 @@
+{
+  "content_hash": "c7bd68a1102532886af3def01712406af904a4bc0cd6af888ece148f24b29698",
+  "frozen_at": "2026-08-11T00:00:00Z",
+  "sources": [
+    {
+      "role": "contracts_page",
+      "url": "https://docs.polymarket.com/resources/contracts",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "Contract addresses: ConditionalTokens 0x4D97DCd97eC945f40cF65F87097ACe5EA0476045; pUSD 0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB; CtfCollateralAdapter 0xAdA100Db00Ca00073811820692005400218FcE1f; NegRiskCtfCollateralAdapter 0xadA2005600Dec949baf300f4C6120000bDB6eAab; DepositWallet 0x00000000000Fb5C9ADea0298D729A0CB3823Cc07.",
+      "content_hash": "d09e8264b24cbfa052c2e85a59159d2571456ebab97f3f9ce9949d3a43d1de35"
+    },
+    {
+      "role": "wallets_auth",
+      "url": "https://docs.polymarket.com/trading/wallets-auth",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "Relayer-v2 base URL https://relayer-v2.polymarket.com; EIP-712 domain name=DepositWallet version=1 chainId=137; nonce endpoint GET /v1/account/transactions/params?address=&type=WALLET; submit POST /submit; status GET /v1/account/transactions/{id}; states NEW|EXECUTED|MINED|CONFIRMED|INVALID|FAILED; CONFIRMED is relayer success terminal only.",
+      "content_hash": "375897e668ba74bd9332ddc303f3c6390d50f6fc76f40ae5e110dcd7eb4cd20c"
+    },
+    {
+      "role": "manage_positions",
+      "url": "https://docs.polymarket.com/trading/positions/manage",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "redeemPositions consumes full wallet+condition outcome balance; no amount argument; split/merge via CtfCollateralAdapter (Standard) and NegRiskCtfCollateralAdapter (NegRisk); parentCollectionId=bytes32(0), partition/indexSets=[1,2].",
+      "content_hash": "1a1f244266ae382518b784c5f2de87293492cdfb19153552019b630731644f8c"
+    },
+    {
+      "role": "polygon_finality",
+      "url": "https://docs.polygon.technology/pos/concepts/finality/finality",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "Polygon PoS finalized tag must be used; economic accounting requires finalized.number > receipt.blockNumber; relayer CONFIRMED is not chain finality.",
+      "content_hash": "062eeea5d4999b934b385674cee8651368246272a13c84703fcaeb80725e8c9b"
+    },
+    {
+      "role": "eth_receipt_spec",
+      "url": "https://ethereum.github.io/execution-apis/api/methods/eth_getTransactionReceipt/",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "Receipt fields transactionHash/status/blockNumber/blockHash; status 0x1 success; removed logs indicate reorg; receipt can disappear during reorg.",
+      "content_hash": "44cc678b999b42df0cd38525488326b752b7480308266cefe11a8015a014813b"
+    },
+    {
+      "role": "py_sdk_source",
+      "url": "https://github.com/Polymarket/py-sdk",
+      "retrieved_at": "2026-08-11T00:00:00Z",
+      "frozen_summary": "Provider-wire provenance commit 39b90750c0ff4034be32f2db623d4ed4fa74a729 (DepositWallet WALLET type-3; Safe/Proxy capability=false; raw DepositWallet contract only).",
+      "content_hash": "370bc071035fa4d7e91c9dc981f23c845be07551d69e4d74568041ce1998b46c"
+    }
+  ],
+  "wire_adjudication": {
+    "legacy_status_route": {
+      "url": "https://relayer-v2.polymarket.com/transaction?id=...",
+      "verdict": "DRIFT_NOT_USED",
+      "rationale": "official current contract uses /v1/account/transactions/{id}; legacy /transaction recorded as drift; no dual-send / fallback."
+    },
+    "safe_proxy": {
+      "verdict": "CAPABILITY_OFF",
+      "rationale": "only DepositWallet/WALLET raw contract frozen; Safe/Proxy capability=false."
+    }
+  }
+}

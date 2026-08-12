@@ -20,7 +20,8 @@ V40 = "b1000040"
 V41 = "b1000041"
 V50 = "b1000050"
 V51 = "b1000051"
-HEAD_REVISION = V51
+V52 = "b1000052"
+HEAD_REVISION = V52
 
 PROJECTION_TABLES = [
     "ops_health_current", "pipeline_funnel_hourly", "account_risk_current",

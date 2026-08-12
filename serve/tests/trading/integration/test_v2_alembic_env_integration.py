@@ -31,7 +31,7 @@ ALEMBIC_DIR = SERVE_DIR / "alembic"
 BASELINE_REVISION = "cdabba1e3903"
 # WP-02 加入 b1000021 / WP-04 加入 b1000040 / b1000051 后 head 前进；探针 revision
 # 须挂在 head 之下，否则形成多 head 使 `upgrade head` 歧义。
-HEAD_REVISION = "b1000051"
+HEAD_REVISION = "b1000052"
 
 # 并发探针 revision：在持锁 migration 内制造稳定重叠窗口。无全局 advisory
 # lock 时两进程会同时看到 baseline，其中一个必然在 CREATE TABLE 冲突；有锁时
@@ -41,7 +41,7 @@ LOCK_PROBE_REVISION_SRC = '''"""advisory lock serialization probe"""
 from alembic import op
 
 revision = "c0000001"
-down_revision = "b1000051"
+down_revision = "b1000052"
 branch_labels = None
 depends_on = None
 
@@ -62,7 +62,7 @@ SUCCESS_REVISION_SRC = '''"""successful first half of whole-run rollback probe""
 from alembic import op
 
 revision = "f0000001"
-down_revision = "b1000051"
+down_revision = "b1000052"
 branch_labels = None
 depends_on = None
 

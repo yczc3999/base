@@ -35,19 +35,21 @@ class LedgerRepository:
         envelope_id: int | None = None,
         order_id: int | None = None,
         trade_id: int | None = None,
+        chain_operation_id: int | None = None,
     ) -> int:
         result = await session.execute(
             text(
                 "INSERT INTO trading.ledger_transactions "
                 "(transaction_key, status, kind, trade_decision_id, execution_id, "
                 " portfolio_namespace, reference_transaction_id, account_id, envelope_id, "
-                " order_id, trade_id) "
-                "VALUES (:k, 'PENDING', :kind, :d, :e, :ns, :ref, :acct, :env, :o, :t) "
+                " order_id, trade_id, chain_operation_id) "
+                "VALUES (:k, 'PENDING', :kind, :d, :e, :ns, :ref, :acct, :env, :o, :t, :cop) "
                 "ON CONFLICT (transaction_key) DO NOTHING RETURNING id"
             ),
             {"k": transaction_key, "kind": kind, "d": trade_decision_id,
              "e": execution_id, "ns": portfolio_namespace, "ref": reference_transaction_id,
-             "acct": account_id, "env": envelope_id, "o": order_id, "t": trade_id},
+             "acct": account_id, "env": envelope_id, "o": order_id, "t": trade_id,
+             "cop": chain_operation_id},
         )
         inserted = result.scalar_one_or_none()
         if inserted is not None:
@@ -68,6 +70,7 @@ class LedgerRepository:
             "envelope_id": envelope_id,
             "order_id": order_id,
             "trade_id": trade_id,
+            "chain_operation_id": chain_operation_id,
         }
         for field, value in expected.items():
             if existing[field] != value:

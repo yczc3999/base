@@ -22,7 +22,8 @@ V40 = "b1000040"
 V41 = "b1000041"
 V50 = "b1000050"
 V51 = "b1000051"
-HEAD_REVISION = V51
+V52 = "b1000052"
+HEAD_REVISION = V52
 
 LEARNING_TABLES = [
     "resolution_labels", "resolution_clusters", "resolution_cluster_memberships",

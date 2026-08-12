@@ -128,11 +128,15 @@ from app.models.trading.vault import (
     SecretVaultVersion,
 )
 from app.models.trading.settlement import (
+    ChainOperation,
+    ChainOperationStateHistory,
+    ContractRegistry,
     ResolutionCluster,
     ResolutionClusterMembership,
     ResolutionLabel,
     ScoreTarget,
     ScoreTargetMembership,
+    SettlementObservation,
 )
 from app.models.trading.evaluation import (
     AblationRun,
