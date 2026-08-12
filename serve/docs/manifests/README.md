@@ -45,7 +45,7 @@
 | WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ✅ DONE，审查通过 | `wp-05-execution-readiness-private-clob.md` | `04e365b4b1c18dc529dd2f6aa73c0cccf29c6a6cab5487787776f74a9bdc2fc9` | 2026-08-11 |
 | WP-06 | 0052 Polygon/relayer/settlement | ✅ DONE，审查通过 | `wp-06-polygon-relayer-settlement.md` | `a2280e003d02a9799e263efbef5f1de504f79e2a5e0f94564b6c9a133263f868` | 2026-08-12 |
 | WP-07A | Admin API + frontend types/query scaffolding | ✅ DONE，审查通过 | `wp-07a-admin-read-api-typed-data-layer.md` | `881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` | 2026-08-12 |
-| WP-07B | 14 菜单页、5 详情页与交互 | ⛔ BLOCKED_PRODUCT_VISUAL_DECISION | — | — | — |
+| WP-07B | 14 菜单页、5 详情页与交互 | ⏳ READY（视觉已确认） | — | — | — |
 | WP-08 | 0090 分区/归档/perf harness/alerts/soak | ⏳ pending | — | — | — |
 
 ## 审查方式

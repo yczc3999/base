@@ -8,15 +8,15 @@
 | 字段 | 当前值 |
 |---|---|
 | Task | `WP-07B` |
-| 状态 | `BLOCKED_PRODUCT_VISUAL_DECISION` |
-| 任务文档 | —（未创建；产品视觉确认前禁止创建） |
-| 交付 manifest | — |
+| 状态 | `READY` |
+| 任务文档 | [`wp-07b-admin-pages.md`](wp-07b-admin-pages.md) |
+| 交付 manifest | `serve/docs/manifests/wp-07b-admin-pages.md` |
 | 前置实现 | `WP-07A` 已 ACCEPTED；code commit=`280afcc`；head=`b1000070`；manifest SHA=`881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` |
 | 已接受范围 | Admin 全域只读 API、RBAC、HMAC keyset cursor、artifact Range、typed frontend API/query data layer、`0070` 权限与索引 |
 | 接受证据 | 135 unit/config + 50 真 PG + 19 router；1794 trading、2005 full；frontend 20/lint/build；clean perf 20/20 PASS |
-| 当前 blocker | 用户尚未确认产品专属 palette、语义颜色、字体、密度/spacing、圆角 token 与一张真实 Episode Detail 高保真预览 |
-| 关键边界 | 严格平面、大块纯色；无阴影、渐变、glass/blur、highlight、浮卡或 lift/scale；确认前不创建 WP-07B task/页面 |
-| 后续 | 展示视觉 token 与 Episode Detail 高保真预览并取得用户明确确认后，才创建 WP-07B READY 合同 |
+| 当前 blocker | 无（视觉决策已确认；冻结于 `docs/previews/wp-07b/visual-decision.md`） |
+| 关键边界 | 严格平面、大块纯色（视觉已冻结）；只读复用 WP-07A API；无 mutation；不重算 Gate/PnL/edge/风险 |
+| 后续 | WP-07B 接受后进入 WP-07C/WP-08 规划 |
 
 ## 固定交接协议
 
