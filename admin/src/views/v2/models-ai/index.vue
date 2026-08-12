@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState } from '../_shared'
+import { ArtifactLink, PageState } from '../_shared'
 import { useModelsPage } from '@/queries/v2/models'
 
 const cursor = ref<string | null>(null)
@@ -23,7 +23,7 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
         <el-table-column label="provider" min-width="100"><template #default="{ row }">{{ row.provider }}</template></el-table-column>
         <el-table-column label="route" min-width="110"><template #default="{ row }">{{ row.route }}</template></el-table-column>
         <el-table-column label="model_ref" min-width="160"><template #default="{ row }">{{ row.model_ref }}</template></el-table-column>
-        <el-table-column label="content_hash" min-width="180"><template #default="{ row }"><span class="mono">{{ row.content_hash }}</span></template></el-table-column>
+        <el-table-column label="content_hash" min-width="180"><template #default="{ row }"><ArtifactLink :content-hash="row.content_hash" /></template></el-table-column>
         <el-table-column label="id" min-width="90"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
       </el-table>
       <div class="pager">

@@ -3,7 +3,7 @@
 import { computed, toRef, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, StatusBadge, GateStrip, Timeline, DetailSection, KeyValueGrid } from '../_shared'
+import { ArtifactLink, PageState, StatusBadge, GateStrip, Timeline, DetailSection, KeyValueGrid } from '../_shared'
 import { useEpisode } from '@/queries/v2/episodes'
 
 const route = useRoute()
@@ -54,16 +54,28 @@ watchEffect(() => {
         <GateStrip :gates="gates" />
       </DetailSection>
       <DetailSection v-if="data?.priors?.length" title="Blind Prior">
-        <p class="mono">{{ JSON.stringify(data.priors) }}</p>
+        <table class="mini"><tbody>
+          <tr v-for="(prior, index) in data.priors" :key="index">
+            <td>{{ prior.reference_class }}</td><td>{{ prior.status }}</td>
+            <td><ArtifactLink :content-hash="String(prior.content_hash ?? '')" /></td>
+          </tr>
+        </tbody></table>
       </DetailSection>
       <DetailSection title="Evidence / 提交">
         <table class="mini">
           <tbody>
             <tr v-for="(b,i) in (data?.evidence_bundles ?? []).slice(0,8)" :key="i">
-              <td class="mono">{{ b.bundle_key }}</td><td class="mono">{{ b.status }}</td>
+              <td class="mono">{{ b.bundle_key }}</td><td>{{ b.status }}</td>
+              <td><ArtifactLink :content-hash="String(b.bundle_hash ?? '')" /></td>
             </tr>
           </tbody>
         </table>
+        <table v-if="data?.submissions?.length" class="mini submissions"><tbody>
+          <tr v-for="(submission, index) in data.submissions" :key="index">
+            <td class="mono">{{ submission.submission_key }}</td><td>{{ submission.status }}</td>
+            <td><ArtifactLink :content-hash="String(submission.algorithm_hash ?? '')" /></td>
+          </tr>
+        </tbody></table>
       </DetailSection>
       <DetailSection title="发生过程（时间线）">
         <Timeline :items="timeline" />
@@ -77,5 +89,6 @@ watchEffect(() => {
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--v2-space-4)}
 @media (max-width:860px){.grid2{grid-template-columns:1fr}}
 .mini{border-collapse:collapse;width:100%}.mini td{border-bottom:1px solid var(--v2-line);padding:4px 8px;font-size:12.5px}
+.submissions{margin-top:var(--v2-space-3)}
 .mono{font-family:var(--v2-font-mono)}
 </style>

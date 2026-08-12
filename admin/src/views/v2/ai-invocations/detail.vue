@@ -3,7 +3,7 @@
 import { computed, toRef } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, DetailSection, KeyValueGrid } from '../_shared'
+import { ArtifactLink, PageState, DetailSection, KeyValueGrid } from '../_shared'
 import { useAiDetail } from '@/queries/v2/ai'
 
 const route = useRoute()
@@ -35,6 +35,9 @@ const inv = computed(() => data.value?.invocation ?? null)
         </DetailSection>
         <DetailSection title="Binding / Artifact 引用">
           <p class="mono">{{ JSON.stringify(data?.model_role_binding ?? null) }}</p>
+          <p class="artifact-row">prompt <ArtifactLink :content-hash="inv.prompt_artifact_ref" /></p>
+          <p class="artifact-row">request <ArtifactLink :content-hash="inv.request_artifact_ref" /></p>
+          <p class="artifact-row">normalized output <ArtifactLink :content-hash="inv.normalized_output_artifact_ref" /></p>
           <p class="muted">raw/prompt 内容不内联（需 v2:ai:artifact 权限按需取用）</p>
         </DetailSection>
       </div>
@@ -69,4 +72,5 @@ const inv = computed(() => data.value?.invocation ?? null)
 .mini{border-collapse:collapse;width:100%}.mini td{border-bottom:1px solid var(--v2-line);padding:4px 8px;font-size:12.5px}
 .mono{font-family:var(--v2-font-mono);word-break:break-all}
 .muted{color:var(--v2-ink-muted);font-size:12.5px}
+.artifact-row{display:flex;justify-content:space-between;gap:var(--v2-space-3);margin-top:var(--v2-space-2);color:var(--v2-ink-muted);font-size:12.5px}
 </style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState } from '../_shared'
+import { ArtifactLink, PageState } from '../_shared'
 import { useReplayPage } from '@/queries/v2/replay'
 
 const cursor = ref<string | null>(null)
@@ -21,7 +21,7 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="run_key" min-width="160"><template #default="{ row }">{{ row.run_key }}</template></el-table-column>
         <el-table-column label="replay_kind" min-width="110"><template #default="{ row }">{{ row.replay_kind }}</template></el-table-column>
-        <el-table-column label="manifest_hash" min-width="180"><template #default="{ row }"><span class="mono">{{ row.manifest_hash }}</span></template></el-table-column>
+        <el-table-column label="manifest_hash" min-width="180"><template #default="{ row }"><ArtifactLink :content-hash="row.manifest_hash" /></template></el-table-column>
         <el-table-column label="id" min-width="90"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
       </el-table>
       <div class="pager">

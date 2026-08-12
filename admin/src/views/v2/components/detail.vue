@@ -3,7 +3,7 @@
 import { computed, toRef } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, DetailSection, KeyValueGrid } from '../_shared'
+import { ArtifactLink, PageState, DetailSection, KeyValueGrid } from '../_shared'
 import { useComponent } from '@/queries/v2/components'
 
 const route = useRoute()
@@ -30,7 +30,7 @@ const c = computed(() => data.value?.component ?? null)
           <table class="mini">
             <tbody>
               <tr v-for="(v,i) in data?.versions ?? []" :key="i">
-                <td class="mono">{{ v.id }}</td><td>{{ v.version_no }}</td><td>{{ v.status }}</td><td class="mono">{{ v.content_hash }}</td>
+                <td class="mono">{{ v.id }}</td><td>{{ v.version_no }}</td><td>{{ v.status }}</td><td><ArtifactLink :content-hash="String(v.content_hash ?? '')" /></td>
               </tr>
             </tbody>
           </table>

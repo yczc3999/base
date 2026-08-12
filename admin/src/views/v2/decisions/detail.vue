@@ -3,7 +3,7 @@
 import { computed, toRef } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, DetailSection, KeyValueGrid } from '../_shared'
+import { ArtifactLink, PageState, DetailSection, KeyValueGrid } from '../_shared'
 import { useDecision } from '@/queries/v2/decisions'
 
 const route = useRoute()
@@ -27,6 +27,10 @@ const d = computed(() => data.value?.decision ?? null)
             { k: 'action', v: d.selected_action_type ?? '-' },
             { k: 'trigger_at', v: d.trigger_at ?? '-', mono: true },
           ]" />
+        </DetailSection>
+        <DetailSection title="Decision Artifacts">
+          <p class="artifact-row">input <ArtifactLink :content-hash="d.input_hash" /></p>
+          <p class="artifact-row">output <ArtifactLink :content-hash="d.output_hash" /></p>
         </DetailSection>
         <DetailSection title="Quote / Underwriting">
           <p class="mono">{{ JSON.stringify(data?.quote_bindings?.[0] ?? null) }}</p>
@@ -53,4 +57,5 @@ const d = computed(() => data.value?.decision ?? null)
 @media (max-width:860px){.grid2{grid-template-columns:1fr}}
 .mini{border-collapse:collapse;width:100%}.mini td{border-bottom:1px solid var(--v2-line);padding:4px 8px;font-size:12.5px}
 .mono{font-family:var(--v2-font-mono);word-break:break-all}
+.artifact-row{display:flex;justify-content:space-between;gap:var(--v2-space-3);margin-bottom:var(--v2-space-2);color:var(--v2-ink-muted);font-size:12.5px}
 </style>

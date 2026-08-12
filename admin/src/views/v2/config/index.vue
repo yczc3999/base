@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, StatusBadge } from '../_shared'
+import { ArtifactLink, PageState, StatusBadge } from '../_shared'
 import { useConfigurationPage } from '@/queries/v2/configuration'
 
 const cursor = ref<string | null>(null)
@@ -24,7 +24,7 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
       <el-table v-loading="isLoading" :data="rows" stripe>
         <el-table-column label="config_key" min-width="160"><template #default="{ row }">{{ row.config_key }}</template></el-table-column>
         <el-table-column label="version_no" min-width="90"><template #default="{ row }">{{ row.version_no }}</template></el-table-column>
-        <el-table-column label="content_hash" min-width="180"><template #default="{ row }"><span class="mono">{{ row.content_hash }}</span></template></el-table-column>
+        <el-table-column label="content_hash" min-width="180"><template #default="{ row }"><ArtifactLink :content-hash="row.content_hash" /></template></el-table-column>
         <el-table-column label="status" min-width="100"><template #default="{ row }"><StatusBadge :tone="row.status === 'active' ? 'success' : 'neutral'">{{ row.status }}</StatusBadge></template></el-table-column>
         <el-table-column label="id" min-width="90"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
       </el-table>

@@ -95,6 +95,16 @@ describe('WP-07B keyset and state wiring', () => {
     expect(episode).not.toMatch(/k:\s*'decision'\s*,\s*v:\s*ep\.id/)
     expect(episode).toContain("k: 'decision_opportunity_id'")
   })
+
+  it('uses real artifact metadata routes instead of inert hash text', () => {
+    for (const view of [
+      'markets/detail', 'components/detail', 'episodes/detail', 'decisions/detail',
+      'ai-invocations/detail', 'config/index', 'models-ai/index', 'replay/index',
+    ]) {
+      expect(source(`src/views/v2/${view}.vue`), view).toContain('ArtifactLink')
+    }
+    expect(source('src/views/v2/_shared/ArtifactLink.vue')).toContain('`/v2/artifacts/${contentHash}`')
+  })
 })
 
 describe('WP-07B read-only boundary', () => {

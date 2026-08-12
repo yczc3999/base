@@ -3,7 +3,7 @@
 import { computed, toRef } from 'vue'
 import { useRoute } from 'vue-router'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, DetailSection, KeyValueGrid } from '../_shared'
+import { ArtifactLink, PageState, DetailSection, KeyValueGrid } from '../_shared'
 import { useMarket } from '@/queries/v2/markets'
 
 const route = useRoute()
@@ -27,6 +27,7 @@ const m = computed(() => data.value?.market ?? null)
             { k: '状态', v: m.closed ? 'CLOSED' : 'OPEN' },
             { k: 'volume / liquidity', v: `${m.volume} / ${m.liquidity}`, mono: true },
           ]" />
+          <p class="artifact-row">raw artifact <ArtifactLink :content-hash="m.raw_artifact_ref" /></p>
         </DetailSection>
         <DetailSection title="Snapshot / Current">
           <p class="mono">{{ JSON.stringify(data?.snapshot ?? null) }}</p>
@@ -37,7 +38,7 @@ const m = computed(() => data.value?.market ?? null)
         <table class="mini">
           <tbody>
             <tr v-for="(s,i) in data.specs" :key="i">
-              <td class="mono">{{ s.contract_key }}</td><td class="mono">{{ s.content_hash }}</td><td>{{ s.status }}</td>
+              <td class="mono">{{ s.contract_key }}</td><td><ArtifactLink :content-hash="String(s.content_hash ?? '')" /></td><td>{{ s.status }}</td>
             </tr>
           </tbody>
         </table>
@@ -53,4 +54,5 @@ const m = computed(() => data.value?.market ?? null)
 @media (max-width:860px){.grid2{grid-template-columns:1fr}}
 .mini{border-collapse:collapse;width:100%}.mini td{border-bottom:1px solid var(--v2-line);padding:4px 8px;font-size:12.5px}
 .mono{font-family:var(--v2-font-mono);word-break:break-all}
+.artifact-row{display:flex;justify-content:space-between;gap:var(--v2-space-3);margin-top:var(--v2-space-3);color:var(--v2-ink-muted);font-size:12.5px}
 </style>
