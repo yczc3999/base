@@ -32,6 +32,7 @@ from app.logics.trading.screening import ScreeningLogic
 from app.orchestrator.trading_state_machine import TradingStateMachine
 from app.repositories.trading.cohort import CohortRepository
 from app.repositories.trading.workflow import WorkflowRepository
+from runtimes.trading.policies import SHADOW_AUDIT_POLICY, SHADOW_R0_POLICY
 
 logger = logging.getLogger(__name__)
 
@@ -217,12 +218,11 @@ class PipelineDriver:
         return {"stage": "screen", "ok": True, "processed": processed, "selected": selected}
 
     async def _screen_market(self, uow, cohort_id, market_id, quote, g0):
-        """单市场 R0；规则完备度由 rules 是否非空近似（廉价筛选）。"""
-        from app.schemas.trading.workflow import (
-            R0Input, R0PolicyInput, RejectAuditPolicyInput,
-        )
-        policy = self._r0_policy
-        audit = self._audit_policy
+        """单市场 R0。policy 用单一事实源（runtimes.trading.policies），与 seed 冻结 hash 一致。"""
+        from app.schemas.trading.workflow import R0Input
+
+        policy = SHADOW_R0_POLICY
+        audit = SHADOW_AUDIT_POLICY
         r0_input = R0Input(
             market_metadata={"market_id": market_id},
             end_at=quote.get("end_date"),
@@ -274,25 +274,3 @@ class PipelineDriver:
 
     async def _advance_decisions(self) -> dict[str, Any]:
         return {"stage": "decisions", "ok": False, "reason": "ai_gated"}
-
-    # ---- 冻结策略（R0/audit 阈值；生产由 policy_freeze 读，此处给保守默认）----
-
-    @property
-    def _r0_policy(self):
-        from app.schemas.trading.workflow import R0PolicyInput
-        return R0PolicyInput(
-            policy_version=1,
-            minimum_rule_completeness=Decimal("0.5"),
-            maximum_research_cost=Decimal("100"),
-            require_two_sided_quote=False,
-            defer_recheck_condition="recheck",
-            reject_recheck_condition="reject",
-        )
-
-    @property
-    def _audit_policy(self):
-        from app.schemas.trading.workflow import RejectAuditPolicyInput
-        return RejectAuditPolicyInput(
-            policy_version=1, algorithm_version="v1", salt="pipeline",
-            reject_probability=Decimal("0"), defer_probability=Decimal("0"),
-        )

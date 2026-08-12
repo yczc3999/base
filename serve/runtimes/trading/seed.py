@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from app.domain.trading.hashing import canonical_hash
 from app.repositories.trading.cohort import REQUIRED_COHORT_POLICIES
+from runtimes.trading.policies import build_shadow_policy_hashes
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +139,7 @@ async def ensure_pipeline_seed(session, *, cohort_key: str = DEFAULT_COHORT_KEY)
          "execution": execution_id, "permission": permission_id,
          "h": canonical_hash({"release": cohort_key})},
     )
-    policy_hashes = {
-        name: canonical_hash({"policy": name, "cohort": cohort_key})
-        for name in REQUIRED_COHORT_POLICIES
-    }
+    policy_hashes = build_shadow_policy_hashes()
     for name in REQUIRED_COHORT_POLICIES:
         await session.execute(
             text(
