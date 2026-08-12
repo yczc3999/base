@@ -7,16 +7,16 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-06` |
-| 状态 | `DONE（待审）` |
-| 任务文档 | [`wp-06-polygon-relayer-settlement.md`](wp-06-polygon-relayer-settlement.md) |
-| 交付 manifest | `serve/docs/manifests/wp-06-polygon-relayer-settlement.md` |
-| 前置实现 | `WP-05` 已接受；head=`b1000051`；manifest SHA=`04e365b4…c2fc9` |
-| 本任务范围 | `0052`、versioned contract registry、Polygon RPC、Deposit Wallet Relayer、CTF payout/split/merge/redeem、finality/UNKNOWN/settlement ledger |
-| 内部 checkpoint | A source/registry/wire freeze、B 0052 DB、C Driver/Logic/runtime、D recovery/perf/security/manifest；一个 manifest |
-| 关键边界 | 新闻类不变；fake-only/`authorized_capital=0`；Relayer CONFIRMED 不等于 finality；真实 network/chain/money=0 |
-| 交付证据 | registry proxy/beacon/implementation code hash、canonical finalized receipt、active redeem 唯一、UNKNOWN 零盲重发、结算/账本可重建 |
-| 后续 | WP-06 接受后进入 `WP-07A` Admin API；不得提前实现 UI、canary/live 或非零资金 |
+| Task | `WP-07A` |
+| 状态 | `READY` |
+| 任务文档 | [`wp-07a-admin-read-api-typed-data-layer.md`](wp-07a-admin-read-api-typed-data-layer.md) |
+| 交付 manifest | `serve/docs/manifests/wp-07a-admin-read-api-typed-data-layer.md` |
+| 前置实现 | `WP-06` 已 ACCEPTED；head=`b1000052`；manifest SHA=`a2280e00…f868` |
+| 本任务范围 | Admin 全域只读 API、RBAC、HMAC keyset cursor、artifact Range、typed frontend API/query data layer、`0070` 权限与索引 |
+| 内部 checkpoint | A API/cursor/RBAC freeze、B PostgreSQL read plane、C frontend typed API/query、D integration/perf/security/manifest；一个 manifest |
+| 关键边界 | 只读 data layer；不创建页面/菜单/视觉 token；不自行发明 66-field config 或 mutation 语义；真实 network/chain/money=0 |
+| 交付证据 | 14 域 typed read、stable `as_of` keyset lost/dup=0、权限与 artifact 双门、frontend AbortSignal/query key、100,006 行容量门 |
+| 后续 | WP-07A 接受后，先由用户确认 palette/语义色/字体/密度/圆角与 Episode Detail 高保真预览，再创建 WP-07B |
 
 ## 固定交接协议
 
@@ -66,4 +66,4 @@
 | `WP-03` | DONE | ACCEPTED | 审查修复提交 `2a22ff9`；69 unit + 17 真 PG/replay、1255 trading、1466 full，均 0 skip/fail；VAL 206.796/s、TERM 12.0/s 持续 60s；DB-authoritative Q/quote/cost/cap、intent、BUY/SELL ledger、reversal、V1 Gold 边界全关；manifest SHA `996869e2…` |
 | `WP-04` | DONE | ACCEPTED | 审查修复提交 `8ff2067`；63 unit + 57 真 PG/replay、1375 trading、1586 full，均 0 skip/fail；clean perf keyset 100,006 行 p99=3.254ms、scientific replay p99=21.218ms、rebuild hash一致且 lost/dup=0、498.493 q/s；生产 policy、CAS/full cashflow、midpoint/vector exclusion、exact cohort/五层/replay/cursor/DB guard 全关；manifest SHA `c22daa47…` |
 | `WP-05` | DONE | ACCEPTED | 审查修复 `f53888f` + 性能证据 `5588576`；1566 trading、1777 full，均 0 skip/fail；clean perf 3024 intents/60.006s=50.395/s，WS p99=5.185ms、1k reconcile p99=91.043ms、pool peak exec2/recon1、fake/real=4706/0；Vault identity、fund consumption、全副作用 fencing、UNKNOWN 恢复、CONFIRMED trade、heartbeat hard-stop、NegRisk/clock/egress 全关；manifest SHA `04e365b4…c2fc9`；进入 WP-06 |
-| `WP-06` | DONE | 待审 | 实现 `de79edc`；103 定向 + 1669 trading + 1880 full 均 0 skip/fail；clean perf 211.3 ops/s×60s、G2 1000 recovery blind resend=0、pool p95=8.48ms、fake/real=12680/0；registry 双路径 keccak、CONFIRMED≠finality、UNKNOWN 只读恢复、balanced ledger、secret=0 全关；manifest SHA `18c0a510c15f…`；进入 WP-07A |
+| `WP-06` | DONE | ACCEPTED | 初交 `de79edc`；审查修复 `53b4744`；108 unit/contract + 43 真 PG、1717 trading、1928 full，均 0 skip/fail；clean perf 660 ops/60.005s=10.999/s、1000 UNKNOWN 两轮全等且 blind resend=0、pool p95=.020ms、fake/real=215560/0；ABI/真实 registry、runtime/TX/finality/effect、Vault、wrong-chain、post-final audit 全关；manifest SHA `a2280e00…f868`；进入 WP-07A |

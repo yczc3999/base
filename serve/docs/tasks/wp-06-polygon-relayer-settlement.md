@@ -1,10 +1,24 @@
 # WP-06 — Polygon/Relayer、CTF 结算与兑换闭环
 
-> 状态：**READY**  
-> 前置：`WP-05` 已 ACCEPTED；Alembic head=`b1000051`  
-> 执行模型：DeepSeek V4 Flash  
-> 唯一完成交付：`serve/docs/manifests/wp-06-polygon-relayer-settlement.md`  
-> 最后更新：2026-08-11 EDT
+> 状态：**ACCEPTED（审查通过）**
+> 前置：`WP-05` 已 ACCEPTED；Alembic head=`b1000052`（唯一）
+> 执行模型：DeepSeek V4 Flash
+> 唯一完成交付：`serve/docs/manifests/wp-06-polygon-relayer-settlement.md`
+> 初交 commits：`de79edc` / `d03082b` / `c3bc35d`
+> 审查修复 commit：`53b4744bbe47a74063db2c99b11f344a93d3c541`
+> 最后更新：2026-08-12 EDT
+
+## 审查接受记录
+
+- 初交复验发现并阻塞：伪造 registry/RPC bytes、错误 ABI/collateral、runtime 未接线、DB
+  preflight/finality/fence/effect 不完整，以及 UNKNOWN recovery、Vault composition、wrong-chain 与
+  post-final conflict audit 缺口。
+- `53b4744` 已关闭全部范围内 P0/P1；最终 clean 证据为 unit/contract+Vault `108 passed`，真 PostgreSQL
+  integration/replay/runtime `43 passed`，`tests/trading 1717 passed`，全仓 `1928 passed`，0 skip/fail。
+- clean perf `/tmp/pm_v2_perf_smoke_6.json` SHA-256
+  `bb9185af0317a5f93d57408c0f4b20a86d542c957a587fddb58aa259b8427119`，`hard_assertions=PASS`；
+  660 ops / 60.005s = 10.999 ops/s，1,000 UNKNOWN 两轮全等、blind resend=0，real call=0。
+- 完整证据、精确 changed files、blocker 与回滚见 completion manifest；审查结论：**ACCEPTED**。
 
 ## 0. 快车道执行规则
 
