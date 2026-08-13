@@ -24,11 +24,15 @@ from app.schemas.polymarket.common import (
 from app.schemas.polymarket.gamma import (
     GAMMA_EVENTS_PAGE_LIMIT,
     GAMMA_MARKETS_PAGE_LIMIT,
+    GAMMA_TAGS_PAGE_LIMIT,
     GammaEvent,
     GammaEventsKeysetPage,
     GammaMarket,
     GammaMarketsKeysetPage,
+    GammaTag,
+    GammaTagsPage,
     parse_gamma_keyset_page,
+    parse_gamma_tags_page,
 )
 from app.services.polymarket.base import HttpPolymarketDriver, WirePolicy
 
@@ -142,4 +146,53 @@ class GammaDriver(HttpPolymarketDriver):
             raise PolymarketError(
                 REASON_RESPONSE_SCHEMA, receipts=result.receipts
             ) from exc
+        return DriverCallResult(typed=typed, raw=result.raw, receipts=result.receipts)
+
+    async def list_tags(
+        self,
+        *,
+        limit: int = GAMMA_TAGS_PAGE_LIMIT,
+        offset: int = 0,
+    ) -> DriverCallResult:
+        """拉一页 tag 目录。官方 ``GET /tags`` 只有 offset，无 keyset。
+
+        offset 仅用于本目录同步；events/markets 宇宙扫描仍拒绝 offset。
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not (
+            1 <= limit <= GAMMA_TAGS_PAGE_LIMIT
+        ):
+            raise ValueError(
+                f"tags limit must be in 1..{GAMMA_TAGS_PAGE_LIMIT}, got {limit!r}"
+            )
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError(f"tags offset must be >= 0, got {offset!r}")
+        result = await self.get_json("/tags", params={"limit": limit, "offset": offset})
+        try:
+            raw_items = parse_gamma_tags_page(result.typed)
+            page = GammaTagsPage(
+                items=[GammaTag.model_validate(item) for item in raw_items],
+                offset=offset,
+                limit=limit,
+            )
+        except (TypeError, ValueError, ValidationError) as exc:
+            raise PolymarketError(
+                REASON_RESPONSE_SCHEMA, receipts=result.receipts
+            ) from exc
+        return DriverCallResult(typed=page, raw=result.raw, receipts=result.receipts)
+
+    async def tag_by_slug(self, slug: str) -> DriverCallResult:
+        """按 slug 解析官方 tag（得到稳定 ``id``）。"""
+        if not isinstance(slug, str) or not slug.strip() or "/" in slug or "\\" in slug:
+            raise ValueError("tag_slug_invalid")
+        result = await self.get_json(f"/tags/slug/{quote(slug.strip(), safe='')}")
+        try:
+            typed = GammaTag.model_validate(result.typed)
+        except ValidationError as exc:
+            raise PolymarketError(
+                REASON_RESPONSE_SCHEMA, receipts=result.receipts
+            ) from exc
+        if not typed.persistable():
+            raise PolymarketError(
+                REASON_RESPONSE_SCHEMA, receipts=result.receipts
+            )
         return DriverCallResult(typed=typed, raw=result.raw, receipts=result.receipts)

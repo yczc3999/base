@@ -190,10 +190,91 @@ def _pipeline_spec() -> RuntimeSpec:
     return RuntimeSpec("pipeline", "market", build)
 
 
-def default_specs() -> list[RuntimeSpec]:
-    """默认注册的全部常驻 runtime：outbox 传输三件套 + pipeline 驱动器（感知+筛选）。
+def _idle_runner(name: str, reason: str):
+    """缺依赖时挂起、不冒充在干活。AI 打开且缺网关则由 build 直接 fail closed。"""
 
-    cognition/execution/evaluation/reconciliation/replay 的 AI/vault 依赖在 pipeline
-    ai_enabled 放行后接入（见 pipeline.py Stage 2+）。
-    """
-    return [*_outbox_specs(), _pipeline_spec()]
+    async def run(stop_event: asyncio.Event) -> None:
+        logger.info("runtime_idle name=%s reason=%s", name, reason)
+        await stop_event.wait()
+
+    return run
+
+
+def _require_ai_gateway(ctx: SupervisorContext, name: str) -> None:
+    from app.config import settings
+
+    if getattr(settings, "PM_V2_PIPELINE_AI_ENABLED", False) and ctx.gateway is None:
+        raise RuntimeError(f"{name}_gateway_required")
+
+
+def _cognition_spec() -> RuntimeSpec:
+    def build(ctx: SupervisorContext):
+        _require_ai_gateway(ctx, "cognition")
+        if ctx.gateway is None or ctx.artifacts is None:
+            return _idle_runner("cognition", "deps_missing")
+        from runtimes.trading.cognition import CognitionRuntime
+
+        CognitionRuntime(
+            ctx.session_factory_for("cognition"),
+            ctx.gateway,
+            ctx.artifacts,
+        )
+        return _idle_runner("cognition", "driven_by_pipeline")
+
+    return RuntimeSpec("cognition", "cognition", build)
+
+
+def _evaluation_spec() -> RuntimeSpec:
+    def build(ctx: SupervisorContext):
+        from runtimes.trading.evaluation import EvaluationRuntime
+
+        EvaluationRuntime(
+            ctx.session_factory_for("evaluation"),
+            artifact_store=ctx.artifacts,
+        )
+        return _idle_runner("evaluation", "event_driven")
+
+    return RuntimeSpec("evaluation", "evaluation", build)
+
+
+def _shadow_execution_spec() -> RuntimeSpec:
+    def build(ctx: SupervisorContext):
+        from runtimes.trading.execution import ShadowExecutionRuntime
+
+        ShadowExecutionRuntime(ctx.session_factory_for("execution"))
+        return _idle_runner("execution-shadow", "driven_by_pipeline")
+
+    return RuntimeSpec("execution-shadow", "execution", build)
+
+
+def _reconciliation_spec() -> RuntimeSpec:
+    def build(ctx: SupervisorContext):
+        from runtimes.trading.reconciliation import ReconciliationRuntime
+
+        ReconciliationRuntime(ctx.session_factory_for("reconciliation"))
+        return _idle_runner("reconciliation", "awaiting_lease")
+
+    return RuntimeSpec("reconciliation", "reconciliation", build)
+
+
+def _replay_spec() -> RuntimeSpec:
+    def build(ctx: SupervisorContext):
+        from runtimes.trading.replay import ReplayRuntime
+
+        ReplayRuntime(ctx.session_factory_for("replay"))
+        return _idle_runner("replay", "on_demand")
+
+    return RuntimeSpec("replay", "replay", build)
+
+
+def default_specs() -> list[RuntimeSpec]:
+    """默认注册：outbox 三件套 + pipeline + 重型 runtime（缺依赖 idle / AI 开且无网关 fail closed）。"""
+    return [
+        *_outbox_specs(),
+        _pipeline_spec(),
+        _cognition_spec(),
+        _evaluation_spec(),
+        _shadow_execution_spec(),
+        _reconciliation_spec(),
+        _replay_spec(),
+    ]

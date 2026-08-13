@@ -368,6 +368,98 @@ class MarketRepository:
         )
         return result.scalar_one()
 
+    async def upsert_tag(
+        self,
+        session: AsyncSession,
+        *,
+        gamma_tag_id: str,
+        slug: str | None,
+        label: str | None,
+        seen_in_catalog: bool,
+        seen_in_event: bool,
+        observed_at: datetime,
+        content_hash: str,
+    ) -> int:
+        if not gamma_tag_id:
+            raise ValueError("gamma_tag_id_required")
+        if not seen_in_catalog and not seen_in_event:
+            raise ValueError("tag_source_required")
+        result = await session.execute(
+            text(
+                "INSERT INTO trading.pm_tags "
+                "(gamma_tag_id, slug, label, seen_in_catalog, seen_in_event, "
+                " observed_at, content_hash) "
+                "VALUES (:id, :slug, :label, :cat, :evt, :obs, :ch) "
+                "ON CONFLICT (gamma_tag_id) DO UPDATE SET "
+                "  slug=EXCLUDED.slug, label=EXCLUDED.label, "
+                "  seen_in_catalog=trading.pm_tags.seen_in_catalog "
+                "    OR EXCLUDED.seen_in_catalog, "
+                "  seen_in_event=trading.pm_tags.seen_in_event "
+                "    OR EXCLUDED.seen_in_event, "
+                "  observed_at=EXCLUDED.observed_at, "
+                "  content_hash=EXCLUDED.content_hash "
+                "RETURNING id"
+            ),
+            {
+                "id": gamma_tag_id,
+                "slug": slug,
+                "label": label,
+                "cat": seen_in_catalog,
+                "evt": seen_in_event,
+                "obs": observed_at,
+                "ch": content_hash,
+            },
+        )
+        return result.scalar_one()
+
+    async def replace_event_tags(
+        self,
+        session: AsyncSession,
+        *,
+        gamma_event_id: str,
+        tag_ids: list[str],
+    ) -> int:
+        await session.execute(
+            text("DELETE FROM trading.pm_event_tags WHERE gamma_event_id=:eid"),
+            {"eid": gamma_event_id},
+        )
+        written = 0
+        for position, tag_id in enumerate(tag_ids):
+            if not tag_id:
+                continue
+            await session.execute(
+                text(
+                    "INSERT INTO trading.pm_event_tags "
+                    "(gamma_event_id, gamma_tag_id, position) "
+                    "VALUES (:eid, :tid, :pos) "
+                    "ON CONFLICT (gamma_event_id, gamma_tag_id) DO UPDATE SET "
+                    "  position=EXCLUDED.position"
+                ),
+                {"eid": gamma_event_id, "tid": tag_id, "pos": position},
+            )
+            written += 1
+        return written
+
+    async def update_tag_disposition(
+        self,
+        session: AsyncSession,
+        *,
+        tag_id: int,
+        disposition: str | None,
+    ) -> dict[str, Any] | None:
+        result = await session.execute(
+            text(
+                "UPDATE trading.pm_tags SET disposition=:d "
+                "WHERE id=:id "
+                "RETURNING id::text AS id, gamma_tag_id, slug, label, "
+                "seen_in_catalog, seen_in_event, disposition, "
+                "observed_at::text AS observed_at, created_at::text AS created_at"
+            ),
+            {"id": tag_id, "d": disposition},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
     async def upsert_market(
         self,
         session: AsyncSession,

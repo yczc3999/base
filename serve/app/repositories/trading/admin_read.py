@@ -138,6 +138,37 @@ class AdminReadRepository:
             extra_where=" AND ".join(extra), params=params,
         )
 
+    _TAG_COLS = (
+        "gamma_tag_id, slug, label, seen_in_catalog, seen_in_event, disposition, "
+        "(SELECT count(*)::text FROM trading.pm_event_tags e "
+        "  WHERE e.gamma_tag_id = pm_tags.gamma_tag_id) AS event_count, "
+        "observed_at::text AS observed_at, created_at::text AS created_at, "
+        "id::text AS id"
+    )
+
+    async def list_tags(self, session, *, cursor_st, cursor_id, direction, limit, as_of,
+                        slug=None, seen_in_catalog=None, disposition=None
+                        ) -> tuple[list[dict], bool]:
+        extra, params = [], {}
+        if slug:
+            extra.append("slug = :slug")
+            params["slug"] = slug
+        if seen_in_catalog is not None:
+            extra.append("seen_in_catalog = :seen_in_catalog")
+            params["seen_in_catalog"] = seen_in_catalog
+        if disposition:
+            if disposition == "unset":
+                extra.append("disposition IS NULL")
+            else:
+                extra.append("disposition = :disposition")
+                params["disposition"] = disposition
+        return await self._keyset_page(
+            session, table="pm_tags", columns=self._TAG_COLS,
+            sort_col="created_at", direction=direction,
+            cursor_st=cursor_st, cursor_id=cursor_id, limit=limit, as_of=as_of,
+            extra_where=" AND ".join(extra), params=params,
+        )
+
     async def get_market(self, session, market_id: int) -> dict | None:
         result = await session.execute(
             text(

@@ -23,6 +23,7 @@ function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value
 <template>
   <PageShell class="v2-page" title="Markets" :loading="isLoading" sub-title="公共市场 · 状态 · 流动性">
     <div class="filterbar">
+      <RouterLink class="lnk" to="/v2/tags">已同步 Tags</RouterLink>
       <el-select v-model="filters.neg_risk" placeholder="negRisk" clearable >
         <el-option label="否" value="false" /><el-option label="是" value="true" />
       </el-select>

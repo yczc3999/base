@@ -45,6 +45,12 @@ export interface MarketFilters {
   closed?: boolean | string
 }
 
+export interface TagFilters {
+  slug?: string
+  seen_in_catalog?: boolean | string
+  disposition?: string
+}
+
 export interface EpisodeFilters { status?: string }
 export interface DecisionFilters { status?: string; decision_class?: string }
 export interface StatusFilters { status?: string }
@@ -72,6 +78,28 @@ export interface MarketRow {
   end_date: UtcIsoString | null
   closed_at: UtcIsoString | null
   created_at: UtcIsoString | null
+}
+
+export type TagDisposition = 'SELECT' | 'DEFER' | 'REJECT'
+
+export interface TagRow {
+  id: EntityId
+  gamma_tag_id: string
+  slug: string | null
+  label: string | null
+  seen_in_catalog: boolean
+  seen_in_event: boolean
+  disposition: TagDisposition | null
+  event_count: string
+  observed_at: UtcIsoString | null
+  created_at: UtcIsoString | null
+}
+
+export interface TagSyncResult {
+  ok: boolean
+  upserted: number
+  pages: number
+  truncated: boolean
 }
 
 export interface ComponentRow {

@@ -226,6 +226,13 @@ export interface V2RequestConfig {
   signal?: AbortSignal
 }
 
+export interface V2MutateConfig {
+  method: 'POST' | 'PATCH'
+  url: string
+  data?: object
+  timeout?: number
+}
+
 export interface V2RawRequestConfig extends V2RequestConfig {
   headers?: Record<string, string>
   responseType?: AxiosRequestConfig['responseType']
@@ -238,6 +245,15 @@ export async function requestV2<T>(config: V2RequestConfig): Promise<T> {
     url: config.url,
     params: config.params,
     signal: config.signal,
+  }, { showError: false, retry: true })
+}
+
+export async function requestV2Mutate<T>(config: V2MutateConfig): Promise<T> {
+  return request<T>({
+    method: config.method,
+    url: config.url,
+    data: config.data,
+    timeout: config.timeout,
   }, { showError: false, retry: true })
 }
 

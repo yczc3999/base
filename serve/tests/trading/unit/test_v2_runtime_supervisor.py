@@ -39,6 +39,49 @@ def _failing_runner(events, name):
     return run
 
 
+def test_default_specs_register_heavy_runtimes_and_idle_without_gateway():
+    from runtimes.trading.assembly import default_specs
+
+    names = [spec.name for spec in default_specs()]
+    assert names[:4] == [
+        "outbox-publisher",
+        "outbox-sweeper",
+        "outbox-consumer",
+        "pipeline",
+    ]
+    assert "cognition" in names
+    assert "evaluation" in names
+    assert "execution-shadow" in names
+    assert "reconciliation" in names
+    assert "replay" in names
+
+    ctx = _ctx()
+    runner = next(spec.build(ctx) for spec in default_specs() if spec.name == "cognition")
+
+    async def main():
+        stop = asyncio.Event()
+        task = asyncio.create_task(runner(stop))
+        await asyncio.sleep(0.01)
+        stop.set()
+        await asyncio.wait_for(task, timeout=1)
+
+    _run(main())
+
+
+def test_cognition_build_fail_closed_when_ai_enabled_without_gateway(monkeypatch):
+    from app.config import settings
+    from runtimes.trading.assembly import default_specs
+
+    monkeypatch.setattr(settings, "PM_V2_PIPELINE_AI_ENABLED", True)
+    spec = next(item for item in default_specs() if item.name == "cognition")
+    try:
+        spec.build(_ctx())
+    except RuntimeError as exc:
+        assert "cognition_gateway_required" in str(exc)
+    else:
+        raise AssertionError("expected fail-closed without gateway")
+
+
 def test_duplicate_register_rejected():
     sup = RuntimeSupervisor(_ctx())
     spec = RuntimeSpec("a", "outbox", lambda c: _ok_runner([], "a"))

@@ -29,6 +29,7 @@ from app.repositories.trading.market import (
 from app.schemas.polymarket.gamma import (
     GammaEvent,
     GammaMarket,
+    GammaTag,
     assess_binary_market,
 )
 
@@ -45,6 +46,8 @@ class UniversePolicy:
     market_page_limit: int = 100
     max_pages_per_endpoint: int = 200
     frame_lease_s: int = 300
+    tag_page_limit: int = 100
+    tag_catalog_max_pages: int = 200
 
     def __post_init__(self) -> None:
         if isinstance(self.event_page_limit, bool) or not 1 <= self.event_page_limit <= 500:
@@ -55,6 +58,10 @@ class UniversePolicy:
             raise ValueError("max_pages_per_endpoint_invalid")
         if isinstance(self.frame_lease_s, bool) or self.frame_lease_s <= 0:
             raise ValueError("frame_lease_s_invalid")
+        if isinstance(self.tag_page_limit, bool) or not 1 <= self.tag_page_limit <= 100:
+            raise ValueError("tag_page_limit_out_of_range")
+        if isinstance(self.tag_catalog_max_pages, bool) or self.tag_catalog_max_pages <= 0:
+            raise ValueError("tag_catalog_max_pages_invalid")
 
 
 @dataclass(frozen=True)
@@ -291,6 +298,9 @@ class UniverseLogic:
                 ),
                 raw_artifact_ref=event_artifact_refs.get(event.id, raw_artifact_ref),
             )
+            await self._persist_event_tags(
+                session, event=event, observed_at=observed_at
+            )
             events_upserted += 1
 
         for market in markets:
@@ -451,4 +461,56 @@ class UniverseLogic:
             eligible_count=eligible_count,
             lifecycle_events=lifecycle_events,
             markets=applied_markets,
+        )
+
+    async def persist_tag(
+        self,
+        uow: UnitOfWork,
+        tag: GammaTag,
+        *,
+        observed_at: datetime,
+        seen_in_catalog: bool = False,
+        seen_in_event: bool = False,
+    ) -> int | None:
+        """把官方 tag 对象写入 ``pm_tags``。无 ``id`` 的字符串 tag 丢弃，不猜身份。"""
+        if not tag.persistable():
+            return None
+        return await self._market.upsert_tag(
+            uow.session,
+            gamma_tag_id=tag.id,
+            slug=tag.slug,
+            label=tag.label,
+            seen_in_catalog=seen_in_catalog,
+            seen_in_event=seen_in_event,
+            observed_at=observed_at,
+            content_hash=canonical_hash(
+                {"id": tag.id, "slug": tag.slug, "label": tag.label}
+            ),
+        )
+
+    async def _persist_event_tags(
+        self,
+        session,
+        *,
+        event: GammaEvent,
+        observed_at: datetime,
+    ) -> None:
+        persistable = [tag for tag in event.tags if tag.persistable()]
+        for tag in persistable:
+            await self._market.upsert_tag(
+                session,
+                gamma_tag_id=tag.id,
+                slug=tag.slug,
+                label=tag.label,
+                seen_in_catalog=False,
+                seen_in_event=True,
+                observed_at=observed_at,
+                content_hash=canonical_hash(
+                    {"id": tag.id, "slug": tag.slug, "label": tag.label}
+                ),
+            )
+        await self._market.replace_event_tags(
+            session,
+            gamma_event_id=event.id,
+            tag_ids=[tag.id for tag in persistable],
         )

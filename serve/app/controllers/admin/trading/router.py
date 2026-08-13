@@ -25,6 +25,7 @@ from app.controllers.admin.trading import (
     replay,
     runtime,
     strategy_config,
+    tags,
 )
 
 router = APIRouter()
@@ -39,6 +40,7 @@ router.include_router(runtime.router)
 # V2 Admin Read endpoints
 router.include_router(dashboard.router)
 router.include_router(markets.router)
+router.include_router(tags.router)
 router.include_router(components.router)
 router.include_router(episodes.router)
 router.include_router(decisions.router)

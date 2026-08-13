@@ -43,6 +43,7 @@ export interface PageAnchor {
 const V2_DOMAIN_PERMISSIONS = Object.freeze({
   dashboard: 'v2:dashboard:view',
   markets: 'v2:markets:view',
+  tags: 'v2:tags:view',
   components: 'v2:components:view',
   episodes: 'v2:episodes:view',
   decisions: 'v2:decisions:view',

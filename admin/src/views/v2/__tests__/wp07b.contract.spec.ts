@@ -9,12 +9,12 @@ const ADMIN_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 const source = (relative: string) => readFileSync(resolve(ADMIN_ROOT, relative), 'utf8')
 
 const LIST_VIEWS = [
-  'markets', 'components', 'episodes', 'decisions', 'execution', 'models-ai',
+  'markets', 'tags', 'components', 'episodes', 'decisions', 'execution', 'models-ai',
   'ai-invocations', 'costs', 'config', 'releases', 'evaluation', 'replay', 'integrity',
 ].map((name) => `src/views/v2/${name}/index.vue`)
 
 const ROUTE_TEMPLATES = [
-  'dashboard/index', 'markets/index', 'components/index', 'episodes/index',
+  'dashboard/index', 'markets/index', 'tags/index', 'components/index', 'episodes/index',
   'decisions/index', 'execution/index', 'models-ai/index', 'ai-invocations/index',
   'costs/index', 'config/index', 'releases/index', 'evaluation/index', 'replay/index',
   'integrity/index', 'markets/detail', 'components/detail', 'episodes/detail',
@@ -22,8 +22,9 @@ const ROUTE_TEMPLATES = [
 ]
 
 describe('WP-07B route and view contracts', () => {
-  it('registers all six hidden drill-down routes under the authenticated root', () => {
+  it('registers hidden drill-down routes under the authenticated root', () => {
     expect(v2HiddenRoutes.map((route) => route.path)).toEqual([
+      '/v2/tags',
       '/v2/markets/:id',
       '/v2/components/:id',
       '/v2/episodes/:id',
@@ -32,7 +33,7 @@ describe('WP-07B route and view contracts', () => {
       '/v2/artifacts/:content_hash',
     ])
     expect(rootRoute.children).toEqual(v2HiddenRoutes)
-    expect(new Set(v2HiddenRoutes.map((route) => route.name)).size).toBe(6)
+    expect(new Set(v2HiddenRoutes.map((route) => route.name)).size).toBe(7)
   })
 
   it('has a concrete Vue component for every seeded route template', () => {

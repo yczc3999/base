@@ -36,6 +36,41 @@ def test_sense_runs_ingestor():
     s = _run(d.run_once())
     assert s["sense"]["ok"] is True
     assert s["sense"]["frame_id"] == 7
+    assert s["sense"]["tags"]["reason"] == "sync_not_configured"
+
+
+def test_sense_syncs_tag_catalog_before_universe_frame():
+    class _WithTags(_FakeIngestor):
+        def __init__(self):
+            super().__init__(frame_id=3)
+            self.tag_calls = 0
+
+        async def sync_tag_catalog(self):
+            self.tag_calls += 1
+            return {"stage": "tags", "ok": True, "upserted": 2, "pages": 1}
+
+    ingestor = _WithTags()
+    d = PipelineDriver(sessions_factory=lambda p: None, universe_ingestor=ingestor,
+                       policy=PipelinePolicy(screen_enabled=False))
+    s = _run(d.run_once())
+    assert ingestor.tag_calls == 1
+    assert ingestor.calls == 1
+    assert s["sense"]["tags"]["upserted"] == 2
+
+
+def test_tag_catalog_failure_does_not_block_universe_frame():
+    class _BrokenTags(_FakeIngestor):
+        async def sync_tag_catalog(self):
+            raise RuntimeError("tags_down")
+
+    d = PipelineDriver(sessions_factory=lambda p: None,
+                       universe_ingestor=_BrokenTags(frame_id=9),
+                       policy=PipelinePolicy(screen_enabled=False))
+    s = _run(d.run_once())
+    assert s["sense"]["ok"] is True
+    assert s["sense"]["frame_id"] == 9
+    assert s["sense"]["tags"]["ok"] is False
+    assert s["sense"]["tags"]["reason"] == "RuntimeError"
 
 
 def test_sense_without_ingestor_fail_closed():

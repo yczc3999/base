@@ -18,6 +18,7 @@ from app.logics.trading.screening import (
     R0_REJECT,
     R0_SELECT,
     ScreeningLogic,
+    compose_tag_disposition,
 )
 from app.schemas.trading.workflow import G0ObjectiveInput, R0Input, R0PolicyInput
 from app.domain.trading.hashing import canonical_hash
@@ -117,6 +118,49 @@ def test_r0_decide_branches():
     assert logic._decide(_r0(minimum_deployable_capacity=Decimal("0")), R0_POLICY)[0] == R0_REJECT
     # REJECT：成本过高
     assert logic._decide(_r0(estimated_research_cost=Decimal("200000")), R0_POLICY)[0] == R0_REJECT
+
+
+def test_compose_tag_disposition_rules():
+    assert compose_tag_disposition(None) is None
+    assert compose_tag_disposition([]) == (R0_DEFER, "r0_tags_missing")
+    assert compose_tag_disposition([{"gamma_tag_id": "2", "disposition": "SELECT"}]) is None
+    assert compose_tag_disposition(
+        [{"gamma_tag_id": "1", "disposition": None}]
+    ) == (R0_DEFER, "r0_tag_defer")
+    assert compose_tag_disposition(
+        [
+            {"gamma_tag_id": "2", "disposition": "SELECT"},
+            {"gamma_tag_id": "1", "disposition": "REJECT"},
+        ]
+    ) == (R0_REJECT, "r0_tag_reject")
+    assert compose_tag_disposition(
+        [
+            {"gamma_tag_id": "2", "disposition": "SELECT"},
+            {"gamma_tag_id": "84", "disposition": "DEFER"},
+        ]
+    ) == (R0_DEFER, "r0_tag_defer")
+
+
+def test_r0_tag_gate_before_l1():
+    logic = ScreeningLogic(None)
+    rejected, reason = logic._decide(
+        _r0(market_metadata={"tags": [{"gamma_tag_id": "1", "disposition": "REJECT"}]}),
+        R0_POLICY,
+    )
+    assert rejected == R0_REJECT
+    assert reason == "r0_tag_reject"
+    deferred, reason = logic._decide(
+        _r0(market_metadata={"tags": []}),
+        R0_POLICY,
+    )
+    assert deferred == R0_DEFER
+    assert reason == "r0_tags_missing"
+    selected, reason = logic._decide(
+        _r0(market_metadata={"tags": [{"gamma_tag_id": "2", "disposition": "SELECT"}]}),
+        R0_POLICY,
+    )
+    assert selected == R0_SELECT
+    assert reason is None
 
 
 def test_audit_sample_deterministic():

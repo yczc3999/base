@@ -7,6 +7,12 @@ import type { RouteRecordRaw } from 'vue-router'
  */
 export const v2HiddenRoutes: RouteRecordRaw[] = [
   {
+    path: '/v2/tags',
+    name: 'v2-page-tags',
+    component: () => import('@/views/v2/tags/index.vue'),
+    meta: { title: 'Tags', visible: false, permission: 'v2:tags:view' },
+  },
+  {
     path: '/v2/markets/:id',
     name: 'v2-page-market-detail',
     component: () => import('@/views/v2/markets/detail.vue'),

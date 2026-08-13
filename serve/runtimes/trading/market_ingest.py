@@ -442,6 +442,46 @@ class UniverseIngestor:
                 markets=(),
             )
 
+    async def sync_tag_catalog(self) -> dict[str, Any]:
+        """从 ``GET /tags`` 全量同步官方目录。失败不猜名字，调用方决定是否继续 sense。"""
+        observed_at = self._clock()
+        upserted = 0
+        pages = 0
+        offset = 0
+        limit = self._policy.tag_page_limit
+        last_count = 0
+        while pages < self._policy.tag_catalog_max_pages:
+            result = await self._gamma.list_tags(limit=limit, offset=offset)
+            page = result.typed
+            last_count = len(page.items)
+            if last_count == 0:
+                break
+            uow = self._uow_factory()
+            async with uow:
+                for tag in page.items:
+                    written = await self._universe.persist_tag(
+                        uow,
+                        tag,
+                        observed_at=observed_at,
+                        seen_in_catalog=True,
+                    )
+                    if written is not None:
+                        upserted += 1
+            pages += 1
+            if last_count < limit:
+                break
+            offset += limit
+        truncated = (
+            pages >= self._policy.tag_catalog_max_pages and last_count == limit
+        )
+        return {
+            "stage": "tags",
+            "ok": True,
+            "upserted": upserted,
+            "pages": pages,
+            "truncated": truncated,
+        }
+
     async def _ensure_gamma_epoch(self, frame_id: int, at: datetime) -> int:
         shard = f"universe-frame-{frame_id}"
         uow = self._uow_factory()

@@ -4,8 +4,9 @@
     python -m runtimes.trading --dry-run     # 打印注册清单，不联网、不启动
     python -m runtimes.trading               # 装配并常驻运行（Ctrl+C / SIGTERM 优雅关闭）
 
-进程隔离：每个 runtime 用各自 DB pool profile；outbox 三件套完整装配并常驻，
-重型 provider/vault 依赖的 runtime（cognition/execution/…）由后续 checkpoint 注册。
+进程隔离：每个 runtime 用各自 DB pool profile；outbox 三件套 + pipeline 常驻，
+cognition/execution/evaluation/reconciliation/replay 已注册：缺网关 idle，
+``PM_V2_PIPELINE_AI_ENABLED`` 且无 gateway 则 fail closed。
 """
 
 from __future__ import annotations

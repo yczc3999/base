@@ -33,6 +33,38 @@ R0_SELECT = "SELECT"
 R0_DEFER = "DEFER"
 R0_REJECT = "REJECT"
 
+_TAG_RANK = {"SELECT": 0, "DEFER": 1, "REJECT": 2}
+
+
+def compose_tag_disposition(tags: list[dict] | None) -> tuple[str, str] | None:
+    """本地 tag overlay。``None`` = 调用方未提供（旧测试/非 pipeline），跳过。
+
+    提供了 ``tags``（可空列表）则：无 tag → DEFER；任一 REJECT → REJECT；
+    未标注视为 DEFER；全 SELECT 才放行到 L1。
+    """
+    if tags is None:
+        return None
+    if not tags:
+        return R0_DEFER, "r0_tags_missing"
+    worst_rank = 0
+    worst = R0_SELECT
+    for tag in tags:
+        if not isinstance(tag, dict):
+            return R0_DEFER, "r0_tag_invalid"
+        raw = tag.get("disposition")
+        disposition = "DEFER" if raw in (None, "") else str(raw)
+        rank = _TAG_RANK.get(disposition)
+        if rank is None:
+            return R0_DEFER, "r0_tag_unknown"
+        if rank > worst_rank:
+            worst_rank = rank
+            worst = disposition
+    if worst == R0_SELECT:
+        return None
+    if worst == R0_REJECT:
+        return R0_REJECT, "r0_tag_reject"
+    return R0_DEFER, "r0_tag_defer"
+
 AUDIT_ALGORITHM_VERSION = "hmac-sha256-u64/v1"
 _AUDIT_SCALE = Decimal("0.000000000001")
 
@@ -564,6 +596,14 @@ class ScreeningLogic:
     def _decide(
         self, r0_input: R0Input, policy: R0PolicyInput
     ) -> tuple[str, str | None]:
+        tags = (
+            r0_input.market_metadata.get("tags")
+            if "tags" in r0_input.market_metadata
+            else None
+        )
+        tag_gate = compose_tag_disposition(tags)
+        if tag_gate is not None:
+            return tag_gate
         if policy.require_two_sided_quote and (
             r0_input.best_bid is None or r0_input.best_ask is None
         ):

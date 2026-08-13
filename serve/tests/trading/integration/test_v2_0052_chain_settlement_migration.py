@@ -29,7 +29,8 @@ V51 = "b1000051"
 V52 = "b1000052"
 V70 = "b1000070"
 V71 = "b1000071"
-HEAD_REVISION = V71
+V72 = "b1000072"
+HEAD_REVISION = V72
 
 NEW_TABLES = [
     "contract_registry",

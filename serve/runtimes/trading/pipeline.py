@@ -103,6 +103,14 @@ class PipelineDriver:
     async def _sense(self) -> dict[str, Any]:
         if self._ingestor is None:
             return {"stage": "sense", "ok": False, "reason": "ingestor_not_configured"}
+        tags = {"ok": True, "reason": "sync_not_configured"}
+        sync = getattr(self._ingestor, "sync_tag_catalog", None)
+        if callable(sync):
+            try:
+                tags = await sync()
+            except Exception as exc:  # noqa: BLE001 - 目录失败不阻断 universe frame
+                logger.exception("tag_catalog_sync_failed")
+                tags = {"ok": False, "reason": type(exc).__name__}
         result = await self._ingestor.run_once()
         if getattr(result, "status", None) == "COMPLETE":
             self._last_frame = result  # 保存成功 frame 归属（含 markets）
@@ -110,6 +118,7 @@ class PipelineDriver:
             "stage": "sense", "ok": True,
             "frame_id": getattr(result, "frame_id", None),
             "status": getattr(result, "status", None),
+            "tags": tags,
         }
 
     # ---- Stage 1a：登记（frame → cohort membership）----
@@ -198,6 +207,21 @@ class PipelineDriver:
         ).mappings().first()
         return dict(row) if row else None
 
+    async def _market_tags(self, session, market_id: int) -> list[dict[str, Any]]:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT t.gamma_tag_id, t.disposition "
+                    "FROM trading.pm_markets m "
+                    "JOIN trading.pm_event_tags e ON e.gamma_event_id = m.gamma_event_id "
+                    "JOIN trading.pm_tags t ON t.gamma_tag_id = e.gamma_tag_id "
+                    "WHERE m.id=:m ORDER BY e.position, t.gamma_tag_id"
+                ),
+                {"m": market_id},
+            )
+        ).mappings().all()
+        return [dict(row) for row in rows]
+
     async def _screen(self) -> dict[str, Any]:
         """对每 cohort 跑 G0，再对每 market 独立事务跑 R0+opportunity。
 
@@ -221,13 +245,18 @@ class PipelineDriver:
                     market_id: await self._market_quote(list_uow.session, market_id)
                     for market_id in market_ids
                 }
+                tags = {
+                    market_id: await self._market_tags(list_uow.session, market_id)
+                    for market_id in market_ids
+                }
             for market_id, quote in quotes.items():
                 if quote is None:
                     continue
                 try:
                     async with UnitOfWork(self._sessions("market")) as market_uow:
                         r0 = await self._screen_market(
-                            market_uow, cohort_id, market_id, quote, g0
+                            market_uow, cohort_id, market_id, quote, g0,
+                            tags=tags.get(market_id, []),
                         )
                         processed += 1
                         if r0 is not None and r0.result == "SELECT":
@@ -246,14 +275,14 @@ class PipelineDriver:
             "processed": processed, "selected": selected, "failed": failed,
         }
 
-    async def _screen_market(self, uow, cohort_id, market_id, quote, g0):
+    async def _screen_market(self, uow, cohort_id, market_id, quote, g0, *, tags=None):
         """单市场 R0。policy 用单一事实源（runtimes.trading.policies），与 seed 冻结 hash 一致。"""
         from app.schemas.trading.workflow import R0Input
 
         policy = SHADOW_R0_POLICY
         audit = SHADOW_AUDIT_POLICY
         r0_input = R0Input(
-            market_metadata={"market_id": market_id},
+            market_metadata={"market_id": market_id, "tags": list(tags or [])},
             end_at=quote.get("end_date"),
             rule_completeness=Decimal("1") if quote.get("question") else None,
             best_bid=quote.get("best_bid"),

@@ -42,7 +42,7 @@ from tests.trading.integration.test_v2_private_order_reconciliation import (
 
 SERVE_DIR = __import__("pathlib").Path(__file__).resolve().parents[3]
 ALEMBIC_DIR = SERVE_DIR / "alembic"
-HEAD = "b1000071"
+HEAD = "b1000072"
 
 K1 = os.urandom(32)
 KEYRING = {("k1", "v1"): K1}

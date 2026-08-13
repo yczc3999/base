@@ -1,5 +1,8 @@
 import type { RouteRecordRaw } from 'vue-router'
 import type { MenuItem } from '@/stores/permission'
+import { v2HiddenRoutes } from './v2'
+
+const STATIC_V2_PATHS = new Set(v2HiddenRoutes.map((route) => route.path))
 
 /** views 目录下的所有组件（Vite glob import） */
 const viewModules = import.meta.glob('@/views/**/*.vue')
@@ -20,6 +23,7 @@ export function generateRoutes(menus: MenuItem[]): RouteRecordRaw[] {
       if (item.type === 2) continue
 
       if (item.type === 1 && item.path && item.template_path) {
+        if (STATIC_V2_PATHS.has(item.path)) continue
         // 菜单页面 → 生成路由
         const componentPath = `/src/views/${item.template_path}.vue`
 

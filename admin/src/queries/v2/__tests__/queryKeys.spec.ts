@@ -109,6 +109,7 @@ describe('placeholder isolation', () => {
 describe('permission/error state mapping', () => {
   it('maps every UI domain to the exact server permission', () => {
     expect(v2PermissionForDomain('markets')).toBe('v2:markets:view')
+    expect(v2PermissionForDomain('tags')).toBe('v2:tags:view')
     expect(v2PermissionForDomain('ai')).toBe('v2:ai:view')
     expect(v2PermissionForDomain('configuration')).toBe('v2:config:view')
     expect(v2PermissionForDomain('artifacts')).toBe('v2:artifact:read')

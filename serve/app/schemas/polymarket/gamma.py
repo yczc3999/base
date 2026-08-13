@@ -30,8 +30,10 @@ from app.schemas.polymarket.common import (
 )
 
 # Gamma keyset 官方 limit（任务 §2.3）：events ≤500、markets ≤100。
+# /tags 官方只有 offset 分页（无 keyset）；仅目录同步使用，不参与宇宙全集证明。
 GAMMA_EVENTS_PAGE_LIMIT = 500
 GAMMA_MARKETS_PAGE_LIMIT = 100
+GAMMA_TAGS_PAGE_LIMIT = 100
 
 
 def _string_list(value: Any) -> list[str]:
@@ -43,6 +45,76 @@ def _string_list(value: Any) -> list[str]:
 
 def _decimal_list(value: Any) -> list[Decimal]:
     return parse_decimal_array(value, "decimal_array")
+
+
+# ---------------- Tag ----------------
+
+class GammaTag(PolymarketModel):
+    """Gamma tag 对象。身份是 ``id``；slug/label 只展示，可变。"""
+
+    id: str = ""
+    slug: str | None = None
+    label: str | None = None
+    force_show: bool | None = Field(default=None, validation_alias="forceShow")
+    published_at: str | None = Field(default=None, validation_alias="publishedAt")
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _v_id(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            raise ValueError("tag_id_bool")
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, str):
+            return value.strip()
+        raise ValueError("tag_id_invalid")
+
+    def persistable(self) -> bool:
+        return bool(self.id)
+
+
+def coerce_gamma_tags(value: Any) -> list[Any]:
+    """接受官方对象数组，以及 fixture 里的 slug 字符串（无 id，不可入库）。"""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("tags_not_array")
+    items: list[Any] = []
+    for item in value:
+        if isinstance(item, GammaTag):
+            items.append(item)
+        elif isinstance(item, str):
+            slug = item.strip()
+            if not slug:
+                raise ValueError("tag_slug_empty")
+            items.append({"id": "", "slug": slug, "label": slug})
+        elif isinstance(item, dict):
+            items.append(item)
+        else:
+            raise ValueError("tag_invalid_type")
+    return items
+
+
+def parse_gamma_tags_page(raw: Any) -> list[dict[str, Any]]:
+    """``GET /tags`` 官方返回顶层数组，不是 keyset 对象。"""
+    if not isinstance(raw, list):
+        raise ValueError("tags_response_not_array")
+    items: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("tag_item_not_object")
+        items.append(item)
+    return items
+
+
+class GammaTagsPage(PolymarketModel):
+    """``GET /tags`` 一页（offset 目录分页）。"""
+
+    items: list[GammaTag] = Field(default_factory=list)
+    offset: int = 0
+    limit: int = GAMMA_TAGS_PAGE_LIMIT
 
 
 # ---------------- Event / Market ----------------
@@ -59,11 +131,16 @@ class GammaEvent(PolymarketModel):
     active: bool | None = None
     closed: bool | None = None
     archived: bool | None = None
-    tags: list[str] = Field(default_factory=list)
+    tags: list[GammaTag] = Field(default_factory=list)
     volume: DecimalNonNegative | None = None
     liquidity: DecimalNonNegative | None = None
     # event 内嵌 market 数组（detail 响应常见）；keyset events 页为扁平数组
     markets: list["GammaMarket"] = Field(default_factory=list)
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _v_tags(cls, value: Any) -> list[Any]:
+        return coerce_gamma_tags(value)
 
 
 class GammaMarket(PolymarketModel):

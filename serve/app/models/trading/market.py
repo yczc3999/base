@@ -370,3 +370,62 @@ class PMMarketCurrent(TradingBase, BigIntIdentityMixin, TimestampMixin):
     current_version_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     observed_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(sha256_type())
+
+
+class PMTag(TradingBase, BigIntIdentityMixin, TimestampMixin):
+    """Gamma tag 当前投影。主键身份是 ``gamma_tag_id``，不猜名字。"""
+
+    __tablename__ = "pm_tags"
+    __table_args__ = (
+        UniqueConstraint("gamma_tag_id", name="uq_pm_tags_gamma_tag_id"),
+        CheckConstraint(
+            "seen_in_catalog OR seen_in_event",
+            name="ck_pm_tags_seen_source",
+        ),
+        CheckConstraint(
+            "disposition IS NULL OR disposition IN ('SELECT','DEFER','REJECT')",
+            name="ck_pm_tags_disposition_known",
+        ),
+        Index("ix_pm_tags_slug", "slug"),
+        Index("ix_pm_tags_created_at", "created_at", "id"),
+        {"schema": TRADING_SCHEMA},
+    )
+
+    gamma_tag_id: Mapped[str] = mapped_column(external_id_type(), nullable=False)
+    slug: Mapped[str | None] = mapped_column(Text)
+    label: Mapped[str | None] = mapped_column(Text)
+    seen_in_catalog: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    seen_in_event: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    disposition: Mapped[str | None] = mapped_column(String(16))
+    observed_at: Mapped[datetime] = mapped_column(utc_timestamp_type(), nullable=False)
+    content_hash: Mapped[str] = mapped_column(sha256_type(), nullable=False)
+
+
+class PMEventTag(TradingBase, BigIntIdentityMixin, CreatedAtMixin):
+    """event × tag 当前挂载（替换集，非猜测）。"""
+
+    __tablename__ = "pm_event_tags"
+    __table_args__ = (
+        UniqueConstraint(
+            "gamma_event_id", "gamma_tag_id", name="uq_pm_event_tags_event_tag"
+        ),
+        CheckConstraint("position >= 0", name="ck_pm_event_tags_position_nonneg"),
+        Index("ix_pm_event_tags_tag", "gamma_tag_id"),
+        {"schema": TRADING_SCHEMA},
+    )
+
+    gamma_event_id: Mapped[str] = mapped_column(
+        external_id_type(),
+        ForeignKey("trading.pm_events.gamma_event_id", name="fk_pm_event_tags_event"),
+        nullable=False,
+    )
+    gamma_tag_id: Mapped[str] = mapped_column(
+        external_id_type(),
+        ForeignKey("trading.pm_tags.gamma_tag_id", name="fk_pm_event_tags_tag"),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)

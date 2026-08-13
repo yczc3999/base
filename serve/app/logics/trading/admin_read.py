@@ -93,7 +93,7 @@ class AdminReadLogic:
                 raise CursorError(f"filter_multi_value:{key}")
             # QueryParams 的标量均为字符串；布尔过滤在 Logic 边界规范化，避免
             # asyncpg 接收 str→boolean 时 500，也保证 filter_hash 语义唯一。
-            if key in {"closed", "neg_risk"}:
+            if key in {"closed", "neg_risk", "seen_in_catalog"}:
                 if isinstance(value, bool):
                     out[key] = value
                 elif str(value).lower() == "true":

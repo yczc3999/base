@@ -11,10 +11,12 @@ from app.models.trading.artifact import (
 )
 from app.models.trading.market import (
     PMEvent,
+    PMEventTag,
     PMMarket,
     PMMarketCurrent,
     PMMarketLifecycleEvent,
     PMMarketVersion,
+    PMTag,
     PMToken,
     PMTokenVersion,
     PUniverseFrame,
@@ -172,6 +174,8 @@ __all__ = [
     "PUniverseFrame",
     "PUniverseFramePage",
     "PMEvent",
+    "PMTag",
+    "PMEventTag",
     "PMMarket",
     "PMMarketVersion",
     "PMToken",
