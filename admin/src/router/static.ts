@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 import { isLoggedIn } from '@/utils/auth'
-import { v2HiddenRoutes } from './v2'
+import { v2HiddenRoutes, v2LegacyRedirects } from './v2'
 
 /** 静态路由（不需要登录） */
 export const staticRoutes: RouteRecordRaw[] = [
@@ -36,5 +36,5 @@ export const rootRoute: RouteRecordRaw = {
   name: 'Layout',
   component: () => import('@/layouts/default/index.vue'),
   redirect: '/dashboard',
-  children: [...v2HiddenRoutes],
+  children: [...v2HiddenRoutes, ...v2LegacyRedirects],
 }

@@ -10,6 +10,7 @@ from app.services.polymarket.base import (
     HttpPolymarketDriver,
     REASON_EGRESS_TRIPWIRE,
     WirePolicy,
+    explicit_http_proxy,
 )
 from app.services.polymarket.data_api_driver import DataApiDriver
 from app.services.polymarket.service import PolymarketService
@@ -85,11 +86,13 @@ async def test_public_http_driver_keeps_default_network_capability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     constructed = 0
+    client_kwargs: dict = {}
 
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None:
             nonlocal constructed
             constructed += 1
+            client_kwargs.update(kwargs)
 
         async def request(self, method, url, **kwargs) -> httpx.Response:
             request = httpx.Request(method, url, params=kwargs.get("params"))
@@ -99,6 +102,10 @@ async def test_public_http_driver_keeps_default_network_capability(
             return None
 
     monkeypatch.setattr("app.services.polymarket.base.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        "app.services.polymarket.base.explicit_http_proxy",
+        lambda environ=None: "http://127.0.0.1:10808",
+    )
     driver = HttpPolymarketDriver(
         "https://public-fixture.invalid",
         policy=WirePolicy(max_retries=0),
@@ -107,4 +114,30 @@ async def test_public_http_driver_keeps_default_network_capability(
     result = await driver.get_json("/status")
 
     assert constructed == 1
+    assert client_kwargs.get("trust_env") is False
+    assert client_kwargs.get("proxy") == "http://127.0.0.1:10808"
+    assert "transport" not in client_kwargs
     assert result.typed == {"ok": True}
+
+
+def test_explicit_http_proxy_skips_socks_and_prefers_https() -> None:
+    assert (
+        explicit_http_proxy(
+            {
+                "ALL_PROXY": "socks5h://127.0.0.1:10809",
+                "HTTPS_PROXY": "http://127.0.0.1:10808",
+                "HTTP_PROXY": "http://127.0.0.1:9",
+            }
+        )
+        == "http://127.0.0.1:10808"
+    )
+    assert (
+        explicit_http_proxy(
+            {
+                "ALL_PROXY": "socks5h://127.0.0.1:10809",
+                "HTTPS_PROXY": "socks5h://127.0.0.1:10809",
+            }
+        )
+        is None
+    )
+    assert explicit_http_proxy({}) is None

@@ -6,7 +6,10 @@
 ## 当前状态
 
 > **WP-00 / WP-01A / WP-01B / WP-01C / WP-02 / WP-03 / WP-04 / WP-05 / WP-06 / WP-07A：✅ ACCEPTED**；
-> `WP-07B` ✅ COMPLETE（视觉决策已确认并落地）。
+> `WP-07B` 已实现但浏览器硬门整改中；`WP-07C` 仍在施工；`WP-08` 尚未开始。
+>
+> 状态口径：`DONE` 只是实现者交付，`ACCEPTED` 才表示验收通过。Checkpoint 记录不得代替
+> 整个 WP 的唯一最终 completion manifest。
 
 | WP | 子任务 | 状态 | Manifest | SHA-256（去除哈希行口径） | 完成日期 |
 |---|---|---|---|---|---|
@@ -45,9 +48,27 @@
 | WP-05 | 0050/0051 vault/account/private CLOB/User WS/reconcile | ✅ DONE，审查通过 | `wp-05-execution-readiness-private-clob.md` | `04e365b4b1c18dc529dd2f6aa73c0cccf29c6a6cab5487787776f74a9bdc2fc9` | 2026-08-11 |
 | WP-06 | 0052 Polygon/relayer/settlement | ✅ DONE，审查通过 | `wp-06-polygon-relayer-settlement.md` | `a2280e003d02a9799e263efbef5f1de504f79e2a5e0f94564b6c9a133263f868` | 2026-08-12 |
 | WP-07A | Admin API + frontend types/query scaffolding | ✅ DONE，审查通过 | `wp-07a-admin-read-api-typed-data-layer.md` | `881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` | 2026-08-12 |
-| WP-07B | 14 菜单页、5 详情页与交互 | ✅ DONE | `wp-07b-admin-pages.md` | `4c399c5afd1b950098d50c552c1850f21bf471acab7523433a4779f1255c19ad` | 2026-08-12 |
-| WP-07C | 常驻运行时装配 Checkpoint A（outbox 传输层 + supervisor 骨架） | ✅ DONE | `wp-07c-resident-runtime.md` | `a776d1c2c227be31d60f7af8a827e7931719ef14da5197dc109a00ffd5e5be11` | 2026-08-12 |
+| WP-07B | 14 菜单页、5 详情页与交互 | ⚠ DONE，REMEDIATION_REQUIRED | `wp-07b-admin-pages.md` | `4c399c5afd1b950098d50c552c1850f21bf471acab7523433a4779f1255c19ad` | 2026-08-12 |
+| WP-07C | 常驻运行时装配 | 🚧 IN_PROGRESS；Checkpoint A 记录不是最终 manifest | `wp-07c-checkpoint-a.md`（Checkpoint A 历史证据） | `a776d1c2c227be31d60f7af8a827e7931719ef14da5197dc109a00ffd5e5be11` | 2026-08-12 |
 | WP-08 | 0090 分区/归档/perf harness/alerts/soak | ⏳ pending | — | — | — |
+
+## 2026-08-15 运行完整度账本
+
+| 证据 | 快照结果 | 判定 |
+|---|---:|---|
+| universe frames | `258 FAILED / 1 OPEN / 0 COMPLETE` | Stage 0 阻塞 |
+| universe pages | `51,158` 页，全部 `events_open` | 未进入 market endpoint |
+| markets / memberships / R0 | `0 / 0 / 0` | 无筛选样本 |
+| opportunities / forecast episodes / AI invocations | `0 / 0 / 0` | AI 链未运行 |
+| decisions / action sets / shadow executions | `0 / 0 / 0` | 无决策与执行事实 |
+| metrics / promotions | `0 / 0` | 未进入 qualification |
+| runtime dry-run | 9 个 spec 可打印 | 只证明注册，不证明 worker 有效推进 |
+| backend offline suite | `1699 passed / 368 skipped` | 单元与离线回归通过；真 PG 当前未复验 |
+| frontend | `40 passed`；lint 0 error/3 warning；build pass | 静态工程通过，真实数据 E2E 未通过 |
+| browser | 1440/1024/390 无页面级 overflow；390 表格不可读 | WP-07B 硬门未关闭 |
+
+该快照只追加事实，不改写已接受 WP 的历史证据。下一次状态更新必须重新查询数据库并记录
+命令、时间和 release/git/db revision，不能直接复制本表数字。
 
 ## 审查方式
 
@@ -80,4 +101,6 @@ PY
 ## 依赖链
 
 `WP-00` → `WP-01A` → `WP-01B` → `WP-01C` → `WP-02` → `WP-03` → `WP-04` → `WP-05` →
-`WP-06` → `WP-07A` → `WP-07B` → `WP-08`（依赖全部）。
+`WP-06` → `WP-07A` → `WP-07B`；运行主链为 `WP-07C`，最终整体交付还需 `WP-08`。
+
+**最后更新**：2026-08-15T00:37:50-04:00

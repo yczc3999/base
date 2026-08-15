@@ -12,7 +12,7 @@ const { data, isLoading, isError, displayError, denied, refetch } = useComponent
 const c = computed(() => data.value?.component ?? null)
 </script>
 <template>
-  <PageShell class="v2-page" :title="c?.component_key ?? 'Component Detail'" :loading="isLoading" sub-title="组件 · 版本 · 成员合约">
+  <PageShell class="v2-page" :title="c?.component_key ?? '组件详情'" :loading="isLoading" sub-title="组件 · 版本 · 成员合约">
     <PageState
 :loading="isLoading"
 :error="displayError" :denied="denied" :empty="!isLoading && !isError && !c"

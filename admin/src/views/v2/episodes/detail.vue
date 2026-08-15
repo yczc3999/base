@@ -22,7 +22,7 @@ watchEffect(() => {
 })
 </script>
 <template>
-  <PageShell class="v2-page" :title="ep?.episode_key ?? 'Episode Detail'" :loading="isLoading" sub-title="cognition episode · 下钻">
+  <PageShell class="v2-page" :title="ep?.episode_key ?? '回合详情'" :loading="isLoading" sub-title="认知回合 · 下钻">
     <PageState
 :loading="isLoading"
 :error="displayError" :denied="denied" :empty="!isLoading && !isError && !ep"

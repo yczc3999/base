@@ -12,7 +12,7 @@ const { data, isLoading, isError, displayError, denied, refetch } = useMarket(id
 const m = computed(() => data.value?.market ?? null)
 </script>
 <template>
-  <PageShell class="v2-page" :title="m?.question ?? 'Market Detail'" :loading="isLoading" sub-title="market · snapshot · spec · cohort">
+  <PageShell class="v2-page" :title="m?.question ?? '市场详情'" :loading="isLoading" sub-title="市场 · 快照 · 规格 · 队列">
     <PageState
 :loading="isLoading"
 :error="displayError" :denied="denied" :empty="!isLoading && !isError && !m"

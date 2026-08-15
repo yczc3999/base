@@ -81,6 +81,7 @@ async def sync_tags(
         return fail(exc.reason_code, 502)
     except Exception as exc:  # noqa: BLE001 - 同步失败对操作员可见 reason
         await session.rollback()
-        return fail(type(exc).__name__, 502)
+        detail = str(exc).strip().splitlines()[0][:180] if str(exc).strip() else ""
+        return fail(f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__, 502)
     await session.commit()
     return ok(result)

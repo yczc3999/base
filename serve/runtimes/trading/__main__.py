@@ -37,8 +37,8 @@ def _build_context() -> SupervisorContext:
         artifacts=artifacts,
         gateway=None,
     )
-    # dispatch 工厂：5 个域 handler 由 build_dispatch 注入（需 provider/网关时再补）。
-    ctx.config["build_dispatch"] = lambda c: build_dispatch(c)
+    # dispatch：5 个域 handler（shadow 路径，无需 provider/网关），供 outbox-consumer 消费。
+    ctx.config["dispatch"] = build_dispatch(ctx)
     return ctx
 
 

@@ -29,7 +29,9 @@ export type V2DetailQueryKey = readonly [
 /** Canonicalize exactly what Axios puts on the wire: sorted keys and string values. */
 export function normalizeFilters(filters: object | undefined): NormalizedFilters {
   const entries = Object.entries(filters ?? {})
-    .filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined)
+    .filter((entry): entry is [string, string | number | boolean] => (
+      entry[1] !== undefined && entry[1] !== ''
+    ))
     .map(([key, value]) => {
       if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
         throw new TypeError(`unsupported_filter_value:${key}`)

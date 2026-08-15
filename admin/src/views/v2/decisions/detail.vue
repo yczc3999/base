@@ -12,7 +12,7 @@ const { data, isLoading, isError, displayError, denied, refetch } = useDecision(
 const d = computed(() => data.value?.decision ?? null)
 </script>
 <template>
-  <PageShell class="v2-page" :title="d?.decision_key ?? 'Decision Detail'" :loading="isLoading" sub-title="decision · quote · action · intent">
+  <PageShell class="v2-page" :title="d?.decision_key ?? '决策详情'" :loading="isLoading" sub-title="决策 · 报价 · 动作 · 意图">
     <PageState
 :loading="isLoading"
 :error="displayError" :denied="denied" :empty="!isLoading && !isError && !d"

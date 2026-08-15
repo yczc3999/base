@@ -14,8 +14,10 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import random
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -41,6 +43,22 @@ from app.schemas.polymarket.common import (
 )
 
 Clock = Callable[[], float]
+
+_SOCKS_PREFIXES = ("socks://", "socks4://", "socks5://", "socks5h://")
+_HTTP_PROXY_KEYS = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+
+
+def explicit_http_proxy(environ: Mapping[str, str] | None = None) -> str | None:
+    """只取 HTTP(S)_PROXY。忽略 ALL_PROXY 里的 SOCKS（httpx 无 socksio 会 ImportError）。"""
+    env = os.environ if environ is None else environ
+    for key in _HTTP_PROXY_KEYS:
+        raw = (env.get(key) or "").strip()
+        if not raw:
+            continue
+        if raw.lower().startswith(_SOCKS_PREFIXES):
+            continue
+        return raw
+    return None
 
 
 @dataclass(frozen=True)
@@ -309,6 +327,19 @@ class HttpPolymarketDriver:
             write=self._policy.write_timeout_s,
         )
 
+    def _client_kwargs(self) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "timeout": self._timeout(),
+            "trust_env": False,
+        }
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+            return kwargs
+        proxy = explicit_http_proxy()
+        if proxy is not None:
+            kwargs["proxy"] = proxy
+        return kwargs
+
     def _backoff_seconds(self, attempt: int, response: httpx.Response | None) -> float:
         if response is not None:
             retry_after = _retry_after_seconds(response)
@@ -356,7 +387,7 @@ class HttpPolymarketDriver:
             else None
         )
 
-        client = httpx.AsyncClient(timeout=self._timeout(), transport=self._transport)
+        client = httpx.AsyncClient(**self._client_kwargs())
         receipts: list[RequestReceipt] = []
         try:
             for attempt in range(self._policy.max_retries + 1):

@@ -1,45 +1,55 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState } from '../_shared'
+import { KeysetTable, useKeysetList } from '../_shared'
 import { useReleasesPage } from '@/queries/v2/releases'
+import type { SearchField } from '@/components/CrudTable/types'
 
-const cursor = ref<string | null>(null)
-const asOf = ref<string | null>(null)
-const limit = ref(50)
-const filters = ref<Record<string, string>>({})
-const { data, isLoading, isError, displayError, denied, refetch } = useReleasesPage({ filters, cursor, asOf, limit })
-watch(filters, () => { cursor.value = null; asOf.value = null }, { deep: true })
+const { applied, cursor, asOf, limit, page, canPrev, applyFilters, resetFilters, next, prev, setLimit } = useKeysetList()
+const { data, isLoading, displayError, denied, refetch } = useReleasesPage({
+  filters: applied, cursor: cursor, asOf: asOf, limit: limit,
+})
 const rows = computed(() => data.value?.items ?? [])
-const hasMore = computed(() => data.value?.has_more ?? false)
-function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
+function nextPage() {
+  next({
+    next_cursor: data.value?.next_cursor,
+    as_of: data.value?.as_of,
+    has_more: data.value?.has_more,
+  })
+}
+
+const searchFields: SearchField[] = [
+  { field: 'status', label: '状态', type: 'input', placeholder: '请输入状态' },
+]
 </script>
+
 <template>
-  <PageShell class="v2-page" title="Releases" :loading="isLoading" sub-title="发布 · 哈希">
-    <div class="filterbar"><el-input v-model="filters.status" clearable placeholder="release status" /></div>
-    <PageState
-:loading="isLoading"
-:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
-      @retry="() => refetch()">
-      <el-table v-loading="isLoading" :data="rows" stripe>
-        <el-table-column label="release_name" min-width="160"><template #default="{ row }">{{ row.release_name }}</template></el-table-column>
-        <el-table-column label="git_sha" min-width="160"><template #default="{ row }"><span class="mono">{{ row.git_sha }}</span></template></el-table-column>
-        <el-table-column label="db_revision" min-width="110"><template #default="{ row }"><span class="mono">{{ row.db_revision }}</span></template></el-table-column>
-        <el-table-column label="status" min-width="90"><template #default="{ row }">{{ row.status }}</template></el-table-column>
-        <el-table-column label="id" min-width="90"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
-      </el-table>
-      <div class="pager">
-        <span class="muted">{{ rows.length }} 条 · as_of {{ data?.as_of }}</span>
-        <button class="link-btn" :disabled="!hasMore || isLoading" @click="nextPage">下一页 ›</button>
-      </div>
-    </PageState>
+  <PageShell class="v2-page" title="发布" sub-title="发布单 · 哈希 · 数据库版本">
+    <KeysetTable
+      :rows="rows"
+      :loading="isLoading"
+      :error="displayError"
+      :denied="denied"
+      :has-more="data?.has_more ?? false"
+      :as-of="data?.as_of"
+      :applied-filters="applied"
+      :search-fields="searchFields"
+      :page="page"
+      :page-size="limit"
+      :can-prev="canPrev"
+      @search="applyFilters"
+      @reset="resetFilters"
+      @refresh="refetch"
+      @retry="refetch"
+      @next="nextPage"
+      @prev="prev"
+      @size-change="setLimit"
+    >
+      <el-table-column label="发布名" prop="release_name" min-width="160" />
+      <el-table-column label="Git SHA" prop="git_sha" min-width="160" />
+      <el-table-column label="库版本" prop="db_revision" min-width="120" />
+      <el-table-column label="状态" prop="status" min-width="90" />
+      <el-table-column label="ID" prop="id" min-width="90" />
+    </KeysetTable>
   </PageShell>
 </template>
-<style scoped>
-.pager{display:flex;justify-content:space-between;align-items:center;margin-top:var(--v2-space-3)}
-.filterbar{display:flex;margin-bottom:var(--v2-space-4)}.filterbar .el-input{width:180px}
-.link-btn{background:none;border:none;color:var(--v2-primary);text-decoration:underline;cursor:pointer;height:var(--v2-control-h)}
-.link-btn:disabled{color:var(--v2-ink-muted);cursor:not-allowed;text-decoration:none}
-.muted{color:var(--v2-ink-muted);font-size:12.5px}
-.mono{font-family:var(--v2-font-mono);font-size:12px}
-</style>

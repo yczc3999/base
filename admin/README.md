@@ -30,6 +30,24 @@
 | 图标 | Lucide Vue Next |
 | 图表 | ECharts |
 
+## Polymarket V2 页面状态（2026-08-15）
+
+V2 页面位于 `src/views/v2/`，typed API/query 位于 `src/api/v2/` 与 `src/queries/v2/`。
+当前实现包含 14 个列表入口、5 个业务详情页及 artifact 下钻；验收状态以
+[`../serve/docs/tasks/README.md`](../serve/docs/tasks/README.md) 为准。
+
+| 验证 | 当前结果 |
+|---|---|
+| Vitest | 40 passed |
+| ESLint | 0 error，3 warnings |
+| TypeScript/Vite build | pass |
+| Chromium 1440/1024/390 | console/page error=0，页面级 overflow=0（mock API） |
+| 390px 可用性 | 未通过：总览明细表逐字换行、信息不可读 |
+| 真实后端 E2E | 未完成：尚缺真实登录、RBAC、五态、14 列表页和 5 详情页全链证据 |
+
+因此 `WP-07B` 保持 `REMEDIATION_REQUIRED`。不能只用 build、组件测试或
+`scrollWidth` 断言代替真实业务页面的可读性、键盘、200% zoom 和数据链验收。
+
 ## 核心组件
 
 | 组件 | 功能 |

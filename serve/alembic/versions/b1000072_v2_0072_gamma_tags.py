@@ -27,7 +27,7 @@ _MENU_DIR_SLUG = "v2-admin"
 _PERM_VIEW = ("v2-tags-view", "Tags", "v2:tags:view")
 _PERM_MANAGE = ("v2-tags-manage", "Tags Manage", "v2:tags:manage")
 _PAGE = (
-    "v2-page-tags", "Tags", "/v2/tags", "v2/tags/index", "v2:tags:view", True, 15,
+    "v2-page-tags", "Tags", "/tags", "v2/tags/index", "v2:tags:view", True, 15,
 )
 _ALL_SLUGS = (
     f"'{_PERM_VIEW[0]}', '{_PERM_MANAGE[0]}', '{_PAGE[0]}'"

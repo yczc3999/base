@@ -1,67 +1,101 @@
 <script setup lang="ts">
 /** WP-07B Markets 列表：keyset 翻页 + negRisk/closed filter + 下钻 Market Detail。 */
-import { ref, watch, computed } from 'vue'
+import { computed } from 'vue'
 import PageShell from '@/components/PageShell/index.vue'
-import { PageState, StatusBadge } from '../_shared'
+import { KeysetTable, useKeysetList } from '../_shared'
 import { useMarketsPage } from '@/queries/v2/markets'
+import type { SearchField } from '@/components/CrudTable/types'
 
-const filters = ref<Record<string, string>>({})
-const cursor = ref<string | null>(null)
-const asOf = ref<string | null>(null)
-const limit = ref(50)
-
-const { data, isLoading, isError, displayError, denied, refetch } = useMarketsPage({
-  filters: filters, cursor: cursor, asOf: asOf, limit: limit,
+const { applied, cursor, asOf, limit, page, canPrev, applyFilters, resetFilters, next, prev, setLimit } = useKeysetList()
+const { data, isLoading, displayError, denied, refetch } = useMarketsPage({
+  filters: applied, cursor: cursor, asOf: asOf, limit: limit,
 })
-// filter 改变 → 清空 cursor/asOf（复用 WP-07A query key 语义）
-watch(filters, () => { cursor.value = null; asOf.value = null }, { deep: true })
-
 const rows = computed(() => data.value?.items ?? [])
-const hasMore = computed(() => data.value?.has_more ?? false)
-function nextPage() { cursor.value = data.value?.next_cursor ?? null; asOf.value = data.value?.as_of ?? null }
+function nextPage() {
+  next({
+    next_cursor: data.value?.next_cursor,
+    as_of: data.value?.as_of,
+    has_more: data.value?.has_more,
+  })
+}
+
+const searchFields: SearchField[] = [
+  {
+    field: 'closed', label: '状态', type: 'select',
+    options: [
+      { label: '开放', value: 'false' },
+      { label: '已关闭', value: 'true' },
+    ],
+  },
+  {
+    field: 'neg_risk', label: 'Neg Risk', type: 'select',
+    options: [
+      { label: '否', value: 'false' },
+      { label: '是', value: 'true' },
+    ],
+  },
+]
 </script>
+
 <template>
-  <PageShell class="v2-page" title="Markets" :loading="isLoading" sub-title="公共市场 · 状态 · 流动性">
-    <div class="filterbar">
-      <RouterLink class="lnk" to="/v2/tags">已同步 Tags</RouterLink>
-      <el-select v-model="filters.neg_risk" placeholder="negRisk" clearable >
-        <el-option label="否" value="false" /><el-option label="是" value="true" />
-      </el-select>
-      <el-select v-model="filters.closed" placeholder="状态" clearable>
-        <el-option label="开放" value="false" /><el-option label="已关闭" value="true" />
-      </el-select>
-    </div>
-    <PageState
-:loading="isLoading"
-:error="displayError" :denied="denied" :empty="!isLoading && !isError && !rows.length"
-      @retry="() => refetch()">
-      <el-table v-loading="isLoading" :data="rows" stripe>
-        <el-table-column label="question" min-width="260"><template #default="{ row }">
-          <RouterLink class="lnk" :to="`/v2/markets/${row.id}`">{{ row.question }}</RouterLink>
-        </template></el-table-column>
-        <el-table-column label="slug" prop="slug" min-width="140" />
-        <el-table-column label="状态" width="120"><template #default="{ row }">
-          <StatusBadge :tone="row.closed ? 'info' : 'success'">{{ row.closed ? 'CLOSED' : 'OPEN' }}</StatusBadge>
-        </template></el-table-column>
-        <el-table-column label="negRisk" width="90"><template #default="{ row }">{{ row.neg_risk ? '是' : '否' }}</template></el-table-column>
-        <el-table-column label="volume" prop="volume" min-width="110" class-name="mono" />
-        <el-table-column label="id" prop="id" min-width="90" class-name="mono" />
-      </el-table>
-      <div class="pager">
-        <span class="muted">{{ rows.length }} 条 · as_of {{ data?.as_of }}</span>
-        <button class="link-btn" :disabled="!hasMore || isLoading" @click="nextPage">下一页 ›</button>
-      </div>
-    </PageState>
+  <PageShell class="v2-page" title="市场" sub-title="公共市场 · 状态 · 流动性">
+    <KeysetTable
+      :rows="rows"
+      :loading="isLoading"
+      :error="displayError"
+      :denied="denied"
+      :has-more="data?.has_more ?? false"
+      :as-of="data?.as_of"
+      :applied-filters="applied"
+      :search-fields="searchFields"
+      :page="page"
+      :page-size="limit"
+      :can-prev="canPrev"
+      @search="applyFilters"
+      @reset="resetFilters"
+      @refresh="refetch"
+      @retry="refetch"
+      @next="nextPage"
+      @prev="prev"
+      @size-change="setLimit"
+    >
+      <template #empty>
+        <p class="t">还没有市场</p>
+        <p class="m">标签同步不会拉行情。需要引擎跑完一帧 Gamma（sense）之后这里才有行。</p>
+      </template>
+      <el-table-column label="问题" min-width="280">
+        <template #default="{ row }">
+          <RouterLink class="lnk" :to="`/markets/${row.id}`">{{ row.question }}</RouterLink>
+        </template>
+      </el-table-column>
+      <el-table-column label="Slug" prop="slug" min-width="140" />
+      <el-table-column label="状态" width="100" align="center">
+        <template #default="{ row }">
+          <span class="status-badge" :class="row.closed ? 'info' : 'success'">
+            {{ row.closed ? '已关闭' : '开放' }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="Neg Risk" width="100" align="center">
+        <template #default="{ row }">{{ row.neg_risk ? '是' : '否' }}</template>
+      </el-table-column>
+      <el-table-column label="成交量" prop="volume" min-width="110" />
+      <el-table-column label="ID" prop="id" min-width="90" />
+    </KeysetTable>
   </PageShell>
 </template>
-<style scoped>
-.filterbar{display:flex;gap:var(--v2-space-2);margin-bottom:var(--v2-space-4);flex-wrap:wrap}
-.filterbar .el-select{width:160px}
-.lnk{color:var(--v2-primary);text-decoration:underline}
-.pager{display:flex;justify-content:space-between;align-items:center;margin-top:var(--v2-space-3)}
-.link-btn{background:none;border:none;color:var(--v2-primary);text-decoration:underline;cursor:pointer;height:var(--v2-control-h)}
-.link-btn:disabled{color:var(--v2-ink-muted);cursor:not-allowed;text-decoration:none}
-.muted{color:var(--v2-ink-muted);font-size:12.5px}
-:deep(.mono){font-family:var(--v2-font-mono);font-size:12px}
-</style>
 
+<style scoped>
+.lnk { color: var(--primary); text-decoration: none; }
+.lnk:hover { text-decoration: underline; }
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+.status-badge.success { background: var(--success-bg); color: var(--success); }
+.status-badge.info { background: var(--info-bg); color: var(--info); }
+</style>

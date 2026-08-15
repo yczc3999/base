@@ -1,6 +1,7 @@
 export { default as StatusBadge } from './StatusBadge.vue'
 export { default as PageState } from './PageState.vue'
 export { default as KeysetTable } from './KeysetTable.vue'
+export { useKeysetList, stripEmptyFilters } from './useKeysetList'
 export { default as GateStrip } from './GateStrip.vue'
 export { default as Timeline } from './Timeline.vue'
 export { default as DetailSection } from './DetailSection.vue'

@@ -24,16 +24,22 @@ const ROUTE_TEMPLATES = [
 describe('WP-07B route and view contracts', () => {
   it('registers hidden drill-down routes under the authenticated root', () => {
     expect(v2HiddenRoutes.map((route) => route.path)).toEqual([
-      '/v2/tags',
-      '/v2/markets/:id',
-      '/v2/components/:id',
-      '/v2/episodes/:id',
-      '/v2/decisions/:id',
-      '/v2/ai-invocations/:id',
-      '/v2/artifacts/:content_hash',
+      '/markets/:id',
+      '/components/:id',
+      '/episodes/:id',
+      '/decisions/:id',
+      '/ai-invocations/:id',
+      '/artifacts/:content_hash',
     ])
-    expect(rootRoute.children).toEqual(v2HiddenRoutes)
-    expect(new Set(v2HiddenRoutes.map((route) => route.name)).size).toBe(7)
+    expect(rootRoute.children?.map((route) => route.path).slice(0, 6)).toEqual([
+      '/markets/:id',
+      '/components/:id',
+      '/episodes/:id',
+      '/decisions/:id',
+      '/ai-invocations/:id',
+      '/artifacts/:content_hash',
+    ])
+    expect(new Set(v2HiddenRoutes.map((route) => route.name)).size).toBe(6)
   })
 
   it('has a concrete Vue component for every seeded route template', () => {
@@ -79,11 +85,11 @@ describe('WP-07B keyset and state wiring', () => {
   })
 
   it('wires the supported business filters and all Integrity tabs', () => {
-    expect(source('src/views/v2/execution/index.vue')).toContain('v-model="it_f.status"')
-    expect(source('src/views/v2/evaluation/index.vue')).toContain('v-model="lb_f.state"')
-    expect(source('src/views/v2/costs/index.vue')).toContain('v-model="filters.cost_kind"')
-    expect(source('src/views/v2/config/index.vue')).toContain('v-model="filters.status"')
-    expect(source('src/views/v2/releases/index.vue')).toContain('v-model="filters.status"')
+    expect(source('src/views/v2/execution/index.vue')).toContain("field: 'status'")
+    expect(source('src/views/v2/evaluation/index.vue')).toContain("field: 'state'")
+    expect(source('src/views/v2/costs/index.vue')).toContain("field: 'cost_kind'")
+    expect(source('src/views/v2/config/index.vue')).toContain("field: 'status'")
+    expect(source('src/views/v2/releases/index.vue')).toContain("field: 'status'")
     const integrity = source('src/views/v2/integrity/index.vue')
     expect(integrity).toContain('label="Alerts" name="alerts"')
     expect(integrity).toContain('label="Workflows" name="workflows"')
@@ -104,7 +110,7 @@ describe('WP-07B keyset and state wiring', () => {
     ]) {
       expect(source(`src/views/v2/${view}.vue`), view).toContain('ArtifactLink')
     }
-    expect(source('src/views/v2/_shared/ArtifactLink.vue')).toContain('`/v2/artifacts/${contentHash}`')
+    expect(source('src/views/v2/_shared/ArtifactLink.vue')).toContain('`/artifacts/${contentHash}`')
   })
 })
 

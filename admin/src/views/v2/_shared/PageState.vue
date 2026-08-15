@@ -33,8 +33,10 @@ const emit = defineEmits<{ (e: 'retry'): void }>()
       <div v-if="partial" class="partial-note" data-testid="v2-partial">{{ partial }}</div>
       <!-- empty -->
       <div v-if="empty" class="panel-empty" data-testid="v2-empty">
-        <p class="t">暂无数据</p>
-        <p class="m">调整筛选条件后重试。</p>
+        <slot name="empty">
+          <p class="t">暂无数据</p>
+          <p class="m">库里还没有这类记录。</p>
+        </slot>
       </div>
       <!-- 默认槽：正文 -->
       <slot v-else />

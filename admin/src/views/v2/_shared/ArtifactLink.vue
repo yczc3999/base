@@ -9,7 +9,7 @@ const validHash = computed(() => /^[a-f0-9]{64}$/i.test(props.contentHash ?? '')
   <RouterLink
     v-if="validHash"
     class="artifact-link"
-    :to="`/v2/artifacts/${contentHash}`"
+    :to="`/artifacts/${contentHash}`"
   >{{ label ?? contentHash }}</RouterLink>
   <span v-else class="muted">{{ label ?? contentHash ?? '-' }}</span>
 </template>

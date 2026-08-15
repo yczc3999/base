@@ -54,6 +54,12 @@ describe('v2QueryKeys', () => {
     )
   })
 
+  it('drops empty-string filters so reset/search do not send slug=', () => {
+    expect(normalizeFilters({ slug: '', disposition: 'SELECT' })).toEqual({
+      disposition: 'SELECT',
+    })
+  })
+
   it('isolates domains and concrete endpoints', () => {
     const intents = v2QueryKeys.page('execution', 'intents', {}, 'desc', 50, null, null)
     const orders = v2QueryKeys.page('execution', 'orders', {}, 'desc', 50, null, null)

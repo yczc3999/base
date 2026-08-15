@@ -15,7 +15,7 @@ const invalidHash = computed(() => contentHash.value.length !== 64)
 </script>
 
 <template>
-  <PageShell class="v2-page" title="Artifact Metadata" :loading="isLoading" sub-title="identity · storage · lineage">
+  <PageShell class="v2-page" title="制品元数据" :loading="isLoading" sub-title="身份 · 存储 · 血缘">
     <PageState
 :loading="isLoading"
       :error="invalidHash ? '无效的 artifact content hash' : (isError ? displayError : null)"

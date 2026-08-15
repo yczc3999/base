@@ -28,7 +28,7 @@ export default defineConfig({
     port: Number(process.env.ADMIN_PORT) || 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:9000',
+        target: process.env.VITE_API_PROXY || 'http://127.0.0.1:9000',
         changeOrigin: true,
       },
     },

@@ -16,7 +16,7 @@ const { data, isLoading, isError, displayError, denied, refetch } = useAiDetail(
 const inv = computed(() => data.value?.invocation ?? null)
 </script>
 <template>
-  <PageShell class="v2-page" :title="inv ? `AI ${inv.id}` : 'AI Invocation Detail'" :loading="isLoading" sub-title="invocation · binding · tools · validators">
+  <PageShell class="v2-page" :title="inv ? `AI ${inv.id}` : 'AI 调用详情'" :loading="isLoading" sub-title="调用 · 绑定 · 工具 · 校验">
     <PageState
 :loading="isLoading"
 :error="missingOccurredAt ? '缺少 occurred_at 复合身份' : displayError" :denied="denied" :empty="!isLoading && !isError && !inv" :retryable="!missingOccurredAt"
