@@ -5,7 +5,8 @@
 transport，本模块首次接通真实 provider。
 
 边界（v2-implementation-contract §5 / model-selection.md）：
-- 凭证只从**环境变量**读（``PM_V2_<PROVIDER>_API_KEY``），不落库/日志/fixture/版本库；
+- 凭证默认从**环境变量**读（``PM_V2_<PROVIDER>_API_KEY``，env 兜底），不落库明文/日志/
+  fixture/版本库；后台运行时配置经 ``credential_overrides`` 注入时 override 优先。
   ``Authorization: Bearer`` 在 transport 内注入，driver 只发业务 header。
 - base_url 有官方默认值，可被 config 字段覆盖（Packy relay 用 ``PM_V2_PACKY_BASE_URL``）。
 - provider allowlist 由 ``registry._ROUTES`` 控制；本 factory 不新增 provider，
@@ -31,6 +32,12 @@ _PROVIDER_DEFAULTS: dict[str, tuple[str, str]] = {
     # Packy relay（deepseek-officially / kimi-sale / grok-sale 兜底）共用此 base。
     "packy": ("https://www.packyapi.ai/v1", "PM_V2_PACKY_API_KEY"),
 }
+
+
+def provider_credential_env_key(provider: str) -> str | None:
+    """provider 的 env 兜底凭证变量名；未注册 provider → ``None``。"""
+    defaults = _PROVIDER_DEFAULTS.get(provider)
+    return defaults[1] if defaults else None
 
 
 def _read_secret(env_key: str) -> str:
@@ -65,21 +72,27 @@ def _join(base_url: str, endpoint: str) -> str:
 def build_transport_factory(
     *,
     base_url_overrides: dict[str, str] | None = None,
+    credential_overrides: dict[str, str] | None = None,
     default_timeout: float = 60.0,
 ) -> Callable[[str], Callable[..., Any]]:
     """返回 ``transport_factory(provider) -> async transport``。
 
     transport 签名对齐 driver 调用：
     ``async transport(endpoint=..., headers=..., json=..., timeout=...) -> (status, body)``
+
+    ``credential_overrides``（后台运行时配置经 vault 解密注入）优先于 env；
+    缺省/空白时行为与此前完全一致（``_read_secret`` env 兜底，缺失 fail closed）。
     """
     overrides = base_url_overrides or {}
+    credentials = credential_overrides or {}
 
     def factory(provider: str) -> Callable[..., Any]:
         if provider not in _PROVIDER_DEFAULTS:
             raise ProviderError(f"model_provider_no_transport:{provider}", retriable=False)
         default_base, env_key = _PROVIDER_DEFAULTS[provider]
         base_url = (overrides.get(provider) or default_base).rstrip("/")
-        api_key = _read_secret(env_key)
+        override = (credentials.get(provider) or "").strip()
+        api_key = override or _read_secret(env_key)
 
         async def transport(
             *,

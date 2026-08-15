@@ -41,11 +41,12 @@ def _fk_targets(table):
     return sorted(fk.target_fullname for fk in TRADING[table].foreign_keys)
 
 
-def test_exactly_122_trading_tables():
+def test_exactly_124_trading_tables():
     """20 foundation + 9 market master（0010）+ 7 market stream（0011）+ 8 semantics（0012）+
     12 cohort/episode（0013）+ 11 cognition（0020）+ 3 AI（0021）+ 9 decision（0030）
     + 3 execution（0031）+ 3 ledger（0031）+ 14 learning（0040：5 settlement + 8 evaluation
-    + 1 audit）+ 5 projection（0041）+ 5 vault/account（0050）+ 9 execution order（0051）+ 4 chain settlement（0052）。"""
+    + 1 audit）+ 5 projection（0041）+ 5 vault/account（0050）+ 9 execution order（0051）
+    + 4 chain settlement（0052）+ 2 runtime config（0076）。"""
     assert set(TRADING) == {
         "artifact_objects", "artifact_lineage_edges", "archive_manifests", "retention_manifests",
         "runtime_config_versions", "strategy_objective_contracts", "strategy_versions",
@@ -93,6 +94,8 @@ def test_exactly_122_trading_tables():
         # WP-06（b1000052）chain settlement
         "contract_registry", "chain_operations", "chain_operation_state_history",
         "settlement_observations",
+        # 运行时配置（b1000076）：后台模型 key/AI 开关
+        "runtime_flags", "runtime_flag_events",
     }
 
 
@@ -108,9 +111,14 @@ def test_all_tables_schema_qualified_bigint_identity_pk():
         "ai_tool_calls": "occurred_at",
         "ai_validation_results": "occurred_at",
     }
+    # 自然键单行表（b1000076）：PK 即业务键，不配 surrogate identity id
+    natural_pk_tables = {"runtime_flags": "flag_key"}
     for name, t in TRADING.items():
         if name in composite_pk_tables:
             assert {c.name for c in t.primary_key} == {"id", composite_pk_tables[name]}
+            continue
+        if name in natural_pk_tables:
+            assert [c.name for c in t.primary_key] == [natural_pk_tables[name]]
             continue
         pk = list(t.primary_key)
         assert len(pk) == 1, f"{name}: PK 必须单列"

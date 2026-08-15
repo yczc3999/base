@@ -24,13 +24,21 @@ from app.services.model_gateway.registry import resolve
 
 
 class ModelGatewayService:
-    """按冻结 binding 构造短生命周期 Driver；模块级无状态 singleton。"""
+    """按冻结 binding 构造短生命周期 Driver；模块级无状态 singleton。
+
+    可选 ``credential_resolver``：``async (session, provider) -> str | None``，
+    在只读解析事务内从 vault 解析后台配置的 API key（audit 由 VaultService 追加）；
+    返回 ``None`` 时与现状完全一致（transport 走 env 兜底）。resolver 缺省时
+    完全不触碰凭证解析路径。
+    """
 
     def __init__(
         self,
         transport_factory: Callable[[str], Callable[..., Any]],
+        credential_resolver: Callable[[AsyncSession, str], Any] | None = None,
     ) -> None:
         self._transport_factory = transport_factory
+        self._credential_resolver = credential_resolver
 
     async def resolve_binding(
         self, session: AsyncSession, model_role_binding_id: int
@@ -53,12 +61,22 @@ class ModelGatewayService:
         resolve(binding["provider"], binding["route"], binding["model_ref"])
         return binding
 
-    def build_driver(self, binding: dict[str, Any]) -> ModelDriver:
+    def build_driver(
+        self, binding: dict[str, Any], *, credential_override: str | None = None
+    ) -> ModelDriver:
         provider = binding["provider"]
         driver_cls = DRIVER_BY_PROVIDER.get(provider)
         if driver_cls is None:
             raise ValueError(f"model_driver_not_registered:{provider}")
-        transport = self._transport_factory(provider)
+        if credential_override is not None:
+            # 后台配置的凭证：经 override 构造 transport（base_url 走官方默认）。
+            from app.services.model_gateway.transport import build_transport_factory
+
+            transport = build_transport_factory(
+                credential_overrides={provider: credential_override}
+            )(provider)
+        else:
+            transport = self._transport_factory(provider)
         return driver_cls(transport)
 
     async def execute(
@@ -79,7 +97,8 @@ class ModelGatewayService:
         try:
             binding = await self.resolve_binding(session, model_role_binding_id)
             self._assert_exact_binding(binding, model_request)
-            driver = self.build_driver(binding)
+            credential = await self._resolve_credential(session, binding["provider"])
+            driver = self.build_driver(binding, credential_override=credential)
         finally:
             if session.in_transaction():
                 await session.rollback()
@@ -94,6 +113,14 @@ class ModelGatewayService:
             from app.services.model_gateway.contracts import ProviderError
 
             raise ProviderError("provider_timeout", retriable=True) from exc
+
+    async def _resolve_credential(
+        self, session: AsyncSession, provider: str
+    ) -> str | None:
+        """只读解析事务内从 resolver 取后台配置凭证；无 resolver → None（行为不变）。"""
+        if self._credential_resolver is None:
+            return None
+        return await self._credential_resolver(session, provider)
 
     @staticmethod
     def _assert_exact_binding(

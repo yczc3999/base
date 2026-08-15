@@ -133,7 +133,7 @@ async def ensure_pipeline_seed(session, *, cohort_key: str = DEFAULT_COHORT_KEY)
         "INSERT INTO trading.release_manifests "
         "(release_name,config_version_id,strategy_version_id,execution_spec_version_id,"
         "capital_permission_manifest_id,git_sha,image_digest,db_revision,total_hash,status) "
-        "VALUES (:n,:cfg,:strategy,:execution,:permission,'pipeline','img','b1000072',:h,'active') "
+        "VALUES (:n,:cfg,:strategy,:execution,:permission,'pipeline','img','b1000076',:h,'active') "
         "RETURNING id",
         {"n": f"{cohort_key}-release", "cfg": config_id, "strategy": strategy_id,
          "execution": execution_id, "permission": permission_id,
@@ -161,10 +161,17 @@ async def ensure_pipeline_seed(session, *, cohort_key: str = DEFAULT_COHORT_KEY)
         "INSERT INTO trading.evaluation_cohorts "
         "(cohort_key,status,objective_contract_id,strategy_version_id,release_manifest_id,"
         "policy_hashes,seed_hash) "
-        "VALUES (:k,'OPEN',:obj,:strategy,:release,CAST(:p AS jsonb),:seed) RETURNING id",
+        "VALUES (:k,'DRAFT',:obj,:strategy,:release,CAST(:p AS jsonb),:seed) RETURNING id",
         {"k": cohort_key, "obj": objective_id, "strategy": strategy_id,
          "release": release_id, "p": json.dumps(policy_hashes),
          "seed": canonical_hash({"seed": cohort_key})},
+    )
+    await session.execute(
+        text(
+            "UPDATE trading.evaluation_cohorts "
+            "SET status='OPEN', opened_at=now() WHERE id=:id AND status='DRAFT'"
+        ),
+        {"id": cohort_id},
     )
     logger.info("pipeline_seed_created cohort=%s id=%s", cohort_key, cohort_id)
     return SeedResult(

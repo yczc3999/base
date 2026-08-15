@@ -57,6 +57,7 @@ const V2_DOMAIN_PERMISSIONS = Object.freeze({
   replay: 'v2:replay:view',
   integrity: 'v2:integrity:view',
   artifacts: 'v2:artifact:read',
+  'runtime-config': 'v2:runtime-config:view',
 } as const)
 
 export function v2PermissionForDomain(domain: string): string | null {

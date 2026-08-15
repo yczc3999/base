@@ -9,7 +9,8 @@ decision→shadow execution 串起来。**认知/决策链由本驱动器主动�
 - Stage 1 ``_screen``：对 confirmed membership 跑 G0/R0；R0=select 建 parent
   ``decision_opportunity``。
 - Stage 2 ``_advance_opportunities``：OPEN opportunity → G1/G2 → G2 pass 建 episode。
-  G1/G2 的 contract/component 解析是 AI 产出，由 ``ai_enabled`` 门控。
+  G1/G2 的 contract/component 解析是 AI 产出，由 ``ai_enabled`` 门控（每轮
+  ``run_once`` 读 ``runtime_flags['pipeline.ai_enabled']``，无行回退 policy 冻结值）。
 - Stage 3 ``_advance_episodes``：ROUTED episode → CognitionRuntime G4→G5A→G5B→G6（AI）。
 - Stage 4 ``_advance_decisions``：G6 commit 后 → reveal → G7A/G7B → shadow execution。
 
@@ -31,6 +32,7 @@ from app.db.uow import UnitOfWork
 from app.logics.trading.screening import ScreeningLogic
 from app.orchestrator.trading_state_machine import TradingStateMachine
 from app.repositories.trading.cohort import CohortRepository
+from app.repositories.trading.runtime_config import RuntimeConfigRepository
 from app.repositories.trading.workflow import WorkflowRepository
 from runtimes.trading.policies import SHADOW_AUDIT_POLICY, SHADOW_R0_POLICY
 
@@ -65,6 +67,7 @@ class PipelineDriver:
         self._policy = policy or PipelinePolicy()
         self._cohort_repo = CohortRepository()
         self._workflow_repo = WorkflowRepository()
+        self._runtime_config_repo = RuntimeConfigRepository()
         self._screening = ScreeningLogic(self._cohort_repo, self._workflow_repo)
         self._state = TradingStateMachine(self._workflow_repo)
         self._last_frame = None  # 最近一次成功 COMPLETE frame 的归属（含 markets）
@@ -84,11 +87,29 @@ class PipelineDriver:
         if self._policy.screen_enabled:
             summary["enroll"] = await self._safe(self._enroll)
             summary["screen"] = await self._safe(self._screen)
-        if self._policy.ai_enabled:
+        if await self._resolve_ai_enabled():
             summary["opportunities"] = await self._safe(self._advance_opportunities)
             summary["episodes"] = await self._safe(self._advance_episodes)
             summary["decisions"] = await self._safe(self._advance_decisions)
         return summary
+
+    async def _resolve_ai_enabled(self) -> bool:
+        """每轮读 ``runtime_flags['pipeline.ai_enabled']``；无行/查询失败回退 policy 冻结值。
+
+        用 pipeline 自己的 session factory 开一个短查询（不进任何 market UoW），
+        DB 配置改完下一轮即生效；表不存在/连接失败等异常不阻断 pipeline。
+        """
+        try:
+            async with self._sessions("market")() as session:
+                row = await self._runtime_config_repo.get_flag(
+                    session, flag_key="pipeline.ai_enabled"
+                )
+        except Exception:  # noqa: BLE001 - flag 读取失败回退冻结默认，循环不中断
+            logger.exception("pipeline_ai_flag_read_failed")
+            return self._policy.ai_enabled
+        if row is None:
+            return self._policy.ai_enabled
+        return str(row["flag_value"]).strip().lower() == "true"
 
     async def _safe(self, stage: Callable[[], Any]) -> dict[str, Any]:
         name = stage.__name__.lstrip("_")

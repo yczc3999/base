@@ -60,6 +60,8 @@ from app.models.trading import (
     ReleaseManifest,
     RetentionManifest,
     RuntimeConfigVersion,
+    RuntimeFlag,
+    RuntimeFlagEvent,
     SecretAccessEvent,
     SecretVaultEntry,
     SecretVaultVersion,
@@ -263,6 +265,9 @@ EXPECTED = [
     "chain_operations",
     "chain_operation_state_history",
     "settlement_observations",
+    # 运行时配置（b1000076）：后台模型 key/AI 开关
+    "runtime_flags",
+    "runtime_flag_events",
 ]
 
 
@@ -395,6 +400,9 @@ def test_explicit_model_symbols_importable():
         "workflow_events": WorkflowEvent,
         "external_call_attempts": ExternalCallAttempt,
         "alert_events": AlertEvent,
+        # 运行时配置（b1000076）
+        "runtime_flags": RuntimeFlag,
+        "runtime_flag_events": RuntimeFlagEvent,
     }
     for tablename, model in symbols.items():
         assert model.__tablename__ == tablename
@@ -431,6 +439,7 @@ def test_app_models_exports_trading():
         "ExecutionAuthorizationEnvelope", "ExchangeOrderAttempt", "ExchangeOrder",
         "OrderStateEvent", "ExchangeTrade", "AccountReconciliation",
         "WorkflowEvent", "ExternalCallAttempt", "AlertEvent",
+        "RuntimeFlag", "RuntimeFlagEvent",
     ):
         assert model in exported, model
 

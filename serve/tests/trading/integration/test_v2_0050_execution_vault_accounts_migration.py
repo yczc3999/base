@@ -24,7 +24,8 @@ V52 = "b1000052"
 V70 = "b1000070"
 V71 = "b1000071"
 V72 = "b1000072"
-HEAD_REVISION = V72
+V73 = "b1000076"
+HEAD_REVISION = V73
 
 NEW_TABLES = [
     "pm_accounts", "pm_balance_allowance_snapshots", "account_funds_current",

@@ -16,11 +16,13 @@ from app.services.vault.envelope import (
     new_nonce,
     resolve_key,
 )
+from app.services.vault.keyring_loader import load_keyring
 from app.services.vault.service import Keyring, VaultService
 
 __all__ = [
     "VaultService",
     "Keyring",
+    "load_keyring",
     "VaultCryptoError",
     "VaultKeyError",
     "VaultAuthError",

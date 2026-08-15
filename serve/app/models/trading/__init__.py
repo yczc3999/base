@@ -129,6 +129,10 @@ from app.models.trading.vault import (
     SecretVaultEntry,
     SecretVaultVersion,
 )
+from app.models.trading.runtime_config import (
+    RuntimeFlag,
+    RuntimeFlagEvent,
+)
 from app.models.trading.settlement import (
     ChainOperation,
     ChainOperationStateHistory,
@@ -268,6 +272,9 @@ __all__ = [
     "SecretVaultEntry",
     "SecretVaultVersion",
     "SecretAccessEvent",
+    # runtime config（后台运行时配置）
+    "RuntimeFlag",
+    "RuntimeFlagEvent",
     # WP-05 execution plane
     "PMAccount",
     "PMBalanceAllowanceSnapshot",

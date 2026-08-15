@@ -227,7 +227,7 @@ export interface V2RequestConfig {
 }
 
 export interface V2MutateConfig {
-  method: 'POST' | 'PATCH'
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'
   url: string
   data?: object
   timeout?: number

@@ -38,6 +38,82 @@ Request → AuthMiddleware → OperationLogMiddleware → Router → Logic → M
 - [V2 逐文件实施合同](docs/v2-implementation-contract.md)：文件职责、依赖方向、工作包与验收证据。
 - [当前任务与交接状态](docs/tasks/README.md)：实现者只执行这里指向的任务；用户回复“完成”后自动审查并生成下一任务。
 
+## Polymarket V2 当前状态（2026-08-15）
+
+本节是面向开发者的状态账本；业务规范仍以
+`/code/pollymarket/docs/v2/ARCHITECTURE.md` 为准，当前执行合同与验收状态分别见
+[`docs/tasks/README.md`](docs/tasks/README.md) 和
+[`docs/manifests/README.md`](docs/manifests/README.md)。
+
+| 口径 | 当前状态 |
+|---|---|
+| 已接受工程里程碑 | `WP-00`～`WP-07A` |
+| Admin 页面 | `WP-07B` 已实现但浏览器硬门仍需整改/复验 |
+| 常驻运行时 | `WP-07C` 进行中；outbox 与 Stage 0/1 骨架已接入，Stage 2～4 尚未接通 |
+| 运行数据 | 2026-08-15 快照：259 个 universe frame 中 258 `FAILED`、1 `OPEN`；`pm_markets=0` |
+| AI/决策/执行事实 | `ai_invocations/forecast_submissions/trade_decisions/executions/metric_runs` 均为 0 |
+| 稳定性与上线 | `WP-08`、shadow qualification、canary、live 均未完成 |
+
+当前产品完整度不能按“文件数量”计算：底层领域对象和测试覆盖已经较广，但真实常驻链仍被
+`events_open → frame_page_overflow` 阻塞，尚未产生
+`COMPLETE frame → market → R0 → opportunity → forecast → decision → shadow execution → evaluation`
+的端到端事实。`python -m runtimes.trading --dry-run` 打印出 runtime 名称只证明注册成功；
+`cognition/evaluation/execution/reconciliation/replay` 当前仍有 idle runner，不能登记为已运行。
+
+当前恢复顺序固定为：
+
+1. 修复 Gamma universe 分页/终止和失败传播，得到可重放的 `COMPLETE` frame 与非零 market；
+2. 接通模型网关和 Stage 2～4，产出第一条完整 shadow 链；
+3. 把组合降险候选做成版本化 challenger，在 untouched forward cohort 中评价；
+4. 完成真 PostgreSQL、迁移往返、真实浏览器、告警、性能和 soak 证据后再进入资格评估。
+
+## Polymarket V2 产品路线：AI 预测 + 组合降险
+
+V2 的利润路线是用 AI 对规则清晰、具有真实容量、决策窗口为小时至天的市场形成
+**市场盲、可回放、可证伪**的 payout belief，再在揭价后相对真实可成交盘口计算
+全成本 edge。系统不移植已经被实盘证伪的 BTC 5 分钟 Gaussian 动量策略，也不把
+工程测试通过当作经济有效性的证据。
+
+### AI 预测与调整纪律
+
+- AI 先在看不到 market/crowd/odds 的分支中形成局部联合 belief，并不可变提交
+  `blind_submission`；揭价后由独立决策分支使用冻结 shrinkage policy 合成
+  `Q_decision/U_decision`。
+- 新 evidence、规则或 schema 变化、forecast lease 到期、thesis invalidation 才创建
+  新 cognition episode。纯 quote、depth、cost 或 position 变化复用仍有效 belief，
+  只重新估值和选择动作，禁止让 AI 随盘口反复改口。
+- 模型、prompt、权重、阈值或成本政策的任何调整都创建新 strategy、新 cohort 和新
+  forward holdout；只允许通过 `train → validation → untouched forward holdout → shadow
+  → canary → live` 晋级，旧样本与旧预测不回写。
+
+### 从 Gaussian LIVE 失败中保留的对冲方法
+
+Gaussian LIVE 的第一腿没有覆盖市场价格、点差和费用，但第二腿在真实两腿样本中
+证明能够显著减亏。V2 只吸收这项**持仓后增量决策方法**，不复用 Gaussian 信号、
+常量、状态机或代码：
+
+1. 以已经认证并入账的实际 fill 数量、现金和费用作为持仓真相，不使用计划成交量；
+2. 对同一持仓统一枚举 `HOLD / SELL_TO_REDUCE / SELL_TO_CLOSE / FLIP`，以及在
+   capability 允许时买入相反 token 形成 paired inventory；
+3. 使用最新可成交 bid/ask、真实深度、费用、滑点、资本占用和部分/失败成交模型，
+   比较候选 action set 与 `NO_ACTION` 的完整终值现金流；
+4. 同时保存 `robust_EV`、最坏损失、CVaR、capital-days、locked-payout floor 和
+   HOLD 反事实，按组合边际效用裁决，而不是机械补第二腿；
+5. `REDUCE/CLOSE/FLIP-close` 可按风险改善进入 `RISK_REVIEW`，不被 standalone
+   positive-EV 门阻断；买入相反 token 仍是新增资本动作，必须完整通过 G7A/G7B，
+   不得以“对冲”为名绕过增仓 Gate；
+6. 最终 action set 可以包含多条 leg，但交易所执行不被假定为原子操作；漏腿、拒单、
+   partial fill 和 reconciliation 都必须进入账本与评价。
+
+### 资金目标
+
+历史亏损作为不可修改的资金事实保存，但不进入新仓位 sizing，也不形成“必须回本”的
+追损目标。V2 从当前资本重新按 `NO_ACTION / WAIT` 基准优化未来风险调整后的
+`system_net_profit`；对冲负责改善已有仓位的终值分布，AI 预测负责证明新增风险是否值得。
+
+业务语义以 `/code/pollymarket/docs/v2/ARCHITECTURE.md` 为唯一权威；本节是该规范中
+blind forecast、双时钟、action set、G7A/G7B、`RISK_REVIEW` 和分级实盘规则的 README 摘要。
+
 ## 核心设计
 
 ### BaseLogic — 零代码 CRUD

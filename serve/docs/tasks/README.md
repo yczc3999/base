@@ -7,16 +7,19 @@
 
 | 字段 | 当前值 |
 |---|---|
-| Task | `WP-07B` |
-| 状态 | `DONE（待审）` |
-| 任务文档 | [`wp-07b-admin-pages.md`](wp-07b-admin-pages.md) |
-| 交付 manifest | `serve/docs/manifests/wp-07b-admin-pages.md` |
-| 前置实现 | `WP-07A` 已 ACCEPTED；code commit=`280afcc`；head=`b1000070`；manifest SHA=`881ab05c448fc6b345d0df97738e756a50bd6af2064cefc6c3968b72fff9feb1` |
-| 已接受范围 | Admin 全域只读 API、RBAC、HMAC keyset cursor、artifact Range、typed frontend API/query data layer、`0070` 权限与索引 |
-| 接受证据 | 135 unit/config + 50 真 PG + 19 router；1794 trading、2005 full；frontend 20/lint/build；clean perf 20/20 PASS |
-| 当前 blocker | 无（视觉决策已确认；冻结于 `docs/previews/wp-07b/visual-decision.md`） |
-| 关键边界 | 严格平面、大块纯色（视觉已冻结）；只读复用 WP-07A API；无 mutation；不重算 Gate/PnL/edge/风险 |
-| 后续 | WP-07B 接受后进入 WP-07C/WP-08 规划 |
+| Task | `WP-07C` |
+| 状态 | `IN_PROGRESS（P0：universe frame 无法完成）` |
+| 任务文档 | [`wp-07c-resident-runtime.md`](wp-07c-resident-runtime.md) |
+| 最终 completion manifest | **尚未生成**；`../manifests/wp-07c-checkpoint-a.md` 仅保留为 Checkpoint A 历史证据，最终路径仍为 `../manifests/wp-07c-resident-runtime.md` |
+| 前置实现 | `WP-00`～`WP-07A` 已 ACCEPTED；当前数据库 head=`b1000075` |
+| 已交付范围 | outbox publisher/sweeper/consumer、supervisor、pipeline Stage 0/1 骨架、runtime 显式注册、shadow seed |
+| 当前事实 | 2026-08-15 快照：259 frames=`258 FAILED + 1 OPEN`；51,158 页全部为 `events_open`；`pm_markets=0`；AI/decision/execution/evaluation facts 全为 0 |
+| 当前 blocker | `frame_page_overflow` 使流程在 `markets_open` 前失败；AI 默认关闭，Stage 2～4 返回 `ai_gated`；五个已注册 runtime 仍是 idle runner |
+| 当前验收 | offline backend `1699 passed / 368 skipped`；runtime 定向 `19 passed / 3 skipped`；frontend `40 passed`、lint 0 error/3 warning、build pass；真 PG 因测试用户无 `CREATE DATABASE` 未复验 |
+| 关键边界 | 只允许 shadow；不把 runtime 注册、编译通过、HTTP 200、空表或 mock 数据计作产品闭环；不追损、不绕过 G7A/G7B |
+| 后续 | 先关闭 Stage 0 P0，再接模型网关与 Stage 2～4；WP-07B 浏览器整改和 WP-08 仍是整体完成门槛 |
+
+**最后更新**：2026-08-15T00:37:50-04:00
 
 ## 固定交接协议
 
@@ -68,4 +71,5 @@
 | `WP-05` | DONE | ACCEPTED | 审查修复 `f53888f` + 性能证据 `5588576`；1566 trading、1777 full，均 0 skip/fail；clean perf 3024 intents/60.006s=50.395/s，WS p99=5.185ms、1k reconcile p99=91.043ms、pool peak exec2/recon1、fake/real=4706/0；Vault identity、fund consumption、全副作用 fencing、UNKNOWN 恢复、CONFIRMED trade、heartbeat hard-stop、NegRisk/clock/egress 全关；manifest SHA `04e365b4…c2fc9`；进入 WP-06 |
 | `WP-06` | DONE | ACCEPTED | 初交 `de79edc`；审查修复 `53b4744`；108 unit/contract + 43 真 PG、1717 trading、1928 full，均 0 skip/fail；clean perf 660 ops/60.005s=10.999/s、1000 UNKNOWN 两轮全等且 blind resend=0、pool p95=.020ms、fake/real=215560/0；ABI/真实 registry、runtime/TX/finality/effect、Vault、wrong-chain、post-final audit 全关；manifest SHA `a2280e00…f868`；进入 WP-07A |
 | `WP-07A` | DONE | ACCEPTED | 初交 `a1718c2`；审查修复 `280afcc`；135 unit/config + 50 真 PG + 19 router、1794 trading、2005 full，均 0 skip/fail；frontend 20 passed、lint 0 error、build pass；clean perf 20/20 PASS，100,008 行，深页 p95/p99=14.911/18.545ms，32 workers 60.177s、97.429 req/s、pool p95=.048ms，traversal lost/dup/out-of-snapshot=0；首屏 filter/as_of、3 endpoint、exact seed、read-only/RBAC/cache、AI artifact、timeline/zstd Range、DTO/frontend/shared 401 与真实 SLO harness 全关；manifest SHA `881ab05c…eb1`；WP-07B 保持 BLOCKED_PRODUCT_VISUAL_DECISION |
-| `WP-07B` | DONE | 待审 | 实现 `1bc2778`；7 定向 + 67 回归 + 2012 full 0 skip/fail；frontend 20 passed、lint 0 errors、build OK；视觉 token 落地 v2-tokens.scss（扁平/暖中性/蓝主色）；20 页面菜单 + 14 列表页 + 5 详情页全关；manifest SHA `4c399c5afd1b…` |
+| `WP-07B` | DONE | REMEDIATION_REQUIRED | 原实现 `1bc2778` 的单测/build 证据保留；2026-08-15 真实 Chromium 复验发现 390px 投影表格逐字换行、业务页只在 mock API 下完成三视口渲染，尚无真实后端/权限/数据全链 E2E；任务 §7 浏览器硬门未关闭 |
+| `WP-07C` | IN_PROGRESS | NOT_READY_FOR_REVIEW | Checkpoint A outbox/supervisor 证据保留；当前代码已注册 pipeline/cognition/evaluation/execution/reconciliation/replay，但 Stage 0 连续 `frame_page_overflow`、市场与全下游事实为 0，Stage 2～4 仍 `ai_gated`，最终 completion manifest 尚不存在；后续：运行时配置（模型 key/AI 开关）经用户拍板在 WP-07C 之外先行落地（迁移 `b1000076`） |

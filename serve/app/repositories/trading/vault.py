@@ -168,6 +168,28 @@ class VaultRepository:
         del session, version_id
         raise RuntimeError("vault_version_reactivation_forbidden")
 
+    async def mark_entry_disabled(self, session: AsyncSession, *, entry_id: int) -> bool:
+        """retire 整个 entry（如后台清除模型凭证 → 运行时回退 env）；历史 version 不删。"""
+        result = await session.execute(
+            text(
+                "UPDATE trading.secret_vault_entries SET status='disabled' "
+                "WHERE id=:e AND status='active'"
+            ),
+            {"e": entry_id},
+        )
+        return result.rowcount == 1
+
+    async def mark_entry_active(self, session: AsyncSession, *, entry_id: int) -> bool:
+        """重新激活此前 disabled 的 entry（后台重新写入凭证时）；version 历史不动。"""
+        result = await session.execute(
+            text(
+                "UPDATE trading.secret_vault_entries SET status='active' "
+                "WHERE id=:e AND status='disabled'"
+            ),
+            {"e": entry_id},
+        )
+        return result.rowcount == 1
+
     async def insert_access_event(
         self,
         session: AsyncSession,

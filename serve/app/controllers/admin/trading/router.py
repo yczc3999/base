@@ -24,6 +24,7 @@ from app.controllers.admin.trading import (
     releases,
     replay,
     runtime,
+    runtime_config,
     strategy_config,
     tags,
 )
@@ -54,3 +55,4 @@ router.include_router(evaluation.router)
 router.include_router(replay.router)
 router.include_router(integrity.router)
 router.include_router(artifacts.router)
+router.include_router(runtime_config.router)
