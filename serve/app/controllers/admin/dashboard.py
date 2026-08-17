@@ -8,6 +8,7 @@ from app.models import AdminUser, User, AdminOperationLog, AdminLoginLog, Messag
 from app.deps import AuthInfo, require_admin
 from app.services.redis import get_redis
 from app.config import settings
+from app.version import BASE_VERSION
 import platform
 import sys
 
@@ -64,7 +65,7 @@ async def dashboard_system(auth: AuthInfo = Depends(require_admin)):
     uptime_seconds = int(time.time() - time.monotonic())
 
     return ok({
-        "version": "1.0.0",
+        "version": BASE_VERSION,
         "framework": f"FastAPI + Python {sys.version.split()[0]}",
         "database": "PostgreSQL",
         "cache": "Redis",

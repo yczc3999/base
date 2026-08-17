@@ -123,16 +123,6 @@ class AdminUserLogic(BaseLogic):
         if is_super:
             return await menu_logic.get_all_perms(db)
 
-        # WP-07A Admin Read API 使用 PostgreSQL READ ONLY request UoW。该路径必须
-        # 与业务查询处于同一 snapshot，且 GET 不得产生 Redis cache 写；因此直接从
-        # RBAC 事实表读取，也不触发 cache_get/network。
-        info = getattr(db, "info", None)
-        if info is None and hasattr(db, "sync_session"):
-            info = db.sync_session.info
-        if info and info.get("admin_read_only"):
-            role_ids = await self.get_role_ids(db, user_id)
-            return await menu_logic.get_perms_by_role_ids(db, role_ids)
-
         # 查缓存
         cache_key = f"{settings.APP_NAME}:user_perms:{user_id}"
         cached = await cache_get(cache_key)

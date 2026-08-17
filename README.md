@@ -1,0 +1,37 @@
+# Base Platform
+
+通用后台基础平台，供多个下游项目复用。
+
+## 强制边界
+
+**本仓库只维护通用基础能力。任何具体项目必须 FORK 或 CLONE 后，在自己的仓库中开发；禁止直接在本仓库上开发具体项目。**
+
+具体项目的业务模型、业务接口、品牌、页面、第三方业务接入、提示词、数据、迁移、测试 fixture 和部署配置，都必须放在 fork/clone 后的项目仓库中。
+
+## 目录
+
+- `serve/`：FastAPI + PostgreSQL + Redis 通用后端基础设施。
+- `admin/`：Vue 3 + TypeScript + Element Plus 通用后台前端。
+- `serve/docs/`：通用架构与能力文档。
+- `VERSION`：当前 Base 发布版本。
+- `CHANGELOG.md`：每个 Base 版本的变更账本。
+- `UPSTREAM.md`：下游 Fork/Clone 项目的同步合同。
+
+## 开发方式
+
+```bash
+git clone <BASE_REPOSITORY_URL> <PROJECT_DIRECTORY>
+cd <PROJECT_DIRECTORY>
+git remote rename origin upstream
+git remote add origin <PROJECT_REPOSITORY_URL>
+```
+
+进入 fork/clone 后的项目目录再添加业务代码；本仓库保持可被多个项目直接复用的纯基础状态。
+
+## 必读文件
+
+1. `AGENTS.md`
+2. `CLAUDE.md`
+3. `VERSION`、`CHANGELOG.md`、`UPSTREAM.md`
+4. `serve/README.md` 或 `admin/README.md`
+5. 与当前通用改动相关的 `serve/docs/` 文档

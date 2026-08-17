@@ -12,19 +12,3 @@ openpyxl>=3.1
 alembic>=1.13
 # Alembic 同步驱动（应用运行时用 asyncpg，Alembic 用 psycopg 3）
 psycopg[binary]>=3.1
-# Artifact Store 压缩（有上界：锁定主版本）
-zstandard>=0.22,<1
-# Artifact Store S3-compatible 共享存储 Driver（有上界：锁定主版本）
-boto3>=1.43,<2
-# 技术可观测性：低基数 Prometheus + OTel Trace（WP-00d1；有上界：锁定主版本）
-prometheus-client>=0.21,<1
-opentelemetry-api>=1.29,<2
-opentelemetry-sdk>=1.29,<2
-opentelemetry-exporter-otlp-proto-http>=1.29,<2
-# FastAPI 默认响应类 ORJSONResponse 需要（WP-00d2-r1：可复现依赖，不得手工改 venv）
-orjson>=3.10,<4
-polymarket-client==0.5.0
-# WP-06 imports these packages directly for canonical ABI encoding/decoding and
-# Keccak verification; do not rely on polymarket-client's transitive dependency.
-eth-abi==5.2.0
-eth-utils==5.3.1

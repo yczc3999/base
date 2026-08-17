@@ -156,7 +156,7 @@
 
 - **目标**：补 DB 外键约束 + 级联删除（引用完整性）+ SQLAlchemy relationship（关系可导航）
 - **现状态**：`role_menus`/`admin_user_roles` 是裸 Integer 主键，无 FK。删 role（有应用层守卫）/menu/user 会留孤儿行（DB 层不阻止）。`article_keywords` 已有 FK + CASCADE（015 已加）。全 model 零 `relationship()` 声明
-- **科学分析**：FK 是引用完整性的不可绕过保证，应用层守卫可被绕过，两者互补。base 是模板阶段加 FK 风险趋零，等下游 fork 后各项目单独扛锁表+清理成本放大 N 倍。关联表用 CASCADE 是关系建模标准（无独立生命周期）
+- **科学分析**：FK 是引用完整性的不可绕过保证，应用层守卫可被绕过，两者互补。Base 先固化通用约束；具体项目在 fork/clone 后按自身 schema 独立扩展。关联表用 CASCADE 是关系建模标准（无独立生命周期）
 - **非夸大说明**：relationship 不解决 N+1（默认 lazy 反而可能引入）；N+1 的解法是 selectinload/joinedload，属另一层工作。C1 只保证完整性 + 关系可导航
 - **涉及文件**（影响 12 个 model + 2 个 SQL + 1 个 migration）：
   - `serve/app/models/role_menu.py` — 加 FK(roles.id) + FK(menus.id) + relationship

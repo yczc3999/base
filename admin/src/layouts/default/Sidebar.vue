@@ -22,7 +22,7 @@
           :unique-opened="true"
           router
         >
-          <template v-for="menu in navMenus" :key="menu.slug">
+          <template v-for="menu in permStore.menus" :key="menu.slug">
             <!-- 有子菜单 -->
             <el-sub-menu v-if="menu.children?.length" :index="menu.slug">
               <template #title>
@@ -73,7 +73,7 @@
 
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
-import { usePermissionStore, type MenuItem } from '@/stores/permission'
+import { usePermissionStore } from '@/stores/permission'
 import { useSiteStore } from '@/stores/site'
 import { useRoute } from 'vue-router'
 import { getMenuIcon } from '@/utils/menuIcons'
@@ -86,28 +86,6 @@ const route = useRoute()
 onMounted(() => { siteStore.load() })
 
 const activeMenu = computed(() => route.path)
-
-/** 不可见目录（如 v2-admin）不当成侧栏分组；子页面提到和 工作台 同级。 */
-function hoistInvisible(menus: MenuItem[]): MenuItem[] {
-  const out: MenuItem[] = []
-  for (const menu of menus) {
-    const children = hoistInvisible(menu.children ?? [])
-    if (menu.type === 0 && menu.is_visible === false) {
-      out.push(...children)
-      continue
-    }
-    if (children.length > 0) {
-      out.push({ ...menu, children })
-      continue
-    }
-    if (menu.type !== 2 && menu.is_visible !== false) {
-      out.push({ ...menu, children: [] })
-    }
-  }
-  return out
-}
-
-const navMenus = computed(() => hoistInvisible(permStore.menus))
 </script>
 
 <style scoped lang="scss">

@@ -1,60 +1,95 @@
-# Repository Guidelines
+# Repository Rules
 
-## Project Structure & Authority
+## Project identity — mandatory
 
-`serve/` is the FastAPI/PostgreSQL/Redis backend; `admin/` is the Vue 3 admin application.
-V2 is greenfield and must not import or migrate V1 trading code or SQLite data paths. Read these documents
-in order before implementation:
+This repository is the reusable **Base Platform foundation**. It is not a product
+application, not a customer implementation, and not a workspace for developing a
+specific downstream project.
 
-1. `/code/pollymarket/docs/v2/ARCHITECTURE.md` — business logic authority.
-2. `serve/docs/polymarket-v2-platform-design.md` — Base integration and UI information architecture.
-3. `serve/docs/polymarket-integration-design.md` — Polymarket protocol.
-4. `serve/docs/ai-observability-replay-design.md` — AI evidence and replay.
-5. `serve/docs/performance-cache-database-design.md` — performance and persistence.
-6. `serve/docs/v2-implementation-contract.md` — exact files and work packages.
+**ONLY FORK OR CLONE THIS REPOSITORY FOR PRODUCT DEVELOPMENT. DO NOT DEVELOP A
+PRODUCT DIRECTLY IN THIS REPOSITORY.**
 
-Conflicts stop the affected work package; do not invent a product decision.
+Every concrete project must have its own fork or clone before adding any of the
+following:
 
-## Architecture & Coding Rules
+- product or customer business rules;
+- product-specific models, controllers, services, routes, menus, migrations, or jobs;
+- provider/exchange/vendor integrations that exist only for one product;
+- product prompts, strategy code, workflows, fixtures, screenshots, branding, or copy;
+- product-specific deployment configuration, secrets, data, or runtime artifacts.
 
-Preserve `Controller → Logic → Repository/Model`; providers stay behind `Service + Driver`.
-Controllers validate and authorize only. Drivers implement wire protocols only. Logic owns gates and state
-transitions. Repositories own SQL and never decide trades. Use async Python, explicit types, UTC
-`TIMESTAMPTZ`, `Decimal`/base-unit integers, and structured reason codes. Never use float for money,
-prices, or shares.
+An agent must not treat a request naming a concrete product or business domain as
+permission to extend this repository. The request belongs in a fork/clone. Only
+changes that remain useful, generic, documented, and product-agnostic belong here.
 
-PostgreSQL is the business fact source. Redis is disposable coordination/cache. Secrets belong only in the
-server vault. Every external call, AI attempt, decision, order and state transition must be traceable and
-append-only. Do not use Base generic CRUD, offset pagination, generic settings cache, or the legacy Worker
-for V2 hot tables and execution.
+## Mandatory reading order
 
-## Build & Validation Commands
+Before changing anything, read:
+
+1. `AGENTS.md` — this repository boundary and delivery rules;
+2. `CLAUDE.md` — project map and the fork/clone workflow;
+3. `VERSION`, `CHANGELOG.md`, and `UPSTREAM.md` — current release and downstream
+   synchronization contract;
+4. `serve/README.md` — reusable backend capabilities;
+5. `admin/README.md` — reusable frontend capabilities;
+6. only the relevant generic design document under `serve/docs/`;
+7. only the target source files and their existing tests.
+
+Do not use downstream project documents, copied business specifications, or
+product implementation plans as authority for this repository. If a document
+describes a concrete product rather than a reusable Base capability, it does not
+belong in this repository and must be removed rather than adopted.
+
+## Architecture
+
+Preserve the generic structure:
+
+```text
+Controller → Logic → Model/DB
+                         ↕
+                    Service + Driver
+```
+
+Controllers validate and authorize. Logic owns reusable business behavior and
+state transitions. Models own data shape and constraints. Repositories or model
+access layers own persistence. External providers stay behind generic Service +
+Driver boundaries. Prefer existing Base capabilities, factories, declarative
+CRUD, and hooks over duplication.
+
+## Repository boundaries
+
+- Keep the backend and frontend product-agnostic.
+- Keep secrets server-side and out of source, fixtures, logs, and generic settings.
+- Keep migrations transactional, preconditioned, and reversible.
+- Keep authorization on the server; hiding a frontend control is not authorization.
+- Do not add a product-specific shortcut to the Base APIs, generic CRUD, worker,
+  settings, queue, storage, notification, SMS, SEO, or RBAC layers.
+- Do not add product data or generated runtime output to the repository.
+
+## Validation
 
 ```bash
 cd serve && pip install -r requirements-dev.txt && pytest
 cd serve && alembic upgrade head
 cd admin && npm ci && npm run lint && npm run build
+python3 scripts/check-base-release.py
 git diff --check
 ```
 
-Run targeted tests during development, then the complete applicable suite. Database/performance claims
-require real PostgreSQL/Redis fixtures, not SQLite mocks.
+Run targeted tests during development, then the complete applicable suite. A
+generic improvement must remain valid without any product-specific environment,
+credential, database schema, or external service.
 
-## Delivery Contract
+## Delivery
 
-Implement one coherent milestone from `v2-implementation-contract.md` at a time. A milestone may contain
-several internal checkpoints and 12–20 tightly related production files; do not split work merely to satisfy
-an arbitrary file-count limit. Modify only the milestone's allowed files. Record exact commands and
-reproducible evidence; never mark a milestone complete on prose alone. Commit messages follow repository
-history: `type(scope): concise summary`, for example `feat(v2-market): persist Gamma keyset frames`. UI
-implementation remains blocked until the user approves the product palette/tokens and one high-fidelity
-business-page preview.
+Every change must state why it is reusable by multiple downstream projects.
+Every releasable change must bump `VERSION`, update `CHANGELOG.md`, synchronize
+the frontend package metadata, pass `scripts/check-base-release.py`, and receive
+an immutable `base/vX.Y.Z` Git tag. The release entry must include compatibility,
+migrations, downstream sync commands, conflict hotspots, and rollback.
 
-`serve/docs/tasks/README.md` is the single current-task pointer. Every milestone has an exact task document
-and one final completion-manifest filename. Internal checkpoints do not create separate manifests. When the
-user says only “完成”, read the manifest and repository state, rerun targeted milestone evidence, and record
-the review verdict. Fix in-scope P0/P1 defects directly in the same milestone and rerun the affected tests;
-create a separate remediation task only for a product decision, external blocker, or architectural change
-outside the allowed scope. If accepted, create the next milestone document. Do not ask the user to copy
-results already recorded in the repository, and do not treat an implementer-written `DONE` as reviewer
-acceptance.
+Downstream projects update only through the `upstream` remote and a Base release
+tag, preferably with `scripts/sync-base-release.sh`. Never copy random files,
+merge an unversioned Base branch, or silently overwrite product code. Do not
+create a product task, product manifest, or product roadmap in this repo. Product
+work starts only after creating a fork/clone and moving to that repository.

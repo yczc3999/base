@@ -1,1 +1,0 @@
-{"id":"req_xa_1","choices":[{"message":{"role":"assistant","content":"{\"claims\":[\"x\"]}","model":"grok-4.5","tool_calls":[{"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"who won\"}"}}]}}],"usage":{"prompt_tokens":200,"completion_tokens":50}}

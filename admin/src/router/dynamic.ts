@@ -20,8 +20,6 @@ export function generateRoutes(menus: MenuItem[]): RouteRecordRaw[] {
       if (item.type === 2) continue
 
       if (item.type === 1 && item.path && item.template_path) {
-        // 带 :id 的详情由 static hidden routes 注册，避免与菜单重复
-        if (item.path.includes(':')) continue
         // 菜单页面 → 生成路由
         const componentPath = `/src/views/${item.template_path}.vue`
 

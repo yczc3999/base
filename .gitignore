@@ -24,5 +24,9 @@ logs/
 # 压缩包
 *.tar.gz
 
-# PHP 参考项目（不入库）
-php_project/
+# Python 缓存与测试产物
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/

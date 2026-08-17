@@ -20,13 +20,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ==================== 事件循环 ====================
-#
-# WP-01B：不再覆写 pytest-asyncio 的 event_loop fixture。
-# 此前 session-scoped 自定义 event_loop 会破坏完整 suite 后续 async 测试
-# （Python 3.12 下 ``asyncio.get_event_loop()`` 报 "no current event loop"）：
-# 完整 suite 1118 个测试中 43 个 async 测试因此失败；移除覆盖后由 pytest-asyncio
-# 自管 function-scoped loop，全部通过（仅剩 outbox 并发 claim 的 Redis 时序 flake）。
-# requirements-dev.txt 仍钉 pytest-asyncio>=0.23,<0.24（本 suite 在该版本验证）。
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """pytest-asyncio 需要事件循环 fixture"""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 # ==================== fake Redis ====================

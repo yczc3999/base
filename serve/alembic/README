@@ -1,3 +1,5 @@
+Generic single-database configuration.
+
 # Base Platform — Alembic 使用说明
 
 ## 双迁移系统共存（ADDITIVE，互不干扰）
@@ -17,7 +19,6 @@
 .venv/bin/alembic upgrade head           # 应用未执行的迁移
 .venv/bin/alembic revision --autogenerate -m "add x column"   # 生成迁移
 .venv/bin/alembic downgrade -1           # 回滚一步
-.venv/bin/alembic upgrade head --sql     # offline：生成 SQL，不连库
 ```
 
 ## 连接串
@@ -26,59 +27,9 @@
 **同步驱动 URL** `postgresql+psycopg://...`（应用运行时用 asyncpg 异步驱动）。
 不要在 alembic.ini 里写死密码。
 
-## V2 执行语义（WP-01A-00）
-
-V2 的 DDL 唯一入口是 `alembic/env.py`；legacy `python -m app.migrate` 仍只负责 Base
-旧基线与菜单/种子。env.py 在两种模式统一提供以下不变量：
-
-- **schema-aware allowlist**：`include_schemas=True` + `include_name`/`include_object`
-  纯函数。`trading` schema 全域放行；`public` 仅放行 `alembic_version`——18 张 Base 表
-  （`app/base_schema_contract.BASE_LEGACY_TABLES`）由 `v2_0001` revision 的 validator
-  主动检查兼容合同，不进入 autogenerate 的 create/drop/alter 候选、也不得被反射；其他
-  schema / 未知 public 表一律忽略（autogenerate 不得把它们判为应删除）。Alembic 传入的
-  default schema `None` 明确按 PostgreSQL `public` 处理。两个 allowlist callback 均实际
-  传给 `context.configure`；V2 模型只管理 `trading` schema，Base metadata 只声明 `public`
-  表但不由 autogenerate 接管。
-- **version 表表示**：`version_table_schema=None`（default schema）。`include_schemas=True`
-  时 Alembic autogenerate 用 `None` 表示数据库 default schema（public），若写成字面量
-  `"public"`，`alembic check` / `revision --autogenerate` 会把 `alembic_version` 误判为
-  待删除表。物理位置不变：search_path 下版本表仍落在 public。
-- **显式 search_path**：`SET LOCAL search_path TO public, pg_catalog`。V2 表一律
-  schema-qualified，不依赖隐式搜索顺序。
-- **迁移锁**：`SET LOCAL lock_timeout TO '30s'` 后取固定 key
-  `pg_advisory_xact_lock(5786375870084826445)`；一次 Alembic run 使用一个外层事务，
-  失败整体回滚。offline SQL 同样输出 search path / transaction boundary / advisory-lock
-  SQL（不实际获锁），语义与 online 一致。
-- **连接所有权**：优先复用 `config.attributes["connection"]` 注入的既有 sync Connection
-  （不 close / 不 dispose，便于测试与编排进程传入连接）；未注入时才从 typed settings
-  构造 `NullPool` engine，成功/异常路径各 dispose 一次。注入连接必须没有活动事务；若已有
-  事务则以 `v2_migration_requires_clean_connection` fail-closed，禁止提交/回滚调用方事务。
-- **硬预置**：dialect 必须为 PostgreSQL，否则以固定 reason code
-  `v2_migration_requires_postgresql_dialect` 终止；异常不记录 DSN/password/Provider
-  message。密码只用于 engine URL，禁止写入 log / exception / offline SQL / manifest。
-- **真 PostgreSQL 集成验收**：`tests/trading/integration/` 使用显式测试管理连接
-  `V2_TEST_ADMIN_DATABASE_URL=postgresql+psycopg:///postgres`；fixture 只创建/删除
-  `pm_v2_test_*` 临时库，禁止在管理库或业务库直接运行 downgrade。无该 env 时整模块 skip。
-
-## Base 兼容合同（v2_0001，WP-01A-01）
-
-`v2_0001`（revision `b1000001`，down `cdabba1e3903`）把 Base 旧库明确为 V2 的**只读
-兼容边界**，不执行任何 Base DDL：
-
-- **在线**：调用 `app/base_schema_contract.validate_base_schema`。18 张 Base 表全无 →
-  `EMPTY`（upgrade/downgrade 均 no-op）；全有且签名一致 → `COMPATIBLE`；1–17 张 →
-  reason `v2_base_schema_partial`；全有但签名不符 → `v2_base_schema_incompatible`。
-  后两者在 version 前进前抛错并整体回滚。兼容签名只约束 table/column/type/nullability/
-  primary-key，额外 public 表、索引、CHECK、default、trigger 一律原样保留。
-- **离线**：`alembic upgrade head --sql` 输出等价的 PostgreSQL precondition（`DO` 块），
-  应用 SQL 时执行同样的 EMPTY/partial/incompatible 检查，不因 offline 静默跳过。
-- 数据来源：`serve/tests/trading/fixtures/base_legacy_schema.sql`（权威 dump 的
-  schema-only 提取，18 表），canonical 签名见 `base_schema_contract.CANONICAL_SIGNATURE`。
-
 ## 基线说明
 
 首个 revision `cdabba1e3903_baseline_existing_schema` 是 **空基线**：alembic 引入时
-DB 已由 migrate.py 建好 schema，故基线不执行任何 DDL，只标记状态。基线**不改写、不重签**。
+DB 已由 migrate.py 建好 schema，故基线不执行任何 DDL，只标记状态。
 模型↔DB 存在历史漂移（手写 `idx_*`/`uq_*` 命名 vs 模型 `index=True`、JSON vs JSONB 等），
-`--autogenerate` 会报出这些差异 —— 该漂移由 `v2_0001` 兼容合同隔离在 autogenerate 之外，
-不生成破坏性 DDL；V2 也不为「消解漂移」出迁移。
+`--autogenerate` 会报出这些差异 —— 消解漂移请单独出「对齐迁移」，不要混入业务迁移。
