@@ -111,26 +111,42 @@ records the exact current Base version/tag/commit and next command;
 script prints the cross-version plan before merge and commits code plus both
 ledgers atomically.
 
-T0～T2 自动升级合同、只读计划器与下游 receiver（已本地验收、尚未发布）：
-`serve/docs/downstream-upgrade-automation.md` 定义 registry、单项目 result 与 batch
-JSON Schema（`scripts/schemas/`）。`scripts/base-upgrade-campaign.py` 提供
-`validate-registry`、只读 `plan` 与 `summarize`；只处理匹配 channel 的 enabled
-项目，从下游默认分支 `PROJECT.md` 发现真实版本，输出稳定排序且集中脱敏的
-JSON/Markdown artifact。registry 只接受 `OWNER/REPO`，不接受
-`current_version` 或任何 secret/Token 字段；跨 MAJOR 计划必须显式
-`--allow-major`，降级始终停止。`.github/workflows/base-upgrade-receiver.yml` 在下游
-fresh checkout 中以 `PROJECT.md` 的 `BASE_UPSTREAM_REPOSITORY=OWNER/REPO` 恢复公开
-GitHub Base upstream，串行调用 `scripts/run-base-upgrade.sh` 与
-`scripts/sync-base-release.sh TARGET --install-deps`；只有原子同步和完整验证通过后才写
-`chore/base-vTARGET` 并创建或更新 PR，冲突/验证失败只产出脱敏、schema-valid result
-后 abort，不写默认分支。checkout/setup/pip/runner 未产出 result 时，workflow 对合法
-输入以 `if: always()` 生成 `dispatch_failed` fallback；runner 精确关联账本 timestamp/
-verification，PR 正文列出 update nodes、逐项 PASS、retry 与 rollback。自动回滚只
-操作本次创建资源，复用的既有分支/PR 不删除。中央 Provider 派发器和批次执行仍属于
-T3+；receiver 基座尚待 T2.5 commit/tag/push 为不可变 `base/v3.3.0`。
-最终本地证据：组合定向 272 passed、T2 四文件 78 passed、后端 563 passed、动态 Git
-E2E 9/9；159 routes + 1 mount、Alembic、release/database boundary、bootstrap、前端
-lint/build、runner `bash -n` 与 diff check 全部通过。
+T0～T2 自动升级合同、只读计划器与下游 receiver 已以不可变
+`base/v3.3.0`（`abc907682edd55d0b58624c6b0fc78c73b8e41e1`）发布。
+`serve/docs/downstream-upgrade-automation.md` 定义 registry、单项目 result、batch 与
+operator evidence 的 Draft-07 JSON Schema。`scripts/base-upgrade-campaign.py` 提供
+`validate-registry`、只读 `plan`、`summarize` 与 T3 `dispatch`；从下游默认分支
+`PROJECT.md` 发现真实版本，且只处理匹配 channel 的 enabled 项目。registry
+只接受 `OWNER/REPO`，不接受 `current_version` 或 secret/Token 字段；降级始终
+停止，跨 MAJOR 必须显式 `--allow-major`。
+
+`.github/workflows/base-upgrade-receiver.yml` 在下游 fresh checkout 中以
+`BASE_UPSTREAM_REPOSITORY=OWNER/REPO` 恢复公开 Base upstream，串行调用
+`scripts/run-base-upgrade.sh` 与 `scripts/sync-base-release.sh TARGET --install-deps`。只有
+原子同步和完整验证通过后才 non-force push `chore/base-vTARGET` 并创建或更新
+PR；PR 正文从受信 Release Manifest 渲染 CURRENT/TARGET、全部 update nodes、
+migrations、conflict hotspots、downstream actions、release/runtime verification、retry 与
+rollback。冲突/验证失败只产出脱敏 result 后 abort，不写默认分支；回滚只
+操作本次创建的资源。
+
+T3 operator 实现使用 GitHub REST `2026-03-10`；dispatch POST 不发送已移除的
+`return_run_details`，严格接受 `200` run locator，响应丢失时先按唯一
+run-name/event/ref/时间窗口恢复，然后按 run ID 轮询并下载唯一 result artifact。
+`.github/workflows/base-upgrade-campaign-example.yml` 是要复制到私有 operator/ops 仓库的
+人工批准模板；该仓库管理 registry、Token、不可变 Base tools ref 与 evidence。
+`project_id` 必须是 operator 预分配的稳定、非敏感 opaque ID，并不会被工具自动匿名化；
+run URL 仍会暴露 repository identity，因此真实 evidence 只存私有 ops 仓库/受保护
+artifact。evidence 用 `operator_commit` 绑定实际工具 checkout，并在获得 run ID 后立即
+保留条目；后续 poll/artifact 失败使用 nullable 字段加 `failure_stage` 保留部分证据。
+T3/T4 工程验证已完成（322 targeted、后端 613、动态 Git E2E 9/9，Alembic/
+routes/frontend/release/boundary/bootstrap/diff 全部 PASS），但 T3 尚未发布。由于
+workflow dispatch 运行下游当前默认分支上的 receiver/runner，已从 v3.3.0
+严格 backport 并发布 `base/v3.3.1`（`8721b75a8906d36072c72c54d767aba8802ecdff`）：
+只含 runner PR 正文 Manifest 分节、对应测试和标准 PATCH 元数据，不含
+dispatcher。真实同步随后发现嵌套 E2E 误读外层 `MERGE_HEAD`，已以
+`base/v3.3.2`（`36fb626e578db78198bb61620177280dae18191f`）PATCH 修复。三个试点
+手工采用 v3.3.2 后，主线 T3 基于该 tag 发布 `base/v3.4.0`，再演练自动
+v3.3.2→v3.4.0 campaign。
 
 ## Clean repository rule
 

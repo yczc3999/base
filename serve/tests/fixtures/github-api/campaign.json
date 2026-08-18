@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "campaign_id": "campaign-fixture-001",
+  "target_version": "3.3.0",
+  "operator_commit": "0123456789abcdef0123456789abcdef01234567",
+  "generated_at": "2026-08-18T12:10:00Z",
+  "entries": [
+    {
+      "project_id": "fixture_alpha",
+      "run_id": 41001,
+      "run_url": "https://github.com/fixture-owner/fixture-repo-alpha/actions/runs/41001",
+      "artifact_name": "base-upgrade-result-campaign-fixture-001",
+      "artifact_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "dispatched_at": "2026-08-18T12:00:00Z",
+      "completed_at": "2026-08-18T12:05:00Z",
+      "result_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "final_status": "pr_opened",
+      "failure_stage": null
+    },
+    {
+      "project_id": "fixture_charlie",
+      "run_id": 41003,
+      "run_url": "https://github.com/fixture-owner/fixture-repo-charlie/actions/runs/41003",
+      "artifact_name": "base-upgrade-result-campaign-fixture-001",
+      "artifact_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "dispatched_at": "2026-08-18T12:00:02Z",
+      "completed_at": "2026-08-18T12:09:00Z",
+      "result_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "final_status": "verification_failed",
+      "failure_stage": null
+    },
+    {
+      "project_id": "fixture_delta",
+      "run_id": 41004,
+      "run_url": "https://github.com/fixture-owner/fixture-repo-delta/actions/runs/41004",
+      "artifact_name": null,
+      "artifact_sha256": null,
+      "dispatched_at": "2026-08-18T12:00:03Z",
+      "completed_at": null,
+      "result_sha256": null,
+      "final_status": null,
+      "failure_stage": "run_poll"
+    }
+  ]
+}

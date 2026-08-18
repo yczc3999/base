@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "version": "3.4.0",
+  "tag": "base/v3.4.0",
+  "released_at": "2026-08-18",
+  "semver": "MINOR",
+  "summary": "GitHub fleet 升级派发、运行回收与私有 evidence 闭环",
+  "nodes": [
+    {
+      "id": "downstream.fleet-registry-contract",
+      "kind": "added",
+      "scope": "upgrade/evidence",
+      "summary": "固化私有 operator evidence 合同、部分失败留痕、operator commit 与 registry 关联",
+      "files": [
+        "scripts/schemas/base-upgrade-evidence.schema.json",
+        "serve/tests/fixtures/github-api/campaign.json",
+        "serve/tests/fixtures/github-api/README.md"
+      ]
+    },
+    {
+      "id": "downstream.dispatched-sync-workflow",
+      "kind": "added",
+      "scope": "upgrade/operator",
+      "summary": "提供人工批准、不自动合并、不发送 return_run_details 的私有 ops campaign 模板",
+      "files": [
+        ".github/workflows/base-upgrade-campaign-example.yml"
+      ]
+    },
+    {
+      "id": "downstream.upgrade-campaign-reporting",
+      "kind": "added",
+      "scope": "upgrade/campaign",
+      "summary": "实现有界 dispatch、run 轮询、result artifact 回收、批次汇总与三件证据输出",
+      "files": [
+        "scripts/base-upgrade-campaign.py"
+      ]
+    },
+    {
+      "id": "downstream.upgrade-recovery-guards",
+      "kind": "changed",
+      "scope": "upgrade/guards",
+      "summary": "验证 PR/孤立分支所有权、dispatch 歧义恢复、artifact 安全和跨文件证据一致性",
+      "files": [
+        "serve/tests/test_base_upgrade_dispatch.py"
+      ]
+    },
+    {
+      "id": "downstream.upgrade-automation-docs",
+      "kind": "changed",
+      "scope": "docs",
+      "summary": "记录 T3/T4 实现、三项串行容量、私有 evidence 边界与 v3.3.1/v3.3.2 bootstrap 顺序",
+      "files": [
+        "CLAUDE.md",
+        "UPSTREAM.md",
+        "serve/docs/downstream-upgrade-automation.md",
+        "serve/docs/todo-downstream-upgrade-automation-2026-08-18.md"
+      ]
+    },
+    {
+      "id": "release.v3-4-0-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.4.0 版本、前端包元数据、变更账本与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.4.0.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "MINOR：HTTP API 与数据库 schema 不变；新增的 fleet operator 不影响未接入下游。",
+    "GitHub.com-only；Base upstream 必须公开可读，operator/ops 仓库必须私有。",
+    "v1 每个 channel 最多选中 3 个 enabled 项目；超限在 Provider 调用前拒绝。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移；真实 registry、Token 和 evidence 只在私有 operator/ops 仓库创建。"
+  ],
+  "downstream_actions": [
+    "下游先从不可变 base/v3.3.2 tag 建立 receiver/PR 正文与嵌套验证基线，再接收 v3.4.0 campaign。",
+    "在私有 operator/ops 仓库维护 fleet/projects.json，并复制 base/v3.4.0 中的 campaign example workflow。",
+    "配置指向不可变 Base tools tag/commit 的 BASE_PLATFORM_REPOSITORY 和 BASE_PLATFORM_REF。",
+    "仅以 operator secret 提供 BASE_UPGRADE_GITHUB_TOKEN，人工触发 campaign；不将真实 registry/evidence 提交到 Base。"
+  ],
+  "conflict_hotspots": [
+    "scripts/base-upgrade-campaign.py",
+    ".github/workflows/base-upgrade-campaign-example.yml",
+    "scripts/schemas/base-upgrade-evidence.schema.json",
+    "UPSTREAM.md",
+    "serve/docs/downstream-upgrade-automation.md"
+  ],
+  "verify": [
+    "cd serve && .venv/bin/pytest",
+    "cd serve && .venv/bin/python -m app.routes check",
+    "cd serve && .venv/bin/alembic upgrade head",
+    "cd admin && npm ci && npm run lint && npm run build",
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "scripts/bootstrap-project.sh fixture_project --plan",
+    "scripts/test-base-upgrade-e2e.sh",
+    "git diff --check"
+  ],
+  "rollback": [
+    "停用私有 operator workflow 或撤销 BASE_UPGRADE_GITHUB_TOKEN，不再创建新派发。",
+    "已派发但未合并：只关闭本次创建的 Draft PR/删除本次新分支，复用资源不自动删除。",
+    "已合并 v3.4.0：revert 整个同步 merge commit 并向 BASE_UPDATES.md 追加回滚事实；无数据库回滚。",
+    "不移动 base/v3.3.1、base/v3.3.2 或 base/v3.4.0 已发布 tag；修正使用新 PATCH tag。"
+  ]
+}

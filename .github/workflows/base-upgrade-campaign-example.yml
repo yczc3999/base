@@ -1,0 +1,191 @@
+name: Base upgrade campaign example
+
+run-name: Base campaign ${{ inputs.campaign_id }} to v${{ inputs.target_version }}
+
+# Copy this template into the private operator/ops repository that owns
+# fleet/projects.json. Configure BASE_PLATFORM_REPOSITORY and pin
+# BASE_PLATFORM_REF to an immutable released Base tag or commit; do not add a
+# real fleet registry or provider credential to the Base repository.
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: Canonical Base release version (X.Y.Z)
+        required: true
+        type: string
+      campaign_id:
+        description: Unique identifier for this approved campaign
+        required: true
+        type: string
+      channel:
+        description: Enabled registry channel to dispatch
+        required: true
+        default: stable
+        type: string
+      allow_major:
+        description: Explicitly permit cross-major projects
+        required: false
+        default: false
+        type: boolean
+
+# The built-in token only checks out this private ops repository. Cross-repo
+# access comes exclusively from the separately managed operator secret below.
+permissions:
+  contents: read
+
+concurrency:
+  group: base-upgrade-campaign-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  dispatch:
+    name: Dispatch approved Base campaign
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out private operator configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out released Base operator tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ vars.BASE_PLATFORM_REPOSITORY }}
+          ref: ${{ vars.BASE_PLATFORM_REF }}
+          path: .base-operator
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Record immutable Base operator commit
+        run: |
+          operator_commit="$(git -C .base-operator rev-parse --verify HEAD)"
+          if [[ ! "$operator_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'Base operator checkout did not resolve to a 40-hex commit.\n' >&2
+            exit 1
+          fi
+          printf 'BASE_UPGRADE_OPERATOR_COMMIT=%s\n' "$operator_commit" >> "$GITHUB_ENV"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install campaign contract dependencies
+        run: python3 -m pip install -r .base-operator/scripts/requirements.txt
+
+      - name: Prepare bounded output paths
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/base-upgrade-campaign
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+
+      - name: Dispatch and collect downstream results
+        env:
+          BASE_UPGRADE_GITHUB_TOKEN: ${{ secrets.BASE_UPGRADE_GITHUB_TOKEN }}
+          INPUT_TARGET_VERSION: ${{ inputs.target_version }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
+          OUTPUT_DIR: ${{ runner.temp }}/base-upgrade-campaign
+        run: |
+          allow_major=()
+          if [[ "$INPUT_ALLOW_MAJOR" == "true" ]]; then
+            allow_major+=(--allow-major)
+          fi
+          python3 .base-operator/scripts/base-upgrade-campaign.py dispatch \
+            --registry fleet/projects.json \
+            --target-version "$INPUT_TARGET_VERSION" \
+            --campaign-id "$INPUT_CAMPAIGN_ID" \
+            --channel "$INPUT_CHANNEL" \
+            --json-output "$OUTPUT_DIR/batch.json" \
+            --markdown-output "$OUTPUT_DIR/summary.md" \
+            --evidence-output "$OUTPUT_DIR/evidence.json" \
+            "${allow_major[@]}"
+
+      - name: Validate complete campaign artifacts
+        if: always()
+        env:
+          INPUT_TARGET_VERSION: ${{ inputs.target_version }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          OUTPUT_DIR: ${{ runner.temp }}/base-upgrade-campaign
+          TOOLS_DIR: ${{ github.workspace }}/.base-operator
+          REGISTRY_PATH: ${{ github.workspace }}/fleet/projects.json
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          output = Path(os.environ["OUTPUT_DIR"])
+          tools = Path(os.environ["TOOLS_DIR"])
+          registry_path = Path(os.environ["REGISTRY_PATH"])
+          paths = {
+              "batch": output / "batch.json",
+              "summary": output / "summary.md",
+              "evidence": output / "evidence.json",
+          }
+          missing = [name for name, path in paths.items() if not path.is_file()]
+          if missing:
+              raise SystemExit(f"campaign artifacts are missing: {', '.join(missing)}")
+          summary = paths["summary"].read_text(encoding="utf-8")
+          if not summary.strip():
+              raise SystemExit("campaign summary is empty")
+          batch = json.loads(paths["batch"].read_text(encoding="utf-8"))
+          evidence = json.loads(paths["evidence"].read_text(encoding="utf-8"))
+          script = tools / "scripts" / "base-upgrade-campaign.py"
+          spec = importlib.util.spec_from_file_location("base_upgrade_campaign_gate", script)
+          if spec is None or spec.loader is None:
+              raise SystemExit("cannot load the released campaign validator")
+          import sys
+          sys.path.insert(0, str(script.parent))
+          campaign = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(campaign)
+          try:
+              registry = campaign.load_registry(registry_path)
+              campaign.validate_batch(batch, registry=registry)
+              campaign.validate_evidence(evidence, batch=batch, registry=registry)
+          except campaign.CampaignError as exc:
+              raise SystemExit(f"campaign artifact validation failed: {exc}") from exc
+          campaign_id = os.environ["INPUT_CAMPAIGN_ID"]
+          target_version = os.environ["INPUT_TARGET_VERSION"]
+          for document in (batch, evidence):
+              if (
+                  document["campaign_id"] != campaign_id
+                  or document["target_version"] != target_version
+              ):
+                  raise SystemExit("campaign artifact identity does not match workflow inputs")
+          operator_commit = subprocess.check_output(
+              ["git", "-C", str(tools), "rev-parse", "--verify", "HEAD"],
+              text=True,
+          ).strip()
+          if evidence["operator_commit"] != operator_commit:
+              raise SystemExit("campaign evidence operator commit does not match checkout")
+          if not summary.startswith("# Base upgrade campaign"):
+              raise SystemExit("campaign summary does not have the required heading")
+          PY
+
+      - name: Publish campaign summary
+        if: always()
+        env:
+          SUMMARY_FILE: ${{ runner.temp }}/base-upgrade-campaign/summary.md
+        run: |
+          if [[ -f "$SUMMARY_FILE" ]]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## Base upgrade campaign\n\nCampaign stopped before producing a summary.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload campaign batch and evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: base-upgrade-campaign-evidence
+          path: |
+            ${{ runner.temp }}/base-upgrade-campaign/batch.json
+            ${{ runner.temp }}/base-upgrade-campaign/summary.md
+            ${{ runner.temp }}/base-upgrade-campaign/evidence.json
+          if-no-files-found: error
+          retention-days: 30

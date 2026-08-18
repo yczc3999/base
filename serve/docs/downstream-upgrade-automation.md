@@ -1,13 +1,16 @@
 # Base 下游升级自动化合同
 
-**状态**：T0 数据合同、T1 只读计划器/批次报告与 T2 下游 receiver 已实现并通过
-本地验收；T2.5 元数据已准备但尚未 commit/tag/push，T3～T5 尚未实现。
+**状态**：T0～T4 已完成，receiver 基座已以不可变 `base/v3.3.0`
+发布；T3 operator dispatch、evidence 与 PR 正文增强已通过 T4 完整验证，尚未
+发布。T5 等待私有 operator/ops 仓库和 3 个真实非生产/低风险下游。
 **关联 TODO**：`serve/docs/todo-downstream-upgrade-automation-2026-08-18.md`
-**计划发布**：`base/v3.3.0`（尚未发布；本文件不构成发布 Manifest）
+**已发布基线**：`base/v3.3.0`（`abc907682edd55d0b58624c6b0fc78c73b8e41e1`）
+**已发布 bootstrap PATCH**：`base/v3.3.1`、`base/v3.3.2`
+**计划发布**：`base/v3.4.0` campaign（本文件不构成发布 Manifest）
 
-本文档定义 Base 下游自动升级流程的**数据合同、只读计划与下游执行边界**。当前已
-固化 registry、单项目结果和批次结果三种 JSON 格式，提供 registry 校验、升级计划、
-结果汇总 CLI 与 GitHub receiver；中央 Provider 派发器仍未实现。
+本文档定义 Base 下游自动升级流程的**数据合同、只读计划、下游执行与 operator
+派发边界**。已固化 registry、单项目 result、batch 和 evidence 四种 JSON 格式，
+并提供 registry 校验、只读计划、结果汇总、GitHub receiver 与 T3 dispatch CLI。
 
 ---
 
@@ -17,8 +20,8 @@
 
 | 层 | 位置 | 内容 | 归属 |
 |---|---|---|---|
-| Base 通用合同与工具 | `scripts/schemas/*.schema.json`、`scripts/base-upgrade-campaign.py`、`scripts/run-base-upgrade.sh`、`.github/workflows/base-upgrade-receiver.yml`、`scripts/lib/base_release.py`、本文档 | schema、只读计划、批次汇总、下游 receiver、共享 release/脱敏边界 | Base 仓库，产品无关 |
-| operator 实例配置 | operator/ops 仓库（例如 `fleet/projects.json`） | 真实项目清单、channel、enabled 开关 | operator 仓库，不进入 Base |
+| Base 通用合同与工具 | `scripts/schemas/*.schema.json`、`scripts/base-upgrade-campaign.py`、`scripts/run-base-upgrade.sh`、`.github/workflows/base-upgrade-receiver.yml`、`.github/workflows/base-upgrade-campaign-example.yml`、`scripts/lib/base_release.py`、本文档 | schema、计划/派发/批次汇总、下游 receiver、operator 模板、共享 release/脱敏边界 | Base 仓库，产品无关 |
+| operator 实例配置 | 私有 operator/ops 仓库（例如 `fleet/projects.json`） | 真实项目清单、channel、enabled 开关、Provider secret、campaign workflow/evidence | operator 仓库，不进入 Base |
 | 下游运行文件 | 各下游仓库 `PROJECT.md`、`BASE_UPDATES.md` | 真实 Base 版本、同步历史、验证记录 | 下游仓库，不进入 Base |
 
 Base 仓库不保存真实项目名称、仓库地址、Token、数据库信息或任何下游运行产物。
@@ -180,10 +183,38 @@ Registry 是**声明式项目清单**，只描述“哪些下游项目可参与�
   的 OWNER/REPO 必须与 registry repository 大小写归一化后相同。
 
 `summarize` 可读取一个 batch 对象，也可读取同一 campaign/target 的非空单项目
-result 数组；数组会按 `project_id` 规范化为 batch。T3 的生产调用必须同时提供
-`--registry`，不能省略跨文件关联校验。
+result 数组；数组会按 `project_id` 规范化为 batch。T3 `dispatch` 必须提供
+registry，不存在绕过跨文件关联校验的生产路径。
 
-### 3.2 Schema 外的运行时关联校验
+### 3.2 Evidence schema（私有 operator 运行证据）
+
+**文件**：`scripts/schemas/base-upgrade-evidence.schema.json`
+
+evidence 不嵌入 result 或 repository 字段，而是为实际获得 receiver run ID 的
+派发保存最小交叉验证事实。顶层全部必填：
+
+| 字段 | 语义 |
+|---|---|
+| `schema_version` | 固定为 `1` |
+| `campaign_id` / `target_version` | 必须与 batch 和 workflow input 一致 |
+| `operator_commit` | 实际执行 campaign 的 Base tools checkout，必须为小写 40-hex commit |
+| `generated_at` | canonical UTC 秒级时间 |
+| `entries` | 只包含已取得 run ID 的项目；未派发或已是目标版本时可为空 |
+
+每个 entry 固定包含 `project_id`、`run_id`、`run_url`、`artifact_name`、
+`artifact_sha256`、`dispatched_at`、`completed_at`、`result_sha256`、
+`final_status` 和 `failure_stage`。`failure_stage=null` 时 completion/artifact/result/status
+字段必须全部完整；得到 run locator 后发生 poll、cancel 或 artifact 回收失败时，
+依然保留 entry，将未取得字段设为 `null` 并填写 `failure_stage`。runtime 额外
+强制 project ID 有序且唯一、run ID 唯一、run URL 与 registry repository 相关联、
+timestamp 按 dispatch → completion → generation 顺序，以及 entry 与 batch result 状态一致。
+
+`project_id` 是 operator 在 registry 中预分配的稳定、非敏感 opaque ID；工具不会
+将一个敏感 ID 自动匿名化。而 `run_url` 本身仍包含 `OWNER/REPO`，所以即使
+schema 没有独立 repository 字段，真实 evidence 也只能写入私有 operator/ops 仓库或
+其受保护 CI artifact，不得提交到 Base 或下游产品仓库。
+
+### 3.3 Schema 外的运行时关联校验
 
 JSON Schema Draft-07 负责单个 JSON 对象的形状与状态不变量，不会独立证明跨文件、
 跨记录或 Provider 远端事实。T1 实现 registry/batch 层能本地证明的关联，T2 已实现
@@ -203,8 +234,9 @@ JSON Schema Draft-07 负责单个 JSON 对象的形状与状态不变量，不�
 
 前三类 registry/batch 关联由 T1 实现；T2 receiver 校验 source version 与默认分支
 账本、最后一条 `BASE_UPDATES.md` 的 version/commit、目标 tag、精确两父原子 merge、
-固定远端分支和开放 PR。T3 仍负责 dispatch run、artifact 回收及 result 与 operator
-registry 的跨仓库事实关联。
+固定远端分支和开放 PR。T3 实现再将 dispatch run、artifact/result、开放 PR/孤立
+分支所有权与 operator registry 的跨仓库事实绑定；该实现在发布前仍需通过 T4
+完整验证。
 
 ---
 
@@ -340,9 +372,11 @@ runner 在 result/summary 写入前复用集中脱敏，使用原子临时文件
 `dispatch_failed`，按第一个失败 outcome 填写 `failed_stage`；已有 runner result 为权威，
 fallback 不覆盖。fallback 之后仍按固定顺序发布 summary、上传 artifact、最后失败。
 
-PR body 从 `(source,target]` 受信 Release Manifests 渲染全部 update nodes，并列出
-target ancestry、Manifest plan、完整 sync、non-force publication、原子 ledger 的逐项
-**PASS**，以及 retry/rollback。runner 单独追踪 `new_branch_pushed` 与
+PR body 明示 CURRENT/TARGET，并从 `(source,target]` 受信 Release Manifests 渲染每个
+版本的全部 update nodes、migrations、conflict hotspots、downstream actions 和
+release verification；另列出 target ancestry、Manifest plan、完整 sync、non-force
+publication、原子 ledger 的逐项 **PASS**，以及 retry/rollback。Manifest 文本被
+实体化为不可执行 Markdown 数据，不进入 shell 求值。runner 单独追踪 `new_branch_pushed` 与
 `new_pr_created`：rollback 只删除本次新推分支或关闭本次新建 PR；已有分支/PR 即使被
 幂等复用或更新也不自动删除。
 
@@ -354,7 +388,9 @@ fixture mode 只允许非 CI 动态本地仓库，不能在 `CI`/`GITHUB_ACTIONS
 最终本地验收证据：T0～T2 组合定向 272 passed，T2 workflow/E2E/bootstrap/ledger
 四文件 78 passed，后端完整 563 passed，动态 Git E2E 9/9；Route Manifest 159 routes、
 1 mount，Alembic、release/database boundary、bootstrap、frontend lint/build、runner
-`bash -n` 与 `git diff --check` 全部 PASS。T2.5 仍等待 commit/tag/push。
+`bash -n` 与 `git diff --check` 全部 PASS。T2.5 发布提交为
+`abc907682edd55d0b58624c6b0fc78c73b8e41e1`，已推送 annotated `base/v3.3.0` 且远端
+解引用到同一 commit；receiver workflow 已 active，Base repository 为 PUBLIC。
 
 ### 4.4 v3.2.0 → v3.3.0 首次安装依赖恢复
 
@@ -369,6 +405,97 @@ fixture mode 只允许非 CI 动态本地仓库，不能在 `CI`/`GITHUB_ACTIONS
 
 这会验证 `MERGE_HEAD`、安装目标依赖并重跑完整检查，随后原子记录两个 ledger。已经
 abort 或销毁的 CI 工作区不具备 `--continue` 条件，必须从干净默认分支重新开始。
+
+### 4.5 T3 GitHub operator dispatch（已完成工程验证，尚未发布）
+
+`dispatch` 是一次有界、按项目故障隔离的生产路径：
+
+```bash
+python3 scripts/base-upgrade-campaign.py dispatch \
+  --registry fleet/projects.json \
+  --target-version X.Y.Z \
+  --campaign-id CAMPAIGN_ID \
+  --channel stable \
+  --json-output /tmp/batch.json \
+  --markdown-output /tmp/summary.md \
+  --evidence-output /tmp/evidence.json
+```
+
+目标必须有本 checkout 可验证的 Release Manifest，registry 必须存在至少一个匹配
+channel 的 enabled 项目，Token 只从 `BASE_UPGRADE_GITHUB_TOKEN` 读取。
+`operator_commit` 优先取 `BASE_UPGRADE_OPERATOR_COMMIT`，否则从实际 Base tools checkout
+`git rev-parse HEAD` 发现；只接受小写 40-hex commit。batch、summary、evidence 三个输出
+路径必须两两不同，且不得与 registry 发生解析路径、symlink 或 hardlink 碰撞。
+
+v1 按 `project_id` 稳定顺序串行处理项目。每个 run 最多轮询 30 分钟；超时对
+精确 run ID 发起一次 cancel（`202` 或竞态 `409`），再最多等待 5 分钟进入终态。
+operator 示例 workflow 的总上限是 120 分钟，因此一次匹配的 enabled 项目硬上限
+为 3；超过 3 时在任何 Provider 调用前 fail closed。大 fleet 必须以 channel 分批，
+每批最多 3 项。进入项目循环后不 fail-fast；单项目发现、版本 gate、preflight、
+dispatch、poll/cancel 或 artifact 失败只记录当前结果，其余项目继续。
+
+派发前先从默认分支 strict 解析 `PROJECT.md`，执行降级/跨 MAJOR gate 和
+Manifest 范围校验，再查询精确 `chore/base-vTARGET` head + default base 的开放 PR。
+最多允许一个匹配 PR，且必须是目标 repository 自身的 head/ref/SHA/base/URL。没有
+开放 PR 时，若远端分支存在，必须独立获取并解引用目标 Base tag，校验分支
+`PROJECT.md`/`BASE_UPDATES.md`、精确两父 merge（第一父为当前默认 tip，第二父为
+目标 Base commit）。任一所有权证据不足时 `blocked`，不派发、不 force-push。
+
+GitHub API 固定 `X-GitHub-Api-Version: 2026-03-10`。workflow dispatch POST 请求只包含
+default `ref` 与 `project_id`/`target_version`/`campaign_id`/`allow_major` inputs，
+不发送已移除的 `return_run_details`。只接受 `200` 且 body 必须直接返回正确
+`workflow_run_id`/`run_url`/`html_url`。正常路径以返回 run ID 为权威；响应丢失、
+5xx 或 malformed 200 先按唯一 run-name + event + ref + bounded time window 恢复，匹配
+多个立即 fail closed，0 个才有界重试，总 POST 次数最多 2。普通 4xx 不重试；
+403/429 只在 `Retry-After` 或 remaining/reset 头可用时有界等待。
+
+轮询只接受同 repository、`workflow_dispatch` event、default branch、receiver workflow
+路径的精确 run。回收时要求该 run 唯一、未过期的
+`base-upgrade-result-CAMPAIGN_ID` artifact，artifact metadata 必须绑定 run ID 且 archive URL
+必须绑定 registry repository。API 下载端点的 redirect 手工跟随，对允许的签名
+download host 不发送 Authorization/Bearer。archive 与 metadata SHA-256 一致，ZIP 只能
+包含单一精确 `base-upgrade-result.json`，且拒绝 path traversal、backslash/NUL、symlink、
+encrypted entry、超限大小/压缩率、非 UTF-8、重复 JSON key 与非终态 result。最后同时
+校验 schema、campaign/project/target/source 和已有 PR identity；仅允许竞态期间下游
+已被其他 campaign 升到 target 时，`up_to_date` 的 source 等于 target。
+
+`.github/workflows/base-upgrade-campaign-example.yml` 必须复制到私有 operator/ops 仓库，
+不在 Base 中直接运行。该仓库预先配置 `fleet/projects.json`、
+`BASE_UPGRADE_GITHUB_TOKEN` secret、`BASE_PLATFORM_REPOSITORY` managed variable 和指向已
+发布不可变 tag/commit 的 `BASE_PLATFORM_REF`。workflow checkout 私有 ops 仓库根目录，
+再以 `persist-credentials: false` checkout Base tools 到 `.base-operator`，安装该 checkout
+的 `scripts/requirements.txt`，并把实际 HEAD 注入 `BASE_UPGRADE_OPERATOR_COMMIT`。它只接受
+人工 workflow inputs，权限为 `contents: read`，同 campaign 串行且不取消在途运行。
+`if: always()` 终止门要求 batch/summary/evidence 三份 artifact 完整，重新验证 schema、
+workflow identity、实际 operator commit、排序/唯一性、时间顺序和 result/evidence 对应，
+再以固定名 `base-upgrade-campaign-evidence` 上传30天。
+
+### 4.6 T3/T4 验收证据
+
+- T0～T3 组合定向 `322 passed`，其中 campaign + dispatch `95 passed`、receiver
+  workflow `23 passed`；动态 Git E2E `9/9 PASS`；
+- 后端完整回归 `613 passed in 14.46s`；Alembic upgrade 与 Route Manifest
+  `159 routes, 1 mount` PASS；
+- frontend `npm ci`/lint/build PASS（保留 2 个既有 lint warning 与 npm audit 报告的
+  9 个既有 vulnerability，均不由 T3 引入）；
+- release check PASS（当前 v3.4.0，9 个 Manifest）；database boundary、bootstrap plan、
+  `git diff --check` 全部 PASS。
+
+### 4.7 T5 前置：v3.3.1 receiver bootstrap patch
+
+GitHub `workflow_dispatch` 执行的 receiver/runner 来自下游默认分支当前已采用版本。
+因此直接从 v3.3.0 派发 v3.4.0 时，实际运行的 v3.3.0 runner 还不知道 T3
+新增的 migrations、conflict hotspots、downstream actions 与 release verification
+四组 PR 正文分节。目标 tree 中包含新 runner 不能修正本次 workflow 已启动时选择
+的旧执行逻辑。
+
+T5 必须先从已发布 `base/v3.3.0` 创建严格 PATCH backport：只包含
+`scripts/run-base-upgrade.sh` PR 正文增强、`serve/tests/test_base_upgrade_workflow.py`
+回归与标准 v3.3.1 发布元数据/文档；明确不包含 dispatcher、evidence schema、
+campaign example workflow 或 dispatch fixtures/tests。完整验证并发布不可变
+`base/v3.3.1` 后，又以 `base/v3.3.2` 修复真实外层 no-commit 同步中 E2E 对
+`MERGE_HEAD` 的相对路径误读。3 个试点必须手工采用 v3.3.2；主线 T3 基于该 tag
+发布 `base/v3.4.0`，最后自动演练 v3.3.2→v3.4.0。
 
 ---
 
@@ -398,8 +525,14 @@ abort 或销毁的 CI 工作区不具备 `--continue` 条件，必须从干净�
   `chore/base-vTARGET_VERSION` 命名空间，默认分支禁止直接 push；
 - 下游数据库 identity 继续通过 `scripts/check-database-boundary.py` 验证；
   Base 不缓存、不代理、不集中保存任何下游数据库 secret；
-- T1 与 T2 receiver 对日志、自由文本、summary 和 artifact 复用共享集中脱敏；
-  secret 与结构字段碰撞时 fail closed，不写无效 artifact。
+- T1～T3 对日志、自由文本、summary 和 artifact 复用共享集中脱敏；
+  secret 与 batch/evidence 结构事实碰撞时 fail closed，不改写关联字段或写出无效
+  artifact；
+- T3 artifact 下载把 GitHub API 认证端点与签名 download host 分开，手工检查
+  redirect，不向签名 host 转发 Bearer token；
+- evidence 的 `project_id` 必须由 operator 预分配为非敏感 opaque ID；工具不负责
+  自动匿名化。`run_url` 会暴露 repository identity，真实 evidence 只进入私有
+  operator/ops 仓库或受保护 artifact。
 
 ---
 
@@ -426,14 +559,22 @@ receiver 在冲突时必须先捕获冲突文件并写出 result，再在临时 
 `--continue` 只适用于尚保留原 `MERGE_HEAD` 的同一本地工作区，不得写成已经
 abort 或已销毁 CI 工作区的恢复命令。
 
+T3 operator 本身不写下游默认分支；停止 campaign workflow 或撤销 Provider token
+即停止新派发。批次失败后保留已定位 run 的 partial evidence，只删除本地/私有
+ops artifact 不会回滚下游事实。下游分支、PR 和 ledger 继续严格由 receiver 的资源
+所有权规则处理，禁止 operator 在证据不足时自动删除或 force-push。
+
 ---
 
-## 8. 当前未实现内容
+## 8. 当前未完成内容
 
-- 未创建中央 Provider dispatcher（T3）；
-- 未执行 T3 Provider 派发端到端演练与真实下游试点（T4、T5）；
-- 未修改 `VERSION`、`CHANGELOG.md` 或 release Manifest；
-- 未创建 `base/v3.3.0` tag。
+- T3/T4 实现、fixture/mock 合同、完整回归与故障矩阵已完成；
+- 不含 dispatcher 的 `base/v3.3.1` receiver 正文 PATCH 与 `base/v3.3.2` 嵌套
+  E2E Git-dir PATCH 已发布；
+- 尚未在真实私有 operator 仓库与 3 个已手工采用 v3.3.2 的非生产/低风险下游
+  执行 v3.3.2→v3.4.0 T5 试点；
+- T3 已进入 v3.4.0 本地发布元数据，但尚未创建不可变
+  `base/v3.4.0` tag；已发布 `base/v3.3.0`/`base/v3.3.1`/`base/v3.3.2` 不移动。
 
 ---
 

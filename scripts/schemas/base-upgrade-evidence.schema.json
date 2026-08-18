@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://base-platform.local/schemas/base-upgrade-evidence.schema.json",
+  "title": "Base Upgrade Campaign Evidence",
+  "description": "Private operator evidence for actual downstream receiver runs. Entries exclude projects that were never dispatched, so an empty entries array is valid. Run URLs identify repositories and production documents belong only in the private operator repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "target_version",
+    "operator_commit",
+    "generated_at",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "$ref": "base-upgrade-result.schema.json#/properties/campaign_id"
+    },
+    "target_version": {
+      "$ref": "base-upgrade-result.schema.json#/properties/target_version"
+    },
+    "operator_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "generated_at": {
+      "$ref": "#/definitions/timestamp"
+    },
+    "entries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/evidence_entry"
+      }
+    }
+  },
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "run_id",
+        "run_url",
+        "artifact_name",
+        "artifact_sha256",
+        "dispatched_at",
+        "completed_at",
+        "result_sha256",
+        "final_status",
+        "failure_stage"
+      ],
+      "properties": {
+        "project_id": {
+          "$ref": "base-upgrade-result.schema.json#/properties/project_id"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "pattern": "^https://github\\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}/actions/runs/[1-9][0-9]*$",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "/(?:\\.|\\.\\.)/actions/runs/"
+              },
+              {
+                "pattern": "\\.[Gg][Ii][Tt]/actions/runs/"
+              },
+              {
+                "pattern": "[\\r\\n]"
+              }
+            ]
+          }
+        },
+        "artifact_name": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/artifact_name"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifact_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dispatched_at": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final_status": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/final_status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_stage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "\\S",
+              "not": {
+                "pattern": "[\\r\\n]"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "failure_stage": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "failure_stage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "completed_at": {
+                "$ref": "#/definitions/timestamp"
+              },
+              "artifact_name": {
+                "$ref": "#/definitions/artifact_name"
+              },
+              "artifact_sha256": {
+                "$ref": "#/definitions/sha256"
+              },
+              "result_sha256": {
+                "$ref": "#/definitions/sha256"
+              },
+              "final_status": {
+                "$ref": "#/definitions/final_status"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "artifact_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^base-upgrade-result-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "final_status": {
+      "type": "string",
+      "enum": [
+        "up_to_date",
+        "pr_opened",
+        "conflict",
+        "verification_failed",
+        "blocked",
+        "dispatch_failed"
+      ]
+    }
+  }
+}

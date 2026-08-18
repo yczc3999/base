@@ -1,9 +1,12 @@
 # Base 下游项目自动升级 TODO
 
 **创建**：2026-08-18
-**最后更新**：2026-08-18T10:43:11Z
-**状态**：T0～T2 已完成并验证；D1～D5 已确认；T2.5 待 commit/tag/push
-**计划发布**：`base/v3.3.0` receiver 基座 + `base/v3.4.0` campaign（均为 MINOR）
+**最后更新**：2026-08-18T11:40:47Z
+**状态**：T0～T4 已完成；`base/v3.3.0`/`base/v3.3.1`/`base/v3.3.2` 已发布；
+T5 的 3 个私有合成试点已手工采用 v3.3.2，v3.4.0 待发布与自动 campaign
+**发布路径**：已发布 `base/v3.3.0` receiver 基座 → 严格 backport
+`base/v3.3.1` PR 正文合同 PATCH → `base/v3.3.2` 嵌套 E2E PATCH →
+`base/v3.4.0` campaign（MINOR）
 
 ---
 
@@ -25,7 +28,7 @@
 
 ### 成功指标
 
-首批至少以 3 个匿名 fixture 下游仓库进行演练并达到：
+首批至少以 3 个无凭据、纯合成 fixture 下游仓库进行演练并达到：
 
 1. 无冲突项目自动创建升级 PR 的成功率为 100%；
 2. 单项目无需人工准备升级分支或逐文件比较；
@@ -52,8 +55,9 @@
 7. **现有项目渐进接入**：未安装接收工作流的项目继续使用当前手工命令，不阻塞
    Base 发版。
 8. **TODO 本身不触发发版**：开始实现并形成可复用能力时再执行 v3.3.0 发布合同。
-9. **首次接入只走已发布 Base tag**：不复制未发布 workflow/runner。下游先用现有
-   手工同步合同采用包含 receiver 的 v3.3.0，再从后续版本进入自动升级。
+9. **首次接入只走已发布 Base tag**：不复制未发布 workflow/runner。v3.3.0
+   已提供 receiver 基座；T5 试点必须先采用 v3.3.1 正文 backport，再采用修复嵌套 merge 验证的 v3.3.2；
+   v3.3.2 receiver 在自动升级到 v3.4.0 时可生成完整 PR 正文并完成全量验证。
 10. **D1 托管范围**：首版只支持 GitHub.com；Base upstream 以已提交的
     canonical `OWNER/REPO` 身份恢复，receiver 不接受任意 upstream URL。
 11. **D2 PR 策略**：新建 PR 为 Draft，不自动合并；幂等更新已有开放 PR 时保留其
@@ -64,12 +68,16 @@
     不在 tag 创建后自动开始 fleet campaign。
 14. **D5 首批试点**：选择 3 个非生产/低风险下游，先手工采用 receiver
     基座，再验证后续自动升级。
+15. **D6 v1 运维容量**：dispatch 按项目串行，每项目最多等待 run 30 分钟、
+    cancel 后再等待 5 分钟，示例 workflow 总超时 120 分钟。一次 channel
+    最多选中 3 个 enabled 项目；超限在任何 Provider 调用前 fail closed，大 fleet
+    使用 channel 分批，每批最多 3 项。
 
 ---
 
 ## 3. 已确认的产品决定
 
-用户于 2026-08-18 确认全部推荐值，D1～D5 不再阻塞对应任务。
+用户于 2026-08-18 确认全部推荐值，D1～D6 不再阻塞对应任务。
 
 | ID | 决定 | 已确认值 | 影响 | 状态 |
 |---|---|---|---|---|
@@ -78,6 +86,7 @@
 | D3 | 项目清单由谁维护 | 独立 operator/ops 仓库 | 避免真实项目资料进入 Base | ✅ |
 | D4 | Base 发布后如何启动批次 | 人工批准一次 workflow dispatch | 避免发布 tag 后立即影响全部项目 | ✅ |
 | D5 | 首批试点项目 | 3 个非生产/低风险下游 | 用真实差异验证幂等、冲突和失败隔离 | ✅ |
+| D6 | v1 单批容量 | 串行、每批最多 3 项 | 在 120 分钟 workflow 内容纳每项目 30m + cancel 5m 的最坏边界 | ✅ |
 
 ### 2026-08-18 三路研究结论
 
@@ -85,10 +94,15 @@
    `PROJECT.md`/`BASE_UPDATES.md` 一致性由 T2 在下游本地验证。
 2. T2 必须补齐 fresh checkout 的 Base upstream 身份和目标依赖安装，不能假设 CI
    已有 `upstream` remote、`.venv` 或目标版本依赖。
-3. T3 使用 GitHub workflow dispatch 的 `return_run_details=true` 直接取得 run ID；
-   run-name 只做交叉校验，不能替代 run ID。
-4. 首次 receiver 通过正式 Base tag 同步，不复制随机 onboarding 文件；发布采用
-   v3.3.0 receiver 基座 → 下游手工采用 → v3.4.0 自动 campaign 的两阶段路径。
+3. T3 固定 GitHub REST `2026-03-10`：workflow dispatch 不再发送已移除的
+   `return_run_details`，而是严格要求 `200` response 直接返回 run ID/URL；run-name
+   只做交叉校验与响应丢失恢复，不能替代正常 response 中的 run ID。
+4. 首次 receiver 通过正式 Base tag 同步，不复制随机 onboarding 文件。T5 识别出
+   bootstrap 顺序约束：v3.3.0 中运行的 runner 不包含 T3 新增的四组 Manifest 分节；
+   因此必须先从 v3.3.0 严格 backport 并发布 v3.3.1（只含 PR 正文增强/测试/
+   标准发布元数据，不含 dispatcher）→ 真实同步发现嵌套 E2E Git-dir 缺陷并发布
+   v3.3.2 PATCH → 3 试点手工采用 v3.3.2 → 主线基于 v3.3.2 发布 v3.4.0 →
+   自动 v3.3.2→v3.4.0 campaign。
 5. T1～T4 的通用实现属于 Base；真实 registry、Provider credential、三个试点项目、
    PR 和 evidence 属于外部 operator/downstream，T5 需要外部仓库上下文。
 
@@ -436,14 +450,16 @@ orchestration，不连接真实数据库或 Provider。完整应用验证仍由 
 - fresh checkout 只从 `BASE_UPSTREAM_REPOSITORY` 恢复公开 Base upstream；固定
   `--install-deps`、跨 MAJOR gate、repository queue、冲突先出 result 再 abort、
   fallback result、严格账本证据、PR body 与资源级 rollback 均有可复现覆盖；
-- T2.5 元数据已准备但尚未 commit/tag/push；首次下游接入必须等待远端不可变
-  `base/v3.3.0`，不得复制当前 worktree 文件。
+- T2.5 已完成：发布提交
+  `abc907682edd55d0b58624c6b0fc78c73b8e41e1` 与 annotated `base/v3.3.0` 已推送，
+  远端 tag 解引用到同一 commit；首次下游接入只同步该正式 tag，不复制
+  T3 未发布 worktree 文件。
 
 ---
 
 ### T2.5 · 发布 receiver 基座 v3.3.0
 
-**状态**：🟦 元数据已完成，待 commit/tag/push
+**状态**：✅ 完成（2026-08-18）
 **依赖**：T2、D1
 **预计**：0.5 天
 
@@ -458,15 +474,19 @@ orchestration，不连接真实数据库或 Provider。完整应用验证仍由 
 - 新建 `releases/base-v3.3.0.json`
 - 更新 `UPSTREAM.md`、`CLAUDE.md`
 
-**完成证据**：完整 release check、后端、前端、E2E、数据库边界和 diff check 通过；
-发布提交与 `base/v3.3.0` tag 已推送且远端可 fetch。真实下游是否采用不阻塞 Base
-tag，但 T5 自动试点前，选定项目必须先手工同步该 tag。
+**完成证据（2026-08-18T10:47:12Z）**：完整 release check、563 项后端、
+前端 lint/build、9/9 动态 E2E、Alembic、159+1 routes、数据库边界、bootstrap plan
+和 diff check 全部通过；发布提交 `abc907682edd55d0b58624c6b0fc78c73b8e41e1`
+与 annotated `base/v3.3.0` tag 已推送，远端 tag 解引用到同一提交；GitHub 已识别
+receiver workflow 为 active，Base repository 已按确认值保持 PUBLIC。真实下游是否
+采用不阻塞 Base tag。T5 自动试点不直接从 v3.3.0 起跑；选定项目必须先
+手工同步待发布的严格 backport `base/v3.3.1`。
 
 ---
 
 ### T3 · 实现批量派发与 Draft PR 幂等更新
 
-**状态**：⬜ 待执行
+**状态**：✅ 完成（2026-08-18）
 **依赖**：T1、T2.5、D1～D4
 **预计**：1 天
 
@@ -477,7 +497,8 @@ tag，但 T5 自动试点前，选定项目必须先手工同步该 tag。
 3. PR 标题固定为 `chore(base): update to vTARGET_VERSION`；
 4. 相同项目和目标版本已有开放 PR 时，由下游 receiver 使用自己的 `GITHUB_TOKEN`
    更新原 PR，不重复创建；operator 只读查询开放 PR 以判断幂等状态；
-5. PR 正文必须包含：CURRENT/TARGET、跨版本节点、迁移、冲突热点、验证结果和
+5. PR 正文必须包含：CURRENT/TARGET、跨版本 update nodes、migrations、
+   conflict hotspots、downstream actions、Release Manifest verification、运行时逐项 PASS 和
    rollback 命令；没有 PR 的 conflict/verification failure 在结果 artifact 中提供
    本地重现和重新派发命令；只有尚保留 `MERGE_HEAD` 的同一本地工作区
    才能提供 `--continue`，receiver 已 abort/已销毁的临时工作区必须重新派发；
@@ -485,8 +506,10 @@ tag，但 T5 自动试点前，选定项目必须先手工同步该 tag。
 7. 批次最终生成项目状态表和 JSON artifact；
 8. GitHub v1 调用
    `POST /repos/OWNER/REPO/actions/workflows/base-upgrade-receiver.yml/dispatches`，
-   请求 `return_run_details=true` 并直接保存返回的 run ID/URL；receiver 的 `run-name`
-   固定包含唯一 `campaign_id + target_version`，只用于人读和响应丢失后的歧义恢复。
+   在 `X-GitHub-Api-Version: 2026-03-10` 下不得发送已移除的
+   `return_run_details`；严格要求 `200` response 并直接保存返回的 run ID/URL。
+   receiver 的 `run-name` 固定包含唯一 `campaign_id + target_version`，只用于人读和
+   响应丢失后的歧义恢复。
    派发端按 run ID 轮询并下载唯一 `base-upgrade-result-CAMPAIGN_ID` artifact；单项目
    最长等待 30 分钟，超时先 cancel 该 run 并等待终态，再记为 `dispatch_failed`；
 9. 幂等来源是 Provider 中的开放 PR 和远端分支，而不是短期 CI artifact：先按精确
@@ -499,8 +522,28 @@ tag，但 T5 自动试点前，选定项目必须先手工同步该 tag。
 11. workflow dispatch POST 不做盲目重试：收到 run ID 即以其为权威；响应丢失时先按
     唯一 run-name + event + ref + 时间窗口恢复，0 个匹配才有界重试，多个匹配则
     `blocked`。识别 403/429 的 `Retry-After`、remaining/reset headers。
-12. 新增脱敏 campaign evidence wrapper，记录匿名 project ID、run ID/URL、artifact
-    digest、时间和 result hash；真实 evidence 只提交到私有 operator repo。
+12. 新增脱敏 campaign evidence wrapper：顶层 `operator_commit` 绑定实际 Base tools
+    checkout；entry 记录 registry 预分配的稳定、非敏感 opaque `project_id`、run
+    ID/URL、artifact/archive digest、时间和 result hash。工具不会自动匿名化
+    `project_id`；run URL 仍暴露 repository identity，所以真实 evidence 只提交到
+    私有 operator/ops repo 或其受保护 CI artifact。
+13. evidence 在取得 run ID 后立即建立 entry。后续 poll/cancel/artifact 失败不
+    丢弃 run locator；未取得的 completion/artifact/result/status 字段为 `null`，
+    `failure_stage` 标记 partial evidence。runtime 强制 project/run 唯一、时间顺序、
+    run URL 与 registry repository 一致、entry 与 batch result 一致。
+14. artifact 回收必须精确绑定 run/repository 且名称唯一；手工跟随到允许的
+    signed download host，不转发 Bearer token；拒绝 digest 漂移、非唯一/过期
+    artifact、ZIP traversal/symlink/encryption/bomb、重复 JSON key、非终态或身份不匹配
+    result。
+15. v1 运维容量按项目串行：每项目 run 轮询上限 30 分钟，cancel 后终态
+    等待上限 5 分钟，示例 workflow 上限 120 分钟。因此单次 channel 最多选中
+    3 个 enabled 项目；超限在任何 Provider 调用前 fail closed。大 fleet 以 channel
+    分批，每批最多 3 项。
+16. 示例 workflow 必须在私有 operator 仓库设置 `fleet/projects.json`、
+    `BASE_UPGRADE_GITHUB_TOKEN`、`BASE_PLATFORM_REPOSITORY` 和指向已发布不可变
+    tag/commit 的 `BASE_PLATFORM_REF`。它双 checkout ops 仓库与 `.base-operator` tools，
+    校验实际 operator commit，并以 `if: always()` 终止门复验、上传 batch/
+    summary/evidence 三件套。
 
 **Base 精确文件**：
 
@@ -510,7 +553,11 @@ tag，但 T5 自动试点前，选定项目必须先手工同步该 tag。
 - 新建 `serve/tests/fixtures/github-api/README.md`
 - 新建 `serve/tests/fixtures/github-api/campaign.json`
 - 新建 `scripts/schemas/base-upgrade-evidence.schema.json`
+- 更新 `scripts/run-base-upgrade.sh`（PR 正文补全 Manifest 合同分节）
+- 更新 `serve/tests/test_base_upgrade_workflow.py`（PR 正文全量/不可执行渲染回归）
 - 更新 `serve/docs/downstream-upgrade-automation.md`
+- 更新 `UPSTREAM.md`、`CLAUDE.md`
+- 更新 `serve/docs/todo-downstream-upgrade-automation-2026-08-18.md`
 
 **operator 仓库合同路径（不在 Base 提交真实内容）**：
 
@@ -527,16 +574,29 @@ cd ..
 python3 scripts/base-upgrade-campaign.py summarize \
   --results serve/tests/fixtures/base-upgrade-results.json \
   --registry serve/tests/fixtures/base-downstream-registry.json \
-  --format markdown
+  --json-output /tmp/base-upgrade-batch.json \
+  --markdown-output /tmp/base-upgrade-summary.md
 ```
 
-- 3 个 fixture repository 一次批次分别形成：
-  `pr_opened`、`up_to_date`、`verification_failed`；
+- 合成 fixture campaign 覆盖 `pr_opened`、`up_to_date`、`verification_failed`，
+  以及已取得 run locator 后 poll 失败的 partial evidence/`dispatch_failed`；
 - 使用不同 `campaign_id` 再次运行相同 `project_id + target_version`，开放 PR 数量
   不增加且原 PR 正文被更新；
 - 一个 fixture 失败时其余 fixture 仍完成；
 - Summary 中每个失败都有 `failed_stage` 和可执行的 retry/rollback 命令；
 - provider API mock 测试证明未向默认分支直接 push。
+
+**完成证据（2026-08-18T11:23:25Z）**：
+
+- T0～T3 组合定向：`322 passed`；
+- campaign + dispatch 专项：`95 passed`；receiver workflow 专项：`23 passed`；
+- 动态 Git E2E：`9/9 PASS`；
+- mock/合成回归覆盖 2026-03-10 的 200 run locator、不发
+  `return_run_details`、响应丢失恢复且 POST 最多 2 次、rate limit、轮询/cancel 409
+  竞态、PR/孤立分支所有权、artifact redirect/digest/ZIP/result 关联、partial
+  evidence、`operator_commit`、三输出路径碰撞和 secret fail-closed；
+- PR 正文回归证明每个选中 Manifest 的 nodes、migrations、conflict hotspots、
+  downstream actions 和 verify 全部渲染，且不执行 Manifest 文本。
 
 **风险/回滚**：停止 operator workflow 或撤销 dispatch Token；关闭 Draft PR、删除
 自动化分支即可。不得删除已写入下游 `BASE_UPDATES.md` 的既有事实。
@@ -545,7 +605,7 @@ python3 scripts/base-upgrade-campaign.py summarize \
 
 ### T4 · 完整工程验证与故障演练
 
-**状态**：⬜ 待执行
+**状态**：✅ 完成（2026-08-18）
 **依赖**：T0～T3
 **预计**：0.5～1 天
 
@@ -587,39 +647,87 @@ git diff --check
 - fixture：`serve/tests/fixtures/base-*upgrade*.json`；
 - CI summary：对应测试 campaign run；
 - 真实试点：仅在 operator 仓库提交
-  `fleet/evidence/CAMPAIGN_ID.json`，记录时间、目标版本、匿名 `project_id`、workflow
-  run/PR locator 和结果 hash；Base 仓库只在发布说明记录 campaign ID 与聚合结果；
-- 不向仓库提交真实下游仓库 URL、Token、数据库名称或运行日志。
+  `fleet/evidence/CAMPAIGN_ID.json`，记录时间、目标版本、operator 预分配的
+  稳定、非敏感 opaque `project_id`、workflow run/PR locator 和结果 hash。工具不会
+  自动匿名化 project ID，run URL 可识别 repository，因此 evidence 必须保留在私有
+  operator/ops 仓库或受保护 CI artifact；Base 仓库只在发布说明记录 campaign
+  ID 与聚合结果；
+- 不向 Base 或下游产品仓库提交真实下游仓库 URL、Token、数据库名称或
+  运行日志；必需的 run locator 只存放在私有 operator/ops evidence。
+
+**完成证据（2026-08-18T11:23:25Z）**：
+
+- 后端完整回归：`613 passed in 14.46s`；
+- Alembic upgrade PASS；Route Manifest PASS（`159 routes, 1 mount`）；
+- `npm ci`、frontend lint/build PASS；lint 保留 2 个既有 warning，npm audit 报告 9 个
+  既有 vulnerability，均不由 T3 引入；
+- `check-base-release.py` PASS（当前 v3.4.0，9 个 Manifest）；
+- database boundary、bootstrap plan、动态 Git E2E `9/9`、`git diff --check` 全部 PASS。
 
 ---
 
 ### T5 · 试点、发布与下游采用
 
-**状态**：⬜ 待执行
+**状态**：🟡 v3.3.1/v3.3.2 已发布且 3 个试点已手工采用；待 v3.4.0 campaign
 **依赖**：T4、D5
-**预计**：0.5 天 + 试点观察
+**预计**：1 天 + 试点观察
 
 **实现内容**：
 
-1. 选择 3 个非生产/低风险下游进行真实 Draft PR 试点；
-2. 3 个试点先用原有 `scripts/sync-base-release.sh 3.3.0` 手工采用 receiver 基座，
-   不复制 workflow/runner；
-3. 完成 T3/T4 后发布不可变 `base/v3.4.0`，tag 创建后不再移动；
-4. 从 operator 派发 v3.4.0 campaign，验证 v3.3.0 receiver 自动创建 Draft PR；
-5. 记录成功率、人工耗时、冲突文件和失败阶段；
-6. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
+1. 从已发布 `base/v3.3.0` 创建严格 backport，只包含
+   `scripts/run-base-upgrade.sh` 的 PR 正文 Manifest 分节增强、对应 workflow 测试和
+   PATCH 发布元数据；不得将 `base-upgrade-campaign.py dispatch`、evidence schema、
+   campaign workflow 或其他 T3 dispatcher 文件带入 v3.3.1；
+2. 对 backport 执行完整发布验证，创建并推送不可变 `base/v3.3.1`；不移动
+   `base/v3.3.0`；
+3. 真实同步发现动态 Git E2E 相对 `.git/MERGE_HEAD` 误读外层 no-commit merge，
+   以严格 PATCH 发布 `base/v3.3.2`，并补推历史 Base tags；
+4. 选择 3 个非生产/低风险下游，使用原有手工同步合同从 v3.3.0 采用
+   `base/v3.3.2`，不复制 workflow/runner；
+5. 主线 T3 基于精确 `base/v3.3.2`，以标准 MINOR 合同发布不可变
+   `base/v3.4.0`；不得移动任何已发布 tag；
+6. 从私有 operator 派发 v3.4.0 campaign，验证三个 v3.3.2 receiver 自动创建/更新
+   Draft PR，且 PR 正文包含 nodes、migrations、conflict hotspots、downstream
+   actions、release/runtime verification、retry 和 rollback；
+7. 记录成功率、人工耗时、冲突文件和失败阶段；
+8. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
    缺陷进入 `base/v3.4.1`，不得修改或移动已发布 tag；
-7. 非试点下游通过原有方式同步至少 v3.3.0 并获得 receiver，从下一次 Base 更新开始
+9. 非试点下游通过原有方式同步至少 v3.3.2 并获得完整 receiver，从下一次 Base 更新开始
    进入自动升级流程。
 
-**精确发布文件**：
+**v3.3.1 严格 backport 精确文件**：
+
+- 更新 `scripts/run-base-upgrade.sh`
+- 更新 `serve/tests/test_base_upgrade_workflow.py`
+- 更新 `VERSION`、`CHANGELOG.md`
+- 更新 `admin/package.json`、`admin/package-lock.json`
+- 更新 `UPSTREAM.md`
+- 新建 `releases/base-v3.3.1.json`
+
+backport diff 必须证明不含 `.github/workflows/base-upgrade-campaign-example.yml`、
+`scripts/schemas/base-upgrade-evidence.schema.json`、`serve/tests/test_base_upgrade_dispatch.py`、
+`serve/tests/fixtures/github-api/` 或 `scripts/base-upgrade-campaign.py` 的 T3 dispatch 变更。
+v3.3.1 Manifest 只记录 receiver 合同与发布元数据两个稳定节点：
+`downstream.receiver-pr-body-manifest-contract`、`release.v3-3-1-metadata`。
+
+**v3.3.2 嵌套 E2E PATCH 精确文件**：
+
+- 更新 `scripts/test-base-upgrade-e2e.sh`
+- 更新 `serve/tests/test_base_upgrade_e2e.py`
+- 更新 `VERSION`、`CHANGELOG.md`、`UPSTREAM.md`
+- 更新 `admin/package.json`、`admin/package-lock.json`
+- 新建 `releases/base-v3.3.2.json`
+
+稳定节点：`downstream.nested-merge-e2e-gitdir`、`release.v3-3-2-metadata`。
+
+**v3.4.0 主线精确发布文件**：
 
 - 更新 `VERSION` 为 `3.4.0`
 - 更新 `CHANGELOG.md`
 - 更新 `admin/package.json`
 - 更新 `admin/package-lock.json`
 - 新建 `releases/base-v3.4.0.json`
-- 更新 `UPSTREAM.md`
+- 更新 `UPSTREAM.md`、`CLAUDE.md`、`serve/docs/downstream-upgrade-automation.md` 与本 TODO
 
 **Manifest 稳定节点建议**：
 
@@ -638,7 +746,19 @@ cd ../admin && npm ci && npm run lint && npm run build
 cd .. && git diff --check
 ```
 
-发布提交完成后创建不可变 tag：
+严格 backport 发布提交完成后先创建并远端复验 PATCH tag：
+
+```bash
+git tag -a base/v3.3.1 -m "Base Platform v3.3.1"
+git rev-parse --verify 'refs/tags/base/v3.3.1^{commit}'
+test "$(git rev-parse 'refs/tags/base/v3.3.1^{commit}')" = "$(git rev-parse HEAD)"
+git push origin HEAD
+git push origin refs/tags/base/v3.3.1
+git ls-remote --exit-code --tags origin refs/tags/base/v3.3.1
+```
+
+三个试点手工采用并验证 v3.3.2 后，主线基于该确切 PATCH，完成 T3 MINOR
+发布提交并创建不可变 tag：
 
 ```bash
 git tag -a base/v3.4.0 -m "Base Platform v3.4.0"
@@ -649,7 +769,8 @@ git push origin refs/tags/base/v3.4.0
 git ls-remote --exit-code --tags origin refs/tags/base/v3.4.0
 ```
 
-只有远端 tag 验证成功后才能执行第 4 步真实 campaign；下游
+只有远端 v3.3.1、v3.3.2 与 v3.4.0 tag 都验证成功，且三个试点的默认分支已真实
+记录 v3.3.2，才能执行第 5 步真实 campaign；下游
 `scripts/sync-base-release.sh` 必须能从 `upstream` fetch 到该 tag。
 
 **完成条件**：代码、文档、测试、Manifest 和试点证据全部成立后，才可将本 TODO
@@ -673,9 +794,11 @@ git ls-remote --exit-code --tags origin refs/tags/base/v3.4.0
 
 ### 当前阻塞项
 
-- D1～D5 已按推荐值确认，产品决策门已解除；
-- T5 的 3 个试点槽位已确认为非生产/低风险下游，具体仓库只在外部私有
-  operator 仓库选定和记录，不写入 Base；
+- D1～D6 已按推荐值确认，产品决策门已解除；
+- T5 首先需从 v3.3.0 严格 backport/发布不含 dispatcher 的 v3.3.1 PR 正文合同补丁；
+  随后需要 Base 仓库外的真实私有 operator/ops 仓库、Provider credential，以及 3 个
+  已手工采用 `base/v3.3.2` receiver 的非生产/低风险下游。具体仓库、registry、
+  run/PR/evidence 只在外部私有 operator 仓库选定和记录，不写入 Base；
 - 若现有下游未建立 v3.2.0 ledger，必须先按
   `serve/docs/base-update-ledger.md` 建立真实 baseline，禁止猜测版本。
 
@@ -709,9 +832,11 @@ D1 已确认 → T2 receiver → T2.5 发布 v3.3.0 receiver 基座
                                       ↓
 T4 完整验证/故障演练
     ↓
-D5 试点槽位已确认 + 3 项目手工采用 v3.3.0
+D5 试点槽位已确认 + 发布 v3.3.1/v3.3.2
     ↓
-T5 发布 v3.4.0 + 三项目自动升级试点
+3 项目手工采用 v3.3.2 → 主线基于 v3.3.2 → 发布 v3.4.0
+    ↓
+T5 三项目自动 v3.3.2→v3.4.0 升级试点
 ```
 
 | 任务 | 状态 | 依赖 | 可复现完成证据 |
@@ -720,10 +845,10 @@ T5 发布 v3.4.0 + 三项目自动升级试点
 | T0 合同与 schema | ✅ 完成 | — | 147 contract tests + 449 backend tests |
 | T1 计划器与报告 | ✅ 完成 | T0 | 223 targeted tests + deterministic dry-run + redaction regression |
 | T2 下游 receiver | ✅ 完成 | T1、D1✅ | 272 combined targeted + 78 T2 + 9/9 E2E + 563 backend |
-| T2.5 receiver 基座发布 | 🟦 待 commit/tag/push | T2、D1 | `base/v3.3.0` 远端可 fetch |
-| T3 派发与 Draft PR | ⬜ 待执行 | T1、T2.5、D1～D4 | 3 状态 fixture campaign |
-| T4 验证与故障演练 | ⬜ 待执行 | T0～T3 | 完整测试 + 故障矩阵 |
-| T5 试点与发布 | ⬜ 待执行 | T4、D5 | 3 个 v3.3.0 手工采用记录 + 3 个升级 PR + `base/v3.4.0` |
+| T2.5 receiver 基座发布 | ✅ 完成 | T2、D1 | `abc9076` + 远端 `base/v3.3.0` + active workflow |
+| T3 派发与 Draft PR | ✅ 完成 | T1、T2.5、D1～D4 | 322 targeted；campaign+dispatch 95；workflow 23；E2E 9/9 |
+| T4 验证与故障演练 | ✅ 完成 | T0～T3 | backend 613；Alembic/routes/frontend/release/boundary/bootstrap/E2E/diff PASS |
+| T5 试点与发布 | 🟡 v3.3.1/v3.3.2 已发布，3 个手工采用完成 | T4、D5 | 3 个 v3.3.2→v3.4.0 Draft PR + `base/v3.4.0` campaign evidence |
 
 ---
 

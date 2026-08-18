@@ -119,11 +119,12 @@ BASE_NEXT_UPDATE_COMMAND=./scripts/sync-base-release.sh <TARGET_VERSION>
 下游自己的产品账本。完整格式和 v3.2.0 首次接入见
 `serve/docs/base-update-ledger.md`。
 
-## 7. 下游升级自动化合同、只读计划与 receiver
+## 7. 下游升级自动化合同、receiver 与 operator dispatch
 
-Base 仓库已在 `base/v3.3.0` 固化三条自动升级 JSON Schema、只读
-campaign CLI 和 GitHub 下游 receiver；中央 Provider 派发器仍属于 T3，
-不在 v3.3.x receiver 基座中：
+Base 仓库已在不可变 `base/v3.3.0` 固化三条自动升级 JSON Schema、只读
+campaign CLI 和 GitHub 下游 receiver，并以 `base/v3.3.1` PATCH 补全 receiver PR
+正文合同。T3 operator dispatch 与第四条 evidence schema 已通过 T4 工程验证，
+尚未发布：
 
 - `scripts/schemas/base-downstream-registry.schema.json`：声明式下游项目清单。
   `repository` 固定为 GitHub canonical `OWNER/REPO`，OWNER/REPO 分别最长
@@ -144,6 +145,11 @@ campaign CLI 和 GitHub 下游 receiver；中央 Provider 派发器仍属于 T3�
   单一 `campaign_id`、`target_version` 和非空 results。runtime 进一步强制
   `project_id` 排序/唯一、顶层与子项 campaign/target 一致、`up_to_date` 版本一致、
   分支版本与目标一致；`summarize --registry` 还校验项目和 PR repository 关联。
+- `scripts/schemas/base-upgrade-evidence.schema.json`：私有 operator 运行证据。顶层
+  `operator_commit` 绑定实际执行的 Base tools checkout；只记录已取得 run ID 的
+  派发，并保存 run locator、artifact/archive SHA-256、result SHA-256 与时间。
+  poll 或 artifact 回收失败时保留条目，未取得的字段为 `null`，以
+  `failure_stage` 标记部分证据。
 - 详细合同见 `serve/docs/downstream-upgrade-automation.md`。
 
 只读工具：
@@ -175,8 +181,8 @@ secret 字段和 credential-bearing URL，不能穷举自由文本中的所有 s
 已校验 registry ID/repository 唯一性和 batch/result 本地关联，并在 stdout、stderr、
 JSON/Markdown artifact 前集中脱敏环境 token、Authorization/Bearer、URL userinfo 与
 敏感赋值。T2 receiver 进一步在下游 fresh checkout 严格校验 `PROJECT.md` 最后状态、
-`BASE_UPDATES.md` 最后一条记录、默认分支、源/目标 tag 与远端分支/PR 所有权；实际
-fleet 派发和批次轮询仍属于 T3。
+`BASE_UPDATES.md` 最后一条记录、默认分支、源/目标 tag 与远端分支/PR 所有权；T3
+operator 实现再校验 dispatch run、artifact/result 与 registry/PR 的跨仓库事实。
 
 每个下游 `PROJECT.md` 必须提交由 bootstrap/ledger 从真实 remote 规范化得到的：
 
@@ -211,10 +217,11 @@ contract dependency 安装或 runner 对合法 inputs 未产出 result，后续
 `BASE_LAST_SYNCED_AT` 必须是 canonical UTC 秒级 timestamp，并与 `BASE_UPDATES.md`
 最后一条的 `Synced at` 精确相同；最后一条还必须恰有一个匹配 heading、Base commit
 和非空单行 verification result。PR 正文来自受信 Release Manifest 范围，列出
-current/target、完整 cross-version update nodes、migrations、conflict hotspots、
-downstream actions、release verification，以及目标 tag/计划/同步/发布/原子账本
-的逐项 PASS evidence 和可执行 retry/rollback。Manifest 自由文本先转为惰性
-Markdown 字符实体，不会产生标题、链接、HTML、代码或命令执行语义。
+CURRENT/TARGET、完整 cross-version update nodes、migrations、conflict hotspots、
+downstream actions、release verification，以及目标 tag/计划/同步/non-force
+publication/原子账本的逐项 PASS evidence 和可执行 retry/rollback。Manifest 自由
+文本先转为惰性 Markdown 字符实体，不会产生标题、链接、HTML、代码或命令执行语义，
+也不进入 shell 求值。
 
 rollback 只基于本次运行实际创建的资源：本次新建 PR 才关闭，本次新推分支才删除；
 复用的既有分支/PR 永不自动删除。PR 创建失败但本次已新推分支时只删除该新分支。
@@ -239,6 +246,81 @@ receiver 必须随正式 `base/v3.3.0` tag 进入下游，禁止复制未发布 
 该恢复仍会重新执行完整验证并把 Base 代码、`PROJECT.md` 与 `BASE_UPDATES.md` 原子
 提交；若已 abort 或 CI 工作区已销毁，则必须从干净默认分支重新同步，不能使用
 `--continue`。
+
+### T5 试点前的 v3.3.1 bootstrap patch
+
+receiver 执行的 workflow/runner 来自下游默认分支的当前版本。若直接从
+v3.3.0 派发 v3.4.0，当次仍使用 v3.3.0 runner，PR 正文不会包含 T3 新增的
+migrations、conflict hotspots、downstream actions 和 release verification 分节。
+因此真实试点必须按以下顺序：
+
+1. 从已发布 `base/v3.3.0` 严格 backport runner PR 正文增强、对应 workflow 测试
+   和标准 PATCH 发布元数据；不带入 dispatcher、evidence schema、campaign workflow
+   或 dispatch fixtures/tests；
+2. 完整验证后发布不可变 `base/v3.3.1`；
+3. 真实同步发现嵌套 E2E 相对 Git-dir 缺陷，以 `base/v3.3.2` PATCH 修复并验证；
+4. 三个试点使用手工 `sync-base-release.sh` 合同采用 v3.3.2，不复制文件；
+5. 主线 T3 基于该确切 PATCH 后发布不可变 `base/v3.4.0`；
+6. 只对账本已记录 v3.3.2 的试点派发 v3.4.0，验证自动 v3.3.2→v3.4.0
+   Draft PR。
+
+### T3 operator campaign（尚未发布）
+
+operator/ops 仓库必须保持私有，并在自己的默认分支提交
+`fleet/projects.json`。将 `.github/workflows/base-upgrade-campaign-example.yml` 复制到该
+仓库后，配置：
+
+- managed variable `BASE_PLATFORM_REPOSITORY=OWNER/REPO`；
+- managed variable `BASE_PLATFORM_REF=base/vX.Y.Z` 或确切 40-hex commit，必须是已发布的
+  不可变 Base tools ref；
+- secret `BASE_UPGRADE_GITHUB_TOKEN`，对选中下游具有 Actions read/write、Contents
+  read 和 Pull requests read；不放入 registry 或 workflow input。
+
+模板先 checkout 私有 ops 仓库，再以 `persist-credentials: false` checkout Base tools
+到 `.base-operator`，将实际 HEAD 记为 `BASE_UPGRADE_OPERATOR_COMMIT`，安装
+`.base-operator/scripts/requirements.txt`，然后执行：
+
+```bash
+python3 .base-operator/scripts/base-upgrade-campaign.py dispatch \
+  --registry fleet/projects.json \
+  --target-version X.Y.Z \
+  --campaign-id CAMPAIGN_ID \
+  --channel CHANNEL \
+  --json-output "$OUTPUT_DIR/batch.json" \
+  --markdown-output "$OUTPUT_DIR/summary.md" \
+  --evidence-output "$OUTPUT_DIR/evidence.json"
+```
+
+跨 MAJOR 必须另加 `--allow-major`。dispatch 固定使用 GitHub REST
+`X-GitHub-Api-Version: 2026-03-10`；POST body 只包含 `ref` 和 receiver inputs，
+不发送该 API 版本已移除的 `return_run_details`。成功响应必须为 `200`
+并返回与目标 repository 匹配的 run ID/API URL/web URL。遇到响应丢失、5xx 或
+非法 200 body 时，先以唯一 run-name + `workflow_dispatch` event + default ref +
+时间窗口恢复；唯一恢复为 0 时才有界重试，匹配多个则 fail closed，总 POST
+次数不超过 2。普通 4xx 不重试；403/429 只按有效 rate-limit headers 有界等待。
+
+派发前 operator 先精确查询 `chore/base-vTARGET` 的开放 PR。若只有分支，
+必须以目标 Base tag/commit、默认分支 tip、两父 merge 和两个 ledger 证明所有权；
+不足时 `blocked`，禁止 force-push。定位 run 后按其 ID 轮询，只接受该
+repository/default ref/receiver workflow 的运行，并下载唯一且未过期的
+`base-upgrade-result-CAMPAIGN_ID` artifact。artifact redirect 手工跟随到允许的签名
+host，不将 Bearer token 转发给该 host；ZIP 必须仅含单一精确命名 JSON，并通过
+digest、大小/压缩率、路径、重复 key、schema 与 campaign/project/source/target/PR 关联校验。
+
+v1 批次按项目串行；每项目最多等待 run 30 分钟，超时 cancel 后再最多等待
+5 分钟，operator 示例 workflow 总超时为 120 分钟。因此一次 channel 选中项目
+硬上限为 3；超过 3 时在任何 Provider 调用前 fail closed。大 fleet 必须以 channel
+分批，每批最多 3 个 enabled 项目。一个项目失败只生成该项目的
+`blocked`/`dispatch_failed`，不阻断其余项目。
+
+batch、summary 与 evidence 是同一次运行的固定三件套。`project_id` 必须是
+registry 预分配的稳定、非敏感 opaque ID，工具不会自动匿名化。evidence 的
+run URL 仍包含下游 repository identity，因此真实文件只能进入私有 operator/ops
+仓库或其受保护 CI artifact。取得 run ID 后立即建立 evidence entry；后续 poll/
+artifact 回收失败也保留 run locator 和已知时间，以 nullable collection 字段加
+`failure_stage` 表示部分证据。模板在 `if: always()` 终止门中重新校验三份
+artifact、`operator_commit`、identity、唯一性、时间顺序与 result/evidence 对应，
+然后上传固定名 `base-upgrade-campaign-evidence`。
 
 operator 依赖统一来自 `scripts/requirements.txt`，后端 dev requirements 复用该文件；
 campaign 与 ledger 共用同一个 SemVer/Manifest/parser/redaction 模块。T1 不修改任何

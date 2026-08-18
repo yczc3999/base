@@ -15,6 +15,57 @@
 
 暂无。
 
+## [3.4.0] - 2026-08-18
+
+### 变更范围
+
+- 新增 GitHub fleet operator `dispatch`：按 registry/channel 发现下游真实
+  Base 版本，预检查开放 PR/远端分支所有权，派发 receiver，按确切
+  run ID 轮询并回收结果。
+- 新增私有 operator evidence Draft-07 合同和人工批准的 campaign workflow
+  模板；证据绑定实际 operator commit、run/artifact/result digest、时间与
+  registry 身份。
+- 强化 dispatch 状态机：响应丢失恢复、有界限流/超时取消、孤立分支
+  两父 merge 证明、artifact 重定向/digest/ZIP/JSON 防护、失败隔离与集中
+  脱敏。
+- campaign 固定使用 GitHub REST `2026-03-10`；workflow dispatch 不发送
+  已移除的 `return_run_details`，只接受返回 run locator 的 `200`。
+
+### 兼容性（MINOR）
+
+- HTTP API 与数据库 schema 不变，无数据库 migration。
+- 下游必须先采用 `base/v3.3.2`；v3.3.1 补全 source runner 的 PR Manifest 合同，
+  v3.3.2 修复其在真实外层 no-commit 同步中的嵌套 E2E 路径。
+- v1 campaign 串行执行，每个 channel 最多 3 个 enabled 项目；超限在
+  Provider 调用前停止，大 fleet 按 channel/多 campaign 分批。
+
+### 迁移与下游操作
+
+- 无数据库或运行时数据迁移。
+- 在私有 operator/ops 仓库提交 `fleet/projects.json`，复制
+  `.github/workflows/base-upgrade-campaign-example.yml`，配置指向不可变
+  `base/v3.4.0` 的 `BASE_PLATFORM_REPOSITORY`/`BASE_PLATFORM_REF`。
+- 只在 operator 仓库保存 `BASE_UPGRADE_GITHUB_TOKEN` 与真实 evidence；
+  registry 使用稳定、非敏感 opaque `project_id`，run URL 不进入 Base。
+- 由操作员人工触发 campaign；默认只创建/更新 Draft PR，不自动合并。
+
+### 验证
+
+- T0～T3 组合定向 322 passed；campaign/dispatch 95 passed；workflow
+  23 passed。
+- 后端完整 613 passed；Route Manifest 159 routes + 1 mount；Alembic upgrade
+  head 通过。
+- 动态 Git E2E 9/9；前端 `npm ci`/lint/build；release/database boundary、
+  bootstrap plan、shell syntax 与 `git diff --check` 全部通过。
+
+### 回滚
+
+- 停用私有 operator campaign workflow 或撤销 operator Token 即停止新派发。
+- 未合并的升级只需关闭本次创建的 Draft PR，并删除本次新推送的
+  `chore/base-vTARGET` 分支；复用资源不自动删除。
+- 已合并 v3.4.0 时 revert 整个同步 merge commit，并向
+  `BASE_UPDATES.md` 追加回滚事实；不移动已发布 tag。
+
 ## [3.3.2] - 2026-08-18
 
 ### 变更范围
