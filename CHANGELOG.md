@@ -15,6 +15,38 @@
 
 暂无。
 
+## [3.3.2] - 2026-08-18
+
+### 变更范围
+
+- 修复动态 Git E2E 在外层 `sync-base-release.sh` 的 no-commit merge 中误读调用方
+  `.git/MERGE_HEAD` 的问题；所有子 fixture merge 状态都从各自 absolute Git dir 检查。
+- 新增外层 merge marker 回归，证明 harness 不读取或修改调用方 merge 状态。
+
+### 兼容性（PATCH）
+
+- HTTP API、数据库 schema、receiver inputs/result、PR 行为均不变；无数据库 migration。
+- 修复只影响验证 harness 的路径定位，使 v3.3.x 下游能在真实 no-commit 同步中完成全量 pytest。
+
+### 下游同步
+
+- v3.3.0/v3.3.1 下游执行 `./scripts/sync-base-release.sh 3.3.2 --install-deps`。
+- 若先前 v3.3.1 尝试仍保留正确 `MERGE_HEAD`，可在同一工作区从目标 tree 执行
+  `./scripts/sync-base-release.sh 3.3.2 --continue --install-deps`；已 abort 时从干净默认分支重试。
+
+### 验证
+
+- `cd serve && .venv/bin/pytest tests/test_base_upgrade_e2e.py -q`。
+- `scripts/test-base-upgrade-e2e.sh`、`python3 scripts/check-base-release.py`、
+  `python3 scripts/check-database-boundary.py`、`bash -n scripts/test-base-upgrade-e2e.sh`
+  与 `git diff --check`。
+
+### 回滚
+
+- 未完成的 no-commit 同步使用 `git merge --abort`；已合并 v3.3.2 时 revert 整个同步
+  merge commit，并向 `BASE_UPDATES.md` 追加事实。
+- 不移动 `base/v3.3.0`/`base/v3.3.1`；本修复使用新的不可变 `base/v3.3.2` tag。
+
 ## [3.3.1] - 2026-08-18
 
 ### 变更范围

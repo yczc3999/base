@@ -378,7 +378,7 @@ if run_receiver "$CONFLICT" campaign-conflict; then fail "conflicting receiver u
 assert_failure_result "$CONFLICT" conflict merge
 assert_eq "$(git --git-dir="$CONFLICT_DOWNSTREAM" rev-parse refs/heads/main)" "$CONFLICT_HEAD"
 assert_eq "$(git -C "$CONFLICT" rev-parse HEAD)" "$CONFLICT_HEAD"
-[[ ! -f "$(git -C "$CONFLICT" rev-parse --git-path MERGE_HEAD)" ]] || fail "conflict merge was not aborted"
+[[ ! -f "$(git -C "$CONFLICT" rev-parse --absolute-git-dir)/MERGE_HEAD" ]] || fail "conflict merge was not aborted"
 [[ "$(json_field "$CONFLICT/.base-upgrade/result.json" conflict_files)" == *"fixture.txt"* ]] || fail "conflict file not reported"
 [[ "$(json_field "$CONFLICT/.base-upgrade/result.json" conflict_files)" == *'docs/[fixture]`note`.md'* ]] || \
   fail "hostile-markdown conflict filename not reported"
@@ -395,7 +395,7 @@ unset FIXTURE_VERIFY_FAIL
 assert_failure_result "$VERIFY" verification_failed verification
 assert_eq "$(git --git-dir="$VERIFY_DOWNSTREAM" rev-parse refs/heads/main)" "$VERIFY_HEAD"
 assert_eq "$(git -C "$VERIFY" rev-parse HEAD)" "$VERIFY_HEAD" "verification failure must leave no local commit"
-[[ ! -f "$(git -C "$VERIFY" rev-parse --git-path MERGE_HEAD)" ]] || fail "failed verification left an active merge"
+[[ ! -f "$(git -C "$VERIFY" rev-parse --absolute-git-dir)/MERGE_HEAD" ]] || fail "failed verification left an active merge"
 if git --git-dir="$VERIFY_DOWNSTREAM" show-ref --verify --quiet refs/heads/chore/base-v1.1.0; then
   fail "verification failure pushed a partial upgrade branch"
 fi

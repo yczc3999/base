@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "version": "3.3.2",
+  "tag": "base/v3.3.2",
+  "released_at": "2026-08-18",
+  "semver": "PATCH",
+  "summary": "修复嵌套 no-commit 同步中的动态 Git E2E merge 状态定位",
+  "nodes": [
+    {
+      "id": "downstream.nested-merge-e2e-gitdir",
+      "kind": "fixed",
+      "scope": "upgrade/e2e",
+      "summary": "以 fixture absolute Git dir 检查 MERGE_HEAD，避免误读外层同步 merge",
+      "files": [
+        "scripts/test-base-upgrade-e2e.sh",
+        "serve/tests/test_base_upgrade_e2e.py",
+        "UPSTREAM.md"
+      ]
+    },
+    {
+      "id": "release.v3-3-2-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.3.2 PATCH 版本、前端包元数据、变更账本与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.3.2.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "PATCH：HTTP API、数据库 schema、receiver inputs/result、分支与 PR 行为不变。",
+    "仅修复验证 harness 的 Git dir 路径定位，使其可嵌套在下游 no-commit merge 中。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移。"
+  ],
+  "downstream_actions": [
+    "v3.3.0/v3.3.1 下游执行 ./scripts/sync-base-release.sh 3.3.2 --install-deps。",
+    "只有仍保留正确目标 MERGE_HEAD 的同一工作区可使用 --continue；已 abort 时从干净默认分支重试。",
+    "只从不可变 base/v3.3.2 tag 同步，禁止复制单个 E2E 文件。"
+  ],
+  "conflict_hotspots": [
+    "scripts/test-base-upgrade-e2e.sh"
+  ],
+  "verify": [
+    "cd serve && .venv/bin/pytest tests/test_base_upgrade_e2e.py -q",
+    "scripts/test-base-upgrade-e2e.sh",
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "scripts/bootstrap-project.sh fixture_project --plan",
+    "bash -n scripts/test-base-upgrade-e2e.sh",
+    "git diff --check"
+  ],
+  "rollback": [
+    "未提交的同步执行 git merge --abort。",
+    "已合并 v3.3.2 时 revert 整个同步 merge commit，并向 BASE_UPDATES.md 追加回滚事实；无数据库回滚。",
+    "不移动已发布 tag；修正使用新的 PATCH tag。"
+  ]
+}

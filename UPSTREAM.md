@@ -259,3 +259,17 @@ v3.3.1 是无 migration 的 PATCH，只增强 receiver 产生的 Draft PR 正文
 PR 中显示所有选中 Manifest 的完整升级合同；分支、PR 所有权、验证、
 result 与 rollback 行为不变。仅从不可变 `base/v3.3.1` tag 同步，不单独
 复制 runner 或测试文件。
+
+
+### v3.3.2 外层 merge E2E 路径修复
+
+`base/v3.3.2` 是无 migration 的 PATCH。它把动态 Git E2E 的 `MERGE_HEAD` 检查绑定到每个
+fixture repository 的 absolute Git dir，避免在 `sync-base-release.sh` 外层 no-commit merge
+中误读调用方 `.git/MERGE_HEAD`。v3.3.0/v3.3.1 下游只从不可变 tag 同步：
+
+```bash
+./scripts/sync-base-release.sh 3.3.2 --install-deps
+```
+
+若旧尝试已 abort，从干净默认分支重试；只有同一工作区仍保留目标 merge 时才使用
+`--continue`。
