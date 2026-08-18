@@ -9,12 +9,11 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.controllers.base import crud_router
-from app.deps import AuthInfo, require_admin
+from app.deps import AuthInfo, current_auth
 from app.services.database import get_db, async_session
 from app.services.redis import get_redis
 from app.services.seo_phase import seo_phase_service
@@ -24,22 +23,10 @@ from app.logics.publish_log import publish_log_logic
 from app.logics.article import article_logic
 from app.utils.response import ok, fail
 
-router = APIRouter()
-
-# CRUD：publish_log（只读列表）
-router.include_router(
-    crud_router(
-        "publish_log", publish_log_logic,
-        tags=["admin-seo"],
-        auth_dep=require_admin, perms_prefix="admin:seo",
-    )
-)
-
 
 # ============== Dashboard ==============
 
-@router.get("/seo/dashboard", tags=["admin-seo"])
-async def dashboard(_=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def dashboard(db: AsyncSession = Depends(get_db)):
     cur = await seo_phase_service.get_current(db)
     usage = await seo_phase_service.usage_today_and_week(db)
     article_stats = await article_logic.stats(db)
@@ -98,8 +85,7 @@ class EnableDto(BaseModel):
     enabled: bool
 
 
-@router.post("/seo/toggle", tags=["admin-seo"])
-async def toggle_seo(dto: EnableDto, _=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def toggle_seo(dto: EnableDto, db: AsyncSession = Depends(get_db)):
     """主开关：control 4 个 worker task 是否运行 + run-now 是否生效。
     持久化到 settings.seo.enabled，重启不丢。"""
     from app.logics.setting import setting_logic
@@ -119,8 +105,7 @@ class KillSwitchDto(BaseModel):
     duration: str | None = "24h"
 
 
-@router.post("/seo/kill-switch", tags=["admin-seo"])
-async def set_kill_switch(dto: KillSwitchDto, _=Depends(require_admin)):
+async def set_kill_switch(dto: KillSwitchDto):
     r = await get_redis()
     if not dto.on:
         await r.delete("seo:kill_switch")
@@ -154,16 +139,14 @@ async def set_kill_switch(dto: KillSwitchDto, _=Depends(require_admin)):
 
 # ============== sitemap ==============
 
-@router.post("/seo/sitemap/rebuild", tags=["admin-seo"])
-async def rebuild_sitemap(_=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def rebuild_sitemap(db: AsyncSession = Depends(get_db)):
     info = await seo_sitemap_service.rebuild(db)
     if "error" in info:
         return fail(info["error"])
     return ok(info)
 
 
-@router.get("/seo/sitemap/files", tags=["admin-seo"])
-async def list_sitemap_files(_=Depends(require_admin)):
+async def list_sitemap_files():
     base = seo_sitemap_service.base_dir
     if not base.exists():
         return ok({"files": []})
@@ -176,8 +159,7 @@ async def list_sitemap_files(_=Depends(require_admin)):
 
 # ============== 阶段 + IndexNow ==============
 
-@router.post("/seo/phase/recompute", tags=["admin-seo"])
-async def recompute_phase(_=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def recompute_phase(db: AsyncSession = Depends(get_db)):
     return ok(await seo_phase_service.detect_and_persist(db))
 
 
@@ -185,8 +167,7 @@ class IndexNowTestDto(BaseModel):
     urls: list[str] = Field(..., max_length=10)
 
 
-@router.post("/seo/indexnow/test", tags=["admin-seo"])
-async def indexnow_test(dto: IndexNowTestDto, _=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def indexnow_test(dto: IndexNowTestDto, db: AsyncSession = Depends(get_db)):
     await indexnow_service.ping(db, dto.urls)
     if indexnow_service.failed:
         return fail(indexnow_service.error or "IndexNow 失败")
@@ -195,8 +176,7 @@ async def indexnow_test(dto: IndexNowTestDto, _=Depends(require_admin), db: Asyn
 
 # ============== 立即跑全链路 ==============
 
-@router.post("/seo/run-now", tags=["admin-seo"])
-async def run_pipeline_now(_=Depends(require_admin)):
+async def run_pipeline_now():
     """v2: pipeline 补货 → scheduler 排期 → publisher 发到点（直接读 articles）。
     手动触发不受 settings.seo.enabled 限制（管理员明确意图）。
     但仍受 kill_switch 保护：禁发期间不强行发布。"""

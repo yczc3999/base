@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
 from app.utils.response import ok
 from app.logics.setting import setting_logic
-from app.deps import AuthInfo, require_admin, require_perms
-
-router = APIRouter()
+from app.deps import AuthInfo, current_auth
 
 # 含凭据的敏感 category——非超管读取时掩码值、写入时拒绝
 _SENSITIVE_CATEGORIES = frozenset({"seo_creds", "ai", "notify", "sms", "storage", "payment"})
@@ -24,16 +22,14 @@ def _mask_sensitive(data: dict) -> dict:
 
 
 # 公开接口 — 登录页获取站点基础信息 (名称/Logo/版权), 无需登录
-@router.get("/setting/site")
 async def get_site_info(db: AsyncSession = Depends(get_db)):
     all_data = await setting_logic.get_all(db)
     return ok(all_data.get("site", {}))
 
 
-# 需要管理员登录 + 权限校验
-@router.get("/setting/get")
+# 需要管理员登录 + 权限校验（权限由 Route Manifest .permission() 提供）
 async def get_settings(
-    auth: AuthInfo = Depends(require_perms("admin:setting:get")),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     data = await setting_logic.get_all(db)
@@ -42,11 +38,10 @@ async def get_settings(
     return ok(data)
 
 
-# 需要管理员登录 + 权限校验
-@router.post("/setting/set")
+# 需要管理员登录 + 权限校验（权限由 Route Manifest .permission() 提供）
 async def set_settings(
     request: Request,
-    auth: AuthInfo = Depends(require_perms("admin:setting:set")),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     body = await request.json()
@@ -77,15 +72,13 @@ async def set_settings(
 
 
 # AI provider 默认配置（source of truth 在 services/ai.py）
-@router.get("/setting/ai/provider-defaults")
-async def ai_provider_defaults(auth: AuthInfo = Depends(require_admin)):
+async def ai_provider_defaults():
     from app.services.ai import PROVIDER_DEFAULTS
     return ok({"defaults": PROVIDER_DEFAULTS})
 
 
 # AI 审核提示词的内置默认（用于"恢复默认"按钮）
-@router.get("/setting/ai-review/defaults")
-async def ai_review_defaults(auth: AuthInfo = Depends(require_admin)):
+async def ai_review_defaults():
     from app.services.ai_content import (
         DEFAULT_TAG_REVIEW_SYSTEM,
         DEFAULT_TAG_REVIEW_USER_TEMPLATE,
@@ -102,10 +95,8 @@ class GenerateReviewPromptDto(BaseModel):
     audience: str = Field(default="", max_length=500)
 
 
-@router.post("/setting/ai-review/generate")
 async def generate_review_prompt(
     dto: GenerateReviewPromptDto,
-    auth: AuthInfo = Depends(require_admin),
 ):
     from app.services.ai_content import generate_review_prompt as _gen
     try:
@@ -117,8 +108,7 @@ async def generate_review_prompt(
 
 
 # AI 连接测试（读当前配置，调用 provider 检查连通性）
-@router.post("/setting/ai/test")
-async def ai_test_connection(auth: AuthInfo = Depends(require_admin)):
+async def ai_test_connection():
     from app.services.ai import test_connection
     ok = await test_connection()
     if ok:

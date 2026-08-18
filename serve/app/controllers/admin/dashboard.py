@@ -1,22 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, date, timedelta
 from app.services.database import get_db
 from app.utils.response import ok
 from app.models import AdminUser, User, AdminOperationLog, AdminLoginLog, Message
-from app.deps import AuthInfo, require_admin
+from app.deps import AuthInfo, current_auth
 from app.services.redis import get_redis
 from app.config import settings
 from app.version import BASE_VERSION
 import platform
 import sys
 
-router = APIRouter()
 
-
-@router.get("/dashboard/stats")
-async def dashboard_stats(auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def dashboard_stats(auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)):
     """仪表盘统计数据"""
     today = date.today()
     month_start = today.replace(day=1)
@@ -50,8 +47,7 @@ async def dashboard_stats(auth: AuthInfo = Depends(require_admin), db: AsyncSess
     })
 
 
-@router.get("/dashboard/system")
-async def dashboard_system(auth: AuthInfo = Depends(require_admin)):
+async def dashboard_system():
     """系统状态信息"""
     import os
     import time
@@ -78,8 +74,7 @@ async def dashboard_system(auth: AuthInfo = Depends(require_admin)):
     })
 
 
-@router.get("/dashboard/recent")
-async def dashboard_recent(auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def dashboard_recent(db: AsyncSession = Depends(get_db)):
     """最近操作日志"""
     stmt = (
         select(AdminOperationLog)

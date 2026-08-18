@@ -21,24 +21,16 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.controllers.base import crud_router
-from app.deps import require_admin
 from app.logics.article import article_logic
 from app.services.database import get_db, async_session
 from app.utils.response import ok
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
-
-router.include_router(
-    crud_router("article", article_logic, tags=["admin-article"],
-                auth_dep=require_admin, perms_prefix="admin:article")
-)
 
 
 # ---- DTO ----
@@ -74,8 +66,7 @@ def _sse(data: dict) -> str:
 
 # ---- AI 辅助 ----
 
-@router.post("/article/ai-generate", tags=["admin-article"])
-async def ai_generate(dto: AiGenerateDto, _=Depends(require_admin)):
+async def ai_generate(dto: AiGenerateDto):
     from app.services import ai_content
 
     try:
@@ -100,8 +91,7 @@ async def ai_generate(dto: AiGenerateDto, _=Depends(require_admin)):
 
 # ---- 第一步：采集入库（SSE 流式）----
 
-@router.post("/article/collect-stream", tags=["admin-article"])
-async def collect_stream(dto: CollectDto, _=Depends(require_admin)):
+async def collect_stream(dto: CollectDto):
     """搜索 → 逐页抓取 → 分析是否文章 → trafilatura 提取正文 → 入库为草稿
 
     入库后不做 AI 处理。管理员在列表里预览原始内容，再决定批量 AI 润色。
@@ -179,8 +169,7 @@ async def collect_stream(dto: CollectDto, _=Depends(require_admin)):
 
 # ---- 批量按标签生成文章（SSE 流式，后端驱动）----
 
-@router.post("/article/gen-from-tags-stream", tags=["admin-article"])
-async def gen_from_tags_stream(dto: TagGenDto, _=Depends(require_admin)):
+async def gen_from_tags_stream(dto: TagGenDto):
     """SSE 流式批量生成：后端按 tag_ids 顺序逐个生成，实时推送每篇进度。
 
     前端零业务逻辑 — 只接收 start/generating/created/error/done 事件并渲染。
@@ -235,8 +224,7 @@ async def gen_from_tags_stream(dto: TagGenDto, _=Depends(require_admin)):
 
 # ---- 批量 AI 润色（SSE 流式，后端驱动）----
 
-@router.post("/article/ai-rewrite-stream", tags=["admin-article"])
-async def ai_rewrite_stream(dto: AiRewriteDto, _=Depends(require_admin)):
+async def ai_rewrite_stream(dto: AiRewriteDto):
     """SSE 流式批量润色：后端按 ids 顺序逐篇润色，实时推送进度。
 
     事件：start / rewriting / done_one / error / done
@@ -290,6 +278,5 @@ async def ai_rewrite_stream(dto: AiRewriteDto, _=Depends(require_admin)):
 
 # ---- 采集统计 ----
 
-@router.get("/article/collect-stats", tags=["admin-article"])
-async def collect_stats(_=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def collect_stats(db: AsyncSession = Depends(get_db)):
     return ok(await article_logic.collect_stats(db))

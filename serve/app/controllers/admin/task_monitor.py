@@ -2,21 +2,14 @@
 
 只读 (list/queue) 用 admin:task_monitor:list 权限, 手动触发用 admin:task_monitor:trigger。
 """
-from fastapi import APIRouter, Request, Depends
+from fastapi import Request, Depends
 
-from app.deps import AuthInfo, require_perms
+from app.deps import AuthInfo, current_auth
 from app.logics.task_monitor import task_monitor_logic
 from app.logics.base import BizError
 from app.utils.response import ok, fail
 
-router = APIRouter()
-
-_perm_list = require_perms("admin:task_monitor:list")
-_perm_trigger = require_perms("admin:task_monitor:trigger")
-
-
-@router.get("/task_monitor/tasks")
-async def list_tasks(auth: AuthInfo = Depends(_perm_list)):
+async def list_tasks(auth: AuthInfo = Depends(current_auth)):
     try:
         data = await task_monitor_logic.list_tasks()
         return ok(data)
@@ -24,10 +17,9 @@ async def list_tasks(auth: AuthInfo = Depends(_perm_list)):
         return fail(e.msg, e.code)
 
 
-@router.post("/task_monitor/trigger")
-async def trigger(request: Request, auth: AuthInfo = Depends(_perm_trigger)):
+async def trigger(request: Request, auth: AuthInfo = Depends(current_auth)):
     body = await request.json()
-    class_name = body.get("task")
+    class_name = body
     if not class_name:
         return fail("缺少 task 参数")
     try:
@@ -37,8 +29,7 @@ async def trigger(request: Request, auth: AuthInfo = Depends(_perm_trigger)):
         return fail(e.msg, e.code)
 
 
-@router.get("/task_monitor/queue")
-async def queue_status(auth: AuthInfo = Depends(_perm_list)):
+async def queue_status(auth: AuthInfo = Depends(current_auth)):
     try:
         data = await task_monitor_logic.queue_status()
         return ok(data)

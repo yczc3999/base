@@ -1,21 +1,10 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
 from app.utils.response import ok, fail
 from app.logics.role import role_logic
-from app.controllers.base import crud_router
-from app.deps import AuthInfo, require_admin, require_perms
-
-router = APIRouter()
-
-# CRUD
-router.include_router(crud_router(
-    "role", role_logic,
-    tags=["admin-role"],
-    auth_dep=require_admin,
-    perms_prefix="admin:role",
-))
+from app.deps import AuthInfo, current_auth
 
 
 class AssignMenusDto(BaseModel):
@@ -23,11 +12,8 @@ class AssignMenusDto(BaseModel):
     menu_ids: list[int]
 
 
-@router.get("/role/menuIds")
 async def role_menu_ids(
     role_id: int,
-    auth: AuthInfo = Depends(require_admin),
-    _: None = Depends(require_perms("admin:role:list")),
     db: AsyncSession = Depends(get_db),
 ):
     """获取角色已分配的菜单 ID 列表"""
@@ -35,11 +21,8 @@ async def role_menu_ids(
     return ok(ids)
 
 
-@router.post("/role/assignMenus")
 async def assign_menus(
     dto: AssignMenusDto,
-    auth: AuthInfo = Depends(require_admin),
-    _: None = Depends(require_perms("admin:role:assignMenu")),
     db: AsyncSession = Depends(get_db),
 ):
     """给角色分配菜单权限"""

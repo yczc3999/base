@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
@@ -8,10 +8,7 @@ from app.utils.token import create_token_pair, revoke_token, refresh_access_toke
 from app.logics.user import user_logic
 from app.logics.setting import setting_logic
 from app.logics.base import BizError
-from app.deps import AuthInfo, require_client
-
-router = APIRouter()
-
+from app.deps import AuthInfo, current_auth
 
 # ---- DTO ----
 
@@ -32,7 +29,6 @@ class RefreshDto(BaseModel):
 
 # ---- 公开接口 ----
 
-@router.post("/user/login")
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
     from app.utils.rate_limit import check_rate_limit
     from app.utils.helpers import get_client_ip
@@ -77,7 +73,6 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
     return ok({**tokens, "user": safe_user})
 
 
-@router.post("/user/register")
 async def register(dto: RegisterDto, request: Request, db: AsyncSession = Depends(get_db)):
     from app.utils.rate_limit import check_rate_limit
     from app.utils.helpers import get_client_ip
@@ -107,7 +102,6 @@ async def register(dto: RegisterDto, request: Request, db: AsyncSession = Depend
     return ok(result)
 
 
-@router.post("/user/refreshToken")
 async def refresh_token(dto: RefreshDto):
     result = await refresh_access_token(dto.refresh_token)
     if not result:
@@ -115,17 +109,17 @@ async def refresh_token(dto: RefreshDto):
     return ok(result)
 
 
-# ---- 需要登录 ----
+# ---- 需要登录（鉴权由 Route Manifest 的 require_client middleware 提供）----
 
-@router.get("/user/info")
-async def user_info(auth: AuthInfo = Depends(require_client), db: AsyncSession = Depends(get_db)):
+async def user_info(
+    auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)
+):
     user = await user_logic.get_detail(db, auth.user_id)
     if not user:
         return fail("用户不存在")
     return ok(user)
 
 
-@router.post("/user/logout")
-async def logout(auth: AuthInfo = Depends(require_client)):
+async def logout(auth: AuthInfo = Depends(current_auth)):
     await revoke_token(auth.access_token)
     return ok(msg="已退出登录")

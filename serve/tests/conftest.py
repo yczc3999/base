@@ -227,6 +227,11 @@ def mock_redis(monkeypatch):
     async def _get_redis():
         return fr
 
+    async def _cache_del_pattern(pattern, max_iterations=10):
+        cursor, keys = await fr.scan(match=pattern)
+        if keys:
+            await fr.delete(*keys)
+
     # 覆盖 app.services.redis.get_redis（token/task/cache 都从这里拿连接）
     monkeypatch.setattr(redis_mod, "get_redis", _get_redis)
     # 模块级 `from app.services.redis import get_redis` 的导入点也需逐个覆盖
@@ -244,6 +249,13 @@ def mock_redis(monkeypatch):
     monkeypatch.setattr(al_mod, "get_redis", _get_redis)
     import app.utils.captcha as cap_mod
     monkeypatch.setattr(cap_mod, "get_redis", _get_redis)
+    # Route Manifest 在测试收集期会提前导入 Controller；这些模块的
+    # `from ... import get_redis` 已形成独立绑定，必须覆盖调用点。
+    import app.controllers.admin.session as session_controller_mod
+    monkeypatch.setattr(session_controller_mod, "get_redis", _get_redis)
+    import app.controllers.admin.cache as cache_controller_mod
+    monkeypatch.setattr(cache_controller_mod, "get_redis", _get_redis)
+    monkeypatch.setattr(cache_controller_mod, "cache_del_pattern", _cache_del_pattern)
     return fr
 
 
@@ -279,6 +291,16 @@ def mock_redis_cache(monkeypatch, mock_redis):
     monkeypatch.setattr(redis_mod, "cache_set", cache_set)
     monkeypatch.setattr(redis_mod, "cache_del", cache_del)
     monkeypatch.setattr(redis_mod, "cache_del_pattern", cache_del_pattern)
+
+    # 这些模块使用 `from app.services.redis import cache_*`，导入后持有独立
+    # 名称绑定；只 patch 定义模块不会影响它们，测试会意外连接 localhost Redis。
+    # 离线 fixture 必须同步覆盖实际调用点。
+    from app.logics import base as base_logic_mod
+
+    monkeypatch.setattr(base_logic_mod, "cache_get", cache_get)
+    monkeypatch.setattr(base_logic_mod, "cache_set", cache_set)
+    monkeypatch.setattr(base_logic_mod, "cache_del", cache_del)
+    monkeypatch.setattr(base_logic_mod, "cache_del_pattern", cache_del_pattern)
     return mock_redis
 
 

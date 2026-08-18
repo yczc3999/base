@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
@@ -9,13 +9,7 @@ from app.logics.admin_user import admin_user_logic
 from app.logics.admin_login_log import admin_login_log_logic
 from app.logics.setting import setting_logic
 from app.models import AdminLoginLog
-from app.controllers.base import crud_router
-from app.deps import AuthInfo, require_admin, require_perms
-
-router = APIRouter()
-
-# 自动 CRUD（需要管理员登录）
-router.include_router(crud_router("user", admin_user_logic, tags=["admin-user"], auth_dep=require_admin, perms_prefix="admin:user"))
+from app.deps import AuthInfo, current_auth
 
 
 # ---- DTO ----
@@ -43,14 +37,12 @@ class AssignRolesDto(BaseModel):
 
 # ---- 公开接口（不加 Depends，天然公开）----
 
-@router.get("/user/captcha")
 async def get_captcha():
     """获取验证码: {captcha_id, svg}（纯 SVG, 无需登录）."""
     from app.utils.captcha import generate_captcha
     return ok(await generate_captcha())
 
 
-@router.post("/user/login")
 async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_db)):
     from app.utils.rate_limit import check_rate_limit
     from app.utils.helpers import get_client_ip
@@ -135,7 +127,6 @@ async def login(dto: LoginDto, request: Request, db: AsyncSession = Depends(get_
     return ok({**tokens, "user": safe_user, "password_expired": expired})
 
 
-@router.post("/user/refreshToken")
 async def refresh_token(dto: RefreshDto):
     result = await refresh_access_token(dto.refresh_token)
     if not result:
@@ -143,18 +134,16 @@ async def refresh_token(dto: RefreshDto):
     return ok(result)
 
 
-# ---- 需要登录的接口（加 Depends）----
+# ---- 需要登录（鉴权由 Route Manifest 提供）----
 
-@router.get("/user/info")
-async def user_info(auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def user_info(auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)):
     user = await admin_user_logic.get_detail(db, auth.user_id)
     if not user:
         return fail("用户不存在")
     return ok(user)
 
 
-@router.post("/user/changePassword")
-async def change_password(dto: ChangePasswordDto, auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def change_password(dto: ChangePasswordDto, auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)):
     success = await admin_user_logic.change_password(db, auth.user_id, dto.oldPassword, dto.newPassword)
     if not success:
         return fail("原密码错误")
@@ -162,24 +151,20 @@ async def change_password(dto: ChangePasswordDto, auth: AuthInfo = Depends(requi
     return ok(msg="密码修改成功，请重新登录")
 
 
-@router.post("/user/logout")
-async def logout(auth: AuthInfo = Depends(require_admin)):
+async def logout(auth: AuthInfo = Depends(current_auth)):
     await revoke_token(auth.access_token)
     return ok(msg="已退出登录")
 
 
-@router.get("/user/menus")
-async def user_menus(auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def user_menus(auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)):
     """获取当前用户的菜单树 + 权限列表"""
     data = await admin_user_logic.get_user_menus(db, auth.user_id, auth.is_super_admin)
     return ok(data)
 
 
-@router.get("/user/roleIds")
 async def user_role_ids(
     user_id: int,
-    auth: AuthInfo = Depends(require_admin),
-    _: None = Depends(require_perms("admin:user:list")),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """获取指定用户的角色 ID 列表"""
@@ -187,11 +172,9 @@ async def user_role_ids(
     return ok(ids)
 
 
-@router.post("/user/assignRoles")
 async def assign_roles(
     dto: AssignRolesDto,
-    auth: AuthInfo = Depends(require_admin),
-    _: None = Depends(require_perms("admin:user:assignRole")),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """给用户分配角色"""
@@ -208,8 +191,7 @@ class UpdateProfileDto(BaseModel):
     phone: str = None
 
 
-@router.post("/user/updateProfile")
-async def update_profile(dto: UpdateProfileDto, auth: AuthInfo = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def update_profile(dto: UpdateProfileDto, auth: AuthInfo = Depends(current_auth), db: AsyncSession = Depends(get_db)):
     """修改个人资料（只能改自己的）"""
     data = {k: v for k, v in dto.model_dump().items() if v is not None}
     if not data:

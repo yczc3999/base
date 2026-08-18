@@ -5,26 +5,20 @@
 import json
 import time
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.deps import AuthInfo, require_perms
+from app.deps import AuthInfo, current_auth
 from app.services.database import get_db
 from app.services.redis import get_redis
 from app.utils.response import ok, fail
 from app.utils.token import revoke_all_tokens
 
-router = APIRouter()
-
-_perm_list = require_perms("admin:session:list")
-_perm_kick = require_perms("admin:session:kick")
-
 PREFIX = settings.APP_NAME
 
 
-@router.get("/session/list")
-async def session_list(auth: AuthInfo = Depends(_perm_list)):
+async def session_list(auth: AuthInfo = Depends(current_auth)):
     """枚举所有在线会话（按 user_tokens 索引 + token 详情）."""
     r = await get_redis()
     pattern = f"{PREFIX}:user_tokens:*"
@@ -65,10 +59,9 @@ async def session_list(auth: AuthInfo = Depends(_perm_list)):
     return ok(sessions)
 
 
-@router.post("/session/kick")
 async def session_kick(
     request: Request,
-    auth: AuthInfo = Depends(_perm_kick),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """按 scope + user_id 踢下线（撤销全部 session）.

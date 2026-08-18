@@ -1,20 +1,21 @@
 """
 全局依赖注入 — 鉴权
 
-通过 FastAPI Depends 机制实现路由级鉴权，不依赖全局状态或 Middleware。
-每个路由函数通过签名声明是否需要登录：
+鉴权策略由 `app/routes/` Manifest 的 Group/Route middleware 权威声明，
+并由 RouteRegistry 编译为 FastAPI `Depends`。Controller 不再自行决定
+端点是否公开；需要读取身份的 Handler 通过 `current_auth` 读取已经执行的策略结果：
 
     # 需要登录（任何角色）
-    async def info(auth: AuthInfo = Depends(require_auth)):
+    admin.get("/info", info).middleware(require_auth)
 
     # 需要管理员登录
-    async def info(auth: AuthInfo = Depends(require_admin)):
+    admin.get("/info", info).middleware(require_admin)
 
     # 需要前端用户登录
-    async def info(auth: AuthInfo = Depends(require_client)):
+    client.get("/info", info).middleware(require_client)
 
     # 不需要登录 — 不加 Depends，天然公开
-    async def login(dto: LoginDto):
+    public.post("/login", login)
 
 鉴权失败时抛出 BizError，由全局异常处理器统一返回：
     {"code": 401, "msg": "请登录", "data": null}
@@ -56,6 +57,7 @@ async def require_auth(request: Request) -> AuthInfo:
     要求登录（任何 scope）
 
     从 Authorization 头提取 Bearer token，查 Redis 验证。
+    验证成功后将 AuthInfo 写入 request.state.auth，供 current_auth 读取。
     验证失败抛出 BizError(401)。
     """
     auth_header = request.headers.get("authorization", "")
@@ -67,13 +69,39 @@ async def require_auth(request: Request) -> AuthInfo:
     if not user_info:
         raise BizError("请登录", 401)
 
-    return AuthInfo(
+    auth_info = AuthInfo(
         user_id=user_info["user_id"],
         scope=user_info.get("scope", "admin"),
         username=user_info.get("username", ""),
         access_token=token,
         extra=user_info,
     )
+    request.state.auth = auth_info
+    return auth_info
+
+
+def current_auth(request: Request) -> AuthInfo:
+    """
+    从已执行的 Route middleware 获取 AuthInfo。
+
+    只取 request.state.auth，不做 Redis/DB 鉴权。
+    若 middleware 缺失则视为路由配置错误。
+    """
+    auth = getattr(request.state, "auth", None)
+    if auth is None:
+        raise RuntimeError("route auth middleware is missing")
+    return auth
+
+
+def current_auth_optional(request: Request):
+    """
+    兼容 CRUD Controller 专用：可选的 AuthInfo。
+
+    已标记为 protected 的 action 若缺失 AuthInfo，由 CrudController
+    内部以路由配置错误失败；public action 传 None。
+    普通受保护 Handler 必须使用硬失败的 current_auth。
+    """
+    return getattr(request.state, "auth", None)
 
 
 async def require_admin(auth: AuthInfo = Depends(require_auth)) -> AuthInfo:

@@ -2,18 +2,15 @@
 
 权限: 按模块动态校验 admin:{module}:create（导入本质是批量 create）。
 """
-from fastapi import APIRouter, Request, Depends, UploadFile, File as FastAPIFile, Form
+from fastapi import Request, Depends, UploadFile, File as FastAPIFile, Form
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import AuthInfo, require_admin
+from app.deps import AuthInfo, current_auth
 from app.logics.base import BizError
 from app.services.database import get_db
 from app.utils.response import ok, fail
 from app.utils import import_helper
-
-router = APIRouter()
-
 
 async def _has_create_perm(auth: AuthInfo, db: AsyncSession, module: str) -> bool:
     if auth.is_super_admin:
@@ -23,14 +20,13 @@ async def _has_create_perm(auth: AuthInfo, db: AsyncSession, module: str) -> boo
     return f"admin:{module}:create" in perms
 
 
-@router.get("/import/template")
 async def import_template(
     request: Request,
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """下载导入模板 XLSX（表头 = 模块导出表头）."""
-    module = request.query_params.get("module", "")
+    module = request.query_params
     if not module:
         return fail("缺少 module 参数")
     if not await _has_create_perm(auth, db, module):
@@ -48,11 +44,10 @@ async def import_template(
         return fail(e.msg, e.code)
 
 
-@router.post("/import/upload")
 async def import_upload(
     file: UploadFile = FastAPIFile(...),
     module: str = Form(...),
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """上传 Excel 导入数据（逐行独立事务）."""

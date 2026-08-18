@@ -24,11 +24,12 @@ Request → AuthMiddleware → OperationLogMiddleware → Router → Logic → M
 
 | 层 | 职责 | 对应目录 |
 |----|------|----------|
-| Controller | 接收请求，参数校验，返回响应 | `controllers/` |
+| Routes | 权威路由清单（URL/Method/prefix/中间件/权限/名称/Tag） | `routes/` |
+| Controller | 未装饰 Handler，参数校验，返回响应 | `controllers/` |
 | Logic（BaseLogic） | 业务 CRUD + 缓存 + 查询 + 校验 + 钩子 | `logics/` |
 | Model | 数据结构，字段约束，Status 枚举 | `models/` |
 | Service（BaseService） | 配置驱动工厂 + 14 驱动（零 SDK） | `services/` |
-| Deps | 鉴权（require_admin / require_client / require_perms） | `deps.py` |
+| Deps | 鉴权（require_admin / require_client / require_perms / current_auth） | `deps.py` |
 | Middleware | JWT 注入 + 操作日志自动记录 | `middleware/` |
 
 ## 核心设计
@@ -50,13 +51,35 @@ class OrderLogic(BaseLogic):
 
 自动获得：get_list（分页 + QueryHelper 35 操作符 + keyword + 排序）、get_detail（主键缓存）、save（创建/编辑）、do_delete（软删除感知）、Validator（16 规则）、生命周期钩子、事务包装、bindUserColumn。
 
-### crud_router — 一行 CRUD
+### 集中式路由注册表 — 唯一入口
 
 ```python
-router.include_router(crud_router("order", OrderLogic, perms_prefix="admin:order"))
+# app/main.py 唯一路由注册入口
+from app.routes import register_routes
+register_routes(app)
 ```
 
-自动生成 getList / getDetail / doEdit / doDelete 四个接口 + 权限校验。
+`serve/app/routes/` 是路由的权威清单（Laravel `route:list` 对等）：
+
+```python
+admin = routes.group(prefix="/api/admin", name="admin.", middleware=[require_admin])
+admin.crud("/user", admin_user_logic, permissions="admin:user")
+admin.get("/user/menus", admin_user.user_menus).name("menus")
+```
+
+- Controller 只保留未装饰 Handler，不再创建 APIRouter。
+- 编译阶段强制校验重复路径、Route ID、fallback 遮蔽、access 边界等。
+- 路由目录 CLI：
+
+```bash
+cd serve
+.venv/bin/python -m app.routes check
+.venv/bin/python -m app.routes list --scope admin --method POST --contains user
+.venv/bin/python -m app.routes json > /tmp/base-routes.json
+```
+
+旧 `controllers.base.crud_router` 保留为兼容层（DeprecationWarning），
+新资源用 `admin.crud(...)` 一条声明生成 getList/getDetail/doEdit/doDelete/doExport。
 
 ### Service 层 — 14 驱动零 SDK
 
@@ -127,19 +150,24 @@ Logic 覆写 `export_header_map()` 即启用导出。crud_router 自动生成 `P
 ```
 serve/
 ├── app/
-│   ├── main.py                         # FastAPI 入口
+│   ├── main.py                         # FastAPI 入口（唯一 register_routes）
 │   ├── config.py                       # Pydantic Settings
-│   ├── deps.py                         # 鉴权依赖（AuthInfo + require_*）
+│   ├── deps.py                         # 鉴权依赖（AuthInfo + require_* / current_auth）
 │   ├── queue.py                        # Queue.push() — 入队客户端
 │   ├── worker.py                       # Worker 独立进程
 │   ├── models/                         # 数据模型（11 张表）
 │   ├── logics/                         # 业务逻辑层
 │   │   ├── base.py                     #   BaseLogic
 │   │   └── ...                         #   各业务 Logic
-│   ├── controllers/                    # 路由层
-│   │   ├── base.py                     #   crud_router() 工厂
-│   │   ├── admin/                      #   Admin 端路由
-│   │   └── client/                     #   Client 端路由
+│   ├── routes/                         # 路由注册表（权威清单）
+│   │   ├── registry.py                 #   RouteRegistry / Group / Builder
+│   │   ├── admin.py                    #   /api/admin Manifest
+│   │   ├── client.py                   #   /api/client Manifest
+│   │   └── __main__.py                 #   python -m app.routes CLI
+│   ├── controllers/                    # 未装饰 Handler 层
+│   │   ├── crud.py                     #   CrudController（5 契约端点）
+│   │   ├── admin/                      #   Admin 端 Handler
+│   │   └── client/                     #   Client 端 Handler
 │   ├── services/                       # 服务层
 │   │   ├── base.py                     #   BaseService + BaseDriver
 │   │   ├── database.py                 #   SQLAlchemy async engine
@@ -204,3 +232,4 @@ python -m app.worker
 | [docs/service-design.md](docs/service-design.md) | Service 层设计 |
 | [docs/file-system-design.md](docs/file-system-design.md) | 文件系统设计 |
 | [docs/queue-task-design.md](docs/queue-task-design.md) | 队列 & 定时任务设计 |
+| [docs/route-registry-design.md](docs/route-registry-design.md) | 集中式路由注册表设计、实施与审计记录 |

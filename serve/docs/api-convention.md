@@ -1,7 +1,7 @@
 # 前后端 CRUD 接口约定文档
 
 本文档定义了前端与后端交互的 **CRUD 接口规范**，包括请求格式、响应格式、Filters 查询 DSL 和约束条件。  
-所有通过 `crud_router()` 生成的接口均遵守此约定。
+所有通过集中式 Route Registry 的 `RouteGroup.crud()` 生成的接口均遵守此约定；`controllers.base.crud_router()` 仅作为下游兼容层保留。
 
 ---
 
@@ -51,9 +51,9 @@ Token 过期或版本号不匹配时返回：
 
 ---
 
-## 三、CRUD 四个标准接口
+## 三、CRUD 五个标准接口
 
-每个通过 `crud_router()` 注册的模块自动拥有以下 4 个接口：
+每个通过 `RouteGroup.crud()` 注册的模块自动拥有以下 5 个接口：
 
 ### 3.1 获取列表 — `GET /{module}/getList`
 
@@ -466,7 +466,7 @@ await axios.post('/api/admin/user/doDelete', { ids: '1,2,3' });
 | 组成 | 说明 | 示例 |
 |------|------|------|
 | 端 | 路由分组前缀 | admin / client |
-| 模块 | Router 的 prefix | user / setting |
+| 模块 | Route Manifest 中 `crud()` 的 prefix | user / setting |
 | 方法 | 接口名 | getList / getDetail / doEdit / doDelete |
 
 **示例路径：**

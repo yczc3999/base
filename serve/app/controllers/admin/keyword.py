@@ -11,29 +11,18 @@ import json
 import logging
 import random
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import Body, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.controllers.base import crud_router
-from app.deps import require_admin
+from app.deps import current_auth
 from app.logics.keyword import keyword_logic
 from app.services.database import get_db, async_session
 from app.services.keyword_harvester import ENGINE_MAP
 from app.utils.response import ok
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
-
-router.include_router(
-    crud_router(
-        "keyword", keyword_logic, tags=["admin-keyword"],
-        auth_dep=require_admin, perms_prefix="admin:keyword",
-    )
-)
-
-
 # ---- DTO ----
 
 class HarvestDto(BaseModel):
@@ -72,8 +61,7 @@ def _sse(data: dict) -> str:
 
 # ---- SSE 单轮采集 ----
 
-@router.post("/keyword/harvest-stream", tags=["admin-keyword"])
-async def harvest_stream(dto: HarvestDto, _=Depends(require_admin)):
+async def harvest_stream(dto: HarvestDto):
     """SSE 流式采集: 每采到一批词实时推送."""
 
     async def event_stream():
@@ -151,8 +139,7 @@ async def harvest_stream(dto: HarvestDto, _=Depends(require_admin)):
 
 # ---- SSE 轮询采集 (从库里 candidate 池持续抽种子) ----
 
-@router.post("/keyword/poll-harvest-stream", tags=["admin-keyword"])
-async def poll_harvest_stream(dto: PollHarvestDto, _=Depends(require_admin)):
+async def poll_harvest_stream(dto: PollHarvestDto):
     """SSE 连续轮询: 从 keywords (candidate, expanded_as_seed_at IS NULL) 池子抽种子,
     调引擎扩散入库, 循环到池空或达 max_total.
 
@@ -247,39 +234,34 @@ async def poll_harvest_stream(dto: PollHarvestDto, _=Depends(require_admin)):
 
 # ---- 批量状态 ----
 
-@router.post("/keyword/bulk-approve", tags=["admin-keyword"])
 async def bulk_approve(
-    dto: BulkIdsDto, _=Depends(require_admin), db: AsyncSession = Depends(get_db),
+    dto: BulkIdsDto, db: AsyncSession = Depends(get_db),
 ):
     count = await keyword_logic.bulk_approve(db, dto.ids)
     return ok({"approved": count})
 
 
-@router.post("/keyword/bulk-reject", tags=["admin-keyword"])
 async def bulk_reject(
-    dto: BulkIdsDto, _=Depends(require_admin), db: AsyncSession = Depends(get_db),
+    dto: BulkIdsDto, db: AsyncSession = Depends(get_db),
 ):
     count = await keyword_logic.bulk_reject(db, dto.ids)
     return ok({"rejected": count})
 
 
-@router.post("/keyword/bulk-stage", tags=["admin-keyword"])
 async def bulk_set_stage(
-    dto: BulkStageDto, _=Depends(require_admin), db: AsyncSession = Depends(get_db),
+    dto: BulkStageDto, db: AsyncSession = Depends(get_db),
 ):
     count = await keyword_logic.bulk_set_stage(db, dto.ids, dto.stage)
     return ok({"updated": count})
 
 
-@router.get("/keyword/stats", tags=["admin-keyword"])
-async def keyword_stats(_=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def keyword_stats(db: AsyncSession = Depends(get_db)):
     return ok(await keyword_logic.stats(db))
 
 
 # ---- AI 种子词 ----
 
-@router.post("/keyword/ai-seeds", tags=["admin-keyword"])
-async def ai_seed_suggest(dto: AiSeedDto, _=Depends(require_admin)):
+async def ai_seed_suggest(dto: AiSeedDto):
     from app.services import ai_content
     seeds = await ai_content.gen_seeds(dto.topic, dto.count)
     return ok({"seeds": seeds, "topic": dto.topic})
@@ -294,10 +276,8 @@ class AiReviewScopeDto(BaseModel):
     scope: str = Field(default="pending")  # pending | online | all
 
 
-@router.post("/keyword/ai-review-stream", tags=["admin-keyword"])
 async def ai_review_stream(
     dto: AiReviewScopeDto = Body(default=AiReviewScopeDto()),
-    _=Depends(require_admin),
 ):
     """SSE AI 审核.
 

@@ -7,15 +7,11 @@ import importlib
 import inspect
 import pkgutil
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 
-from app.deps import AuthInfo, require_perms
+from app.deps import AuthInfo, current_auth
 from app.logics.base import BaseLogic
 from app.utils.response import ok, fail
-
-router = APIRouter()
-
-_perm = require_perms("admin:trash:list")
 
 
 def _trash_modules() -> list[dict]:
@@ -44,14 +40,12 @@ def _resolve(module: str) -> BaseLogic:
     return resolve_logic_module(module)
 
 
-@router.get("/trash/modules")
-async def trash_modules(auth: AuthInfo = Depends(_perm)):
+async def trash_modules(auth: AuthInfo = Depends(current_auth)):
     """支持回收站的模块列表."""
     return ok(_trash_modules())
 
 
-@router.get("/trash/list")
-async def trash_list(request: Request, auth: AuthInfo = Depends(_perm)):
+async def trash_list(request: Request, auth: AuthInfo = Depends(current_auth)):
     """某模块回收站记录列表."""
     module = request.query_params.get("module", "")
     if not module:
@@ -74,8 +68,7 @@ async def _trash_list(logic: BaseLogic, query: dict, auth: AuthInfo) -> dict:
         return await logic.get_trash(db, query, user_id=auth.user_id, is_super=auth.is_super_admin)
 
 
-@router.post("/trash/restore")
-async def trash_restore(request: Request, auth: AuthInfo = Depends(require_perms("admin:trash:restore"))):
+async def trash_restore(request: Request, auth: AuthInfo = Depends(current_auth)):
     """恢复软删除记录."""
     body = await request.json()
     module = body.get("module", "")
@@ -95,8 +88,7 @@ async def trash_restore(request: Request, auth: AuthInfo = Depends(require_perms
         return fail(f"恢复失败: {e}")
 
 
-@router.post("/trash/purge")
-async def trash_purge(request: Request, auth: AuthInfo = Depends(require_perms("admin:trash:purge"))):
+async def trash_purge(request: Request, auth: AuthInfo = Depends(current_auth)):
     """彻底删除（物理删除, 不可恢复）."""
     body = await request.json()
     module = body.get("module", "")

@@ -47,14 +47,33 @@ not import requirements from a downstream product into this repository.
 ## Architecture
 
 ```text
-Request → Controller → Logic → Model/DB
-                         ↕
-                    Service + Driver
+Request → app.routes.register_routes(app) → Route Group middleware/permission
+        → undecorated Controller Handler → Logic → Model/DB
+                                                 ↕
+                                            Service + Driver
 ```
+
+`serve/app/routes/` 是路由的权威清单（URL/Method/prefix/鉴权/权限/名称/Tag），
+Controller 只保留未装饰 Handler，不再创建 APIRouter 或声明 URL。
+新增端点先在 `serve/app/routes/` 下的 Manifest 声明，再在对应 Controller
+补充未装饰 Handler；运行时禁止 glob 自动扫描 Controller。
 
 Use existing factories, declarative CRUD, allowlists, hooks, and shared services.
 Keep authorization server-side, persistence constraints explicit, and migrations
 reversible. Product-specific code does not belong in any Base layer.
+
+### 路由专项验证
+
+```bash
+cd serve
+.venv/bin/python -m app.routes check
+.venv/bin/python -m pytest tests/test_route_contract.py \
+  tests/test_route_shadow.py tests/test_route_registry.py \
+  tests/test_crud_routes.py tests/test_controller_route_boundary.py
+```
+
+- `test_route_contract.py`：159 条 OpenAPI 契约零差异基线。
+- `test_controller_route_boundary.py`：AST 强制 Controller 零 APIRouter。
 
 ## Validation commands
 

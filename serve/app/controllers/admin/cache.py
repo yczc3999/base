@@ -7,17 +7,12 @@ import importlib
 import inspect
 import pkgutil
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request
 
-from app.deps import AuthInfo, require_perms
+from app.deps import AuthInfo, current_auth
 from app.logics.base import BaseLogic
 from app.services.redis import get_redis, cache_del_pattern
 from app.utils.response import ok, fail
-
-router = APIRouter()
-
-_perm_stats = require_perms("admin:cache:stats")
-_perm_clear = require_perms("admin:cache:clear")
 
 
 def _discover_cache_modules() -> list[dict]:
@@ -61,8 +56,7 @@ async def _count_keys(r, pattern: str) -> int:
     return count
 
 
-@router.get("/cache/stats")
-async def cache_stats(auth: AuthInfo = Depends(_perm_stats)):
+async def cache_stats(auth: AuthInfo = Depends(current_auth)):
     """各模块缓存 key 数 + Redis dbsize."""
     r = await get_redis()
     try:
@@ -80,8 +74,7 @@ async def cache_stats(auth: AuthInfo = Depends(_perm_stats)):
     return ok({"dbsize": dbsize, "modules": modules})
 
 
-@router.post("/cache/clear")
-async def cache_clear(request: Request, auth: AuthInfo = Depends(_perm_clear)):
+async def cache_clear(request: Request, auth: AuthInfo = Depends(current_auth)):
     """清空指定模块缓存（prefix 白名单校验, 防任意删除）. """
     body = await request.json()
     prefix = body.get("prefix", "")

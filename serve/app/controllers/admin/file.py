@@ -1,31 +1,19 @@
 import os
-from fastapi import APIRouter, Request, Depends, UploadFile, File as FastAPIFile, Form
+from fastapi import Depends, Request, UploadFile, File as FastAPIFile, Form
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
 from app.utils.response import ok, fail
 from app.logics.file import file_logic, ALLOWED_IMAGE_TYPES, ALLOWED_FILE_TYPES
 from app.logics.base import BizError
-from app.controllers.base import crud_router
-from app.deps import AuthInfo, require_admin
-
-router = APIRouter()
-
-# CRUD（文件列表/详情/删除）
-router.include_router(crud_router(
-    "file", file_logic,
-    tags=["admin-file"],
-    auth_dep=require_admin,
-    perms_prefix="admin:file",
-))
+from app.deps import AuthInfo, current_auth
 
 
-@router.post("/file/upload")
 async def upload_file(
     file: UploadFile = FastAPIFile(...),
     category: str = Form(default="default"),
     is_private: bool = Form(default=False),
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """上传文件（默认限制：ALLOWED_FILE_TYPES + 50MB）"""
@@ -42,12 +30,11 @@ async def upload_file(
         return fail(e.msg, e.code)
 
 
-@router.post("/file/uploadImage")
 async def upload_image(
     file: UploadFile = FastAPIFile(...),
     category: str = Form(default="avatar"),
     is_private: bool = Form(default=False),
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """上传图片（限制类型为图片）"""
@@ -65,10 +52,9 @@ async def upload_image(
         return fail(e.msg, e.code)
 
 
-@router.post("/file/batchDelete")
 async def batch_delete(
     request: Request,
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """批量删除文件（DB + 存储双删，非超管仅删自己的文件）"""
@@ -85,15 +71,11 @@ async def batch_delete(
 
 # ==================== 隐私文件代理 ====================
 # 注意：这个路由注册在 /api/file/{id}，不是 /api/admin/file/{id}
+# 路由由 app.routes.admin._register_private_file() 注册
 
-from fastapi import APIRouter as _AR
-file_proxy_router = _AR()
-
-
-@file_proxy_router.get("/file/{file_id}")
 async def proxy_private_file(
     file_id: int,
-    auth: AuthInfo = Depends(require_admin),
+    auth: AuthInfo = Depends(current_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """隐私文件代理访问"""

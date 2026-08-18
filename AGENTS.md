@@ -45,16 +45,21 @@ belong in this repository and must be removed rather than adopted.
 Preserve the generic structure:
 
 ```text
-Controller → Logic → Model/DB
-                         ↕
-                    Service + Driver
+app.routes.register_routes(app)
+        → Route Group middleware/permission
+        → undecorated Controller Handler → Logic → Model/DB
+                                                 ↕
+                                            Service + Driver
 ```
 
-Controllers validate and authorize. Logic owns reusable business behavior and
-state transitions. Models own data shape and constraints. Repositories or model
-access layers own persistence. External providers stay behind generic Service +
-Driver boundaries. Prefer existing Base capabilities, factories, declarative
-CRUD, and hooks over duplication.
+`serve/app/routes/` 是权威路由清单（URL/Method/prefix/鉴权/权限/名称/Tag），
+Controller 只保留未装饰 Handler，不再创建 APIRouter 或声明 URL。新增端点
+先在 Manifest 声明，再补 Handler；运行时禁止 glob 自动扫描 Controller。
+Logic owns reusable business behavior and state transitions. Models own data
+shape and constraints. Repositories or model access layers own persistence.
+External providers stay behind generic Service + Driver boundaries. Prefer
+existing Base capabilities, factories, declarative CRUD, and hooks over
+duplication.
 
 ## Repository boundaries
 
@@ -71,6 +76,7 @@ CRUD, and hooks over duplication.
 ```bash
 cd serve && pip install -r requirements-dev.txt && pytest
 cd serve && alembic upgrade head
+cd serve && .venv/bin/python -m app.routes check
 cd admin && npm ci && npm run lint && npm run build
 python3 scripts/check-base-release.py
 git diff --check

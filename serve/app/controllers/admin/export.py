@@ -7,18 +7,15 @@
 """
 
 import os
-from fastapi import APIRouter, Depends, Request
+from fastapi import Depends, Request
 from fastapi.responses import FileResponse
-from app.deps import AuthInfo, require_admin
+from app.deps import AuthInfo, current_auth
 from app.utils.response import ok, fail
 from app.utils.export_helper import validate_export_key
 from app.services.redis import get_redis
 
-router = APIRouter(prefix="/export", tags=["export"])
 
-
-@router.get("/progress")
-async def export_progress(request: Request, auth: AuthInfo = Depends(require_admin)):
+async def export_progress(request: Request, auth: AuthInfo = Depends(current_auth)):
     """查询导出进度"""
     key = request.query_params.get("key", "")
     if not key:
@@ -45,8 +42,7 @@ async def export_progress(request: Request, auth: AuthInfo = Depends(require_adm
     return ok({"progress": progress, "status": 0})  # 0 = 进行中
 
 
-@router.get("/download")
-async def export_download(request: Request, auth: AuthInfo = Depends(require_admin)):
+async def export_download(request: Request, auth: AuthInfo = Depends(current_auth)):
     """下载导出文件"""
     key = request.query_params.get("key", "")
     if not key:

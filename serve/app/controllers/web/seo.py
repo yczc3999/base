@@ -8,19 +8,16 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.database import get_db
 from app.services.seo_sitemap import seo_sitemap_service
 from app.logics.setting import setting_logic
 
-router = APIRouter()
-
 _KEY_FILE_RE = re.compile(r"^[a-f0-9]{16,128}\.txt$", re.I)
 
 
-@router.get("/sitemap.xml")
 async def sitemap_index():
     content, ct = seo_sitemap_service.read("sitemap.xml")
     if not content:
@@ -28,7 +25,6 @@ async def sitemap_index():
     return Response(content, media_type=ct)
 
 
-@router.get("/sitemap-{n}.xml")
 async def sitemap_chunk(n: int):
     name = f"sitemap-{n}.xml"
     content, ct = seo_sitemap_service.read(name)
@@ -37,7 +33,6 @@ async def sitemap_chunk(n: int):
     return Response(content, media_type=ct)
 
 
-@router.get("/robots.txt")
 async def robots():
     content, ct = seo_sitemap_service.read("robots.txt")
     if not content:
@@ -49,7 +44,6 @@ async def robots():
     return Response(content, media_type=ct)
 
 
-@router.get("/{name}")
 async def indexnow_key_file(name: str, db: AsyncSession = Depends(get_db)):
     """IndexNow 协议要求 https://{host}/{key}.txt 必须返回 key 字符串本身。
     动态匹配：name 形如 abcdef0123...txt 且与 settings.seo_creds.indexnow_key 一致。

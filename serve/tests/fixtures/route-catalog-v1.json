@@ -1,0 +1,3130 @@
+[
+  {
+    "method": "POST",
+    "operationId": "ai_generate_api_admin_article_ai_generate_post",
+    "path": "/api/admin/article/ai-generate",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "ai_rewrite_stream_api_admin_article_ai_rewrite_stream_post",
+    "path": "/api/admin/article/ai-rewrite-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "collect_stats_api_admin_article_collect_stats_get",
+    "path": "/api/admin/article/collect-stats",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "collect_stream_api_admin_article_collect_stream_post",
+    "path": "/api/admin/article/collect-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_article_doDelete_post",
+    "path": "/api/admin/article/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_article_doEdit_post",
+    "path": "/api/admin/article/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_article_doExport_post",
+    "path": "/api/admin/article/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "gen_from_tags_stream_api_admin_article_gen_from_tags_stream_post",
+    "path": "/api/admin/article/gen-from-tags-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_article_getDetail_get",
+    "path": "/api/admin/article/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_article_getList_get",
+    "path": "/api/admin/article/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-article"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "cache_clear_api_admin_cache_clear_post",
+    "path": "/api/admin/cache/clear",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "cache_stats_api_admin_cache_stats_get",
+    "path": "/api/admin/cache/stats",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_client_user_doDelete_post",
+    "path": "/api/admin/client_user/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-client-user"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_client_user_doEdit_post",
+    "path": "/api/admin/client_user/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-client-user"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_client_user_doExport_post",
+    "path": "/api/admin/client_user/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-client-user"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_client_user_getDetail_get",
+    "path": "/api/admin/client_user/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-client-user"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_client_user_getList_get",
+    "path": "/api/admin/client_user/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-client-user"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "kick_api_admin_client_user_kick_post",
+    "path": "/api/admin/client_user/kick",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "reset_password_api_admin_client_user_resetPassword_post",
+    "path": "/api/admin/client_user/resetPassword",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "dashboard_recent_api_admin_dashboard_recent_get",
+    "path": "/api/admin/dashboard/recent",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "dashboard_stats_api_admin_dashboard_stats_get",
+    "path": "/api/admin/dashboard/stats",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "dashboard_system_api_admin_dashboard_system_get",
+    "path": "/api/admin/dashboard/system",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "manual_backup_api_admin_db_backup_backup_post",
+    "path": "/api/admin/db_backup/backup",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_db_backup_doDelete_post",
+    "path": "/api/admin/db_backup/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-db-backup"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_db_backup_doEdit_post",
+    "path": "/api/admin/db_backup/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-db-backup"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_db_backup_doExport_post",
+    "path": "/api/admin/db_backup/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-db-backup"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "download_backup_api_admin_db_backup_download_get",
+    "path": "/api/admin/db_backup/download",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_db_backup_getDetail_get",
+    "path": "/api/admin/db_backup/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-db-backup"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_db_backup_getList_get",
+    "path": "/api/admin/db_backup/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-db-backup"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_dict_doDelete_post",
+    "path": "/api/admin/dict/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_dict_doEdit_post",
+    "path": "/api/admin/dict/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_dict_doExport_post",
+    "path": "/api/admin/dict/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_dict_getDetail_get",
+    "path": "/api/admin/dict/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_dict_getList_get",
+    "path": "/api/admin/dict/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_dict_item_doDelete_post",
+    "path": "/api/admin/dict_item/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_dict_item_doEdit_post",
+    "path": "/api/admin/dict_item/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_dict_item_doExport_post",
+    "path": "/api/admin/dict_item/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_dict_item_getDetail_get",
+    "path": "/api/admin/dict_item/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_dict_item_getList_get",
+    "path": "/api/admin/dict_item/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-dict"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "export_download_api_admin_export_download_get",
+    "path": "/api/admin/export/download",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "export"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "export_progress_api_admin_export_progress_get",
+    "path": "/api/admin/export/progress",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "export"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "batch_delete_api_admin_file_batchDelete_post",
+    "path": "/api/admin/file/batchDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_file_doDelete_post",
+    "path": "/api/admin/file/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-file"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_file_doEdit_post",
+    "path": "/api/admin/file/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-file"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_file_doExport_post",
+    "path": "/api/admin/file/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-file"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_file_getDetail_get",
+    "path": "/api/admin/file/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-file"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_file_getList_get",
+    "path": "/api/admin/file/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-file"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "upload_file_api_admin_file_upload_post",
+    "path": "/api/admin/file/upload",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "upload_image_api_admin_file_uploadImage_post",
+    "path": "/api/admin/file/uploadImage",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "import_template_api_admin_import_template_get",
+    "path": "/api/admin/import/template",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "import_upload_api_admin_import_upload_post",
+    "path": "/api/admin/import/upload",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "ai_review_stream_api_admin_keyword_ai_review_stream_post",
+    "path": "/api/admin/keyword/ai-review-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "ai_seed_suggest_api_admin_keyword_ai_seeds_post",
+    "path": "/api/admin/keyword/ai-seeds",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "bulk_approve_api_admin_keyword_bulk_approve_post",
+    "path": "/api/admin/keyword/bulk-approve",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "bulk_reject_api_admin_keyword_bulk_reject_post",
+    "path": "/api/admin/keyword/bulk-reject",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "bulk_set_stage_api_admin_keyword_bulk_stage_post",
+    "path": "/api/admin/keyword/bulk-stage",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_keyword_doDelete_post",
+    "path": "/api/admin/keyword/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_keyword_doEdit_post",
+    "path": "/api/admin/keyword/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_keyword_doExport_post",
+    "path": "/api/admin/keyword/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_keyword_getDetail_get",
+    "path": "/api/admin/keyword/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_keyword_getList_get",
+    "path": "/api/admin/keyword/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "harvest_stream_api_admin_keyword_harvest_stream_post",
+    "path": "/api/admin/keyword/harvest-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "poll_harvest_stream_api_admin_keyword_poll_harvest_stream_post",
+    "path": "/api/admin/keyword/poll-harvest-stream",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "keyword_stats_api_admin_keyword_stats_get",
+    "path": "/api/admin/keyword/stats",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-keyword"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_loginLog_doDelete_post",
+    "path": "/api/admin/loginLog/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_loginLog_doEdit_post",
+    "path": "/api/admin/loginLog/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_loginLog_doExport_post",
+    "path": "/api/admin/loginLog/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_loginLog_getDetail_get",
+    "path": "/api/admin/loginLog/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_loginLog_getList_get",
+    "path": "/api/admin/loginLog/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_menu_doDelete_post",
+    "path": "/api/admin/menu/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-menu"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_menu_doEdit_post",
+    "path": "/api/admin/menu/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-menu"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_menu_doExport_post",
+    "path": "/api/admin/menu/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-menu"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_menu_getDetail_get",
+    "path": "/api/admin/menu/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-menu"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_menu_getList_get",
+    "path": "/api/admin/menu/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-menu"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "menu_tree_api_admin_menu_tree_get",
+    "path": "/api/admin/menu/tree",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_message_doDelete_post",
+    "path": "/api/admin/message/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-message"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_message_doEdit_post",
+    "path": "/api/admin/message/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-message"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_message_doExport_post",
+    "path": "/api/admin/message/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-message"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_message_getDetail_get",
+    "path": "/api/admin/message/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-message"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_message_getList_get",
+    "path": "/api/admin/message/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-message"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "mark_read_api_admin_message_markRead_post",
+    "path": "/api/admin/message/markRead",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "unread_count_api_admin_message_unreadCount_get",
+    "path": "/api/admin/message/unreadCount",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "migration_list_api_admin_migration_list_get",
+    "path": "/api/admin/migration/list",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "migration_run_api_admin_migration_run_post",
+    "path": "/api/admin/migration/run",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "monitor_metrics_api_admin_monitor_metrics_get",
+    "path": "/api/admin/monitor/metrics",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_operationLog_doDelete_post",
+    "path": "/api/admin/operationLog/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_operationLog_doEdit_post",
+    "path": "/api/admin/operationLog/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_operationLog_doExport_post",
+    "path": "/api/admin/operationLog/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_operationLog_getDetail_get",
+    "path": "/api/admin/operationLog/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_operationLog_getList_get",
+    "path": "/api/admin/operationLog/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-log"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_publish_log_doDelete_post",
+    "path": "/api/admin/publish_log/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_publish_log_doEdit_post",
+    "path": "/api/admin/publish_log/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_publish_log_doExport_post",
+    "path": "/api/admin/publish_log/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_publish_log_getDetail_get",
+    "path": "/api/admin/publish_log/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_publish_log_getList_get",
+    "path": "/api/admin/publish_log/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "assign_menus_api_admin_role_assignMenus_post",
+    "path": "/api/admin/role/assignMenus",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_role_doDelete_post",
+    "path": "/api/admin/role/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-role"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_role_doEdit_post",
+    "path": "/api/admin/role/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-role"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_role_doExport_post",
+    "path": "/api/admin/role/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-role"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_role_getDetail_get",
+    "path": "/api/admin/role/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-role"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_role_getList_get",
+    "path": "/api/admin/role/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-role"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "role_menu_ids_api_admin_role_menuIds_get",
+    "path": "/api/admin/role/menuIds",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "dashboard_api_admin_seo_dashboard_get",
+    "path": "/api/admin/seo/dashboard",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "indexnow_test_api_admin_seo_indexnow_test_post",
+    "path": "/api/admin/seo/indexnow/test",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "set_kill_switch_api_admin_seo_kill_switch_post",
+    "path": "/api/admin/seo/kill-switch",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "recompute_phase_api_admin_seo_phase_recompute_post",
+    "path": "/api/admin/seo/phase/recompute",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "run_pipeline_now_api_admin_seo_run_now_post",
+    "path": "/api/admin/seo/run-now",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "list_sitemap_files_api_admin_seo_sitemap_files_get",
+    "path": "/api/admin/seo/sitemap/files",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "rebuild_sitemap_api_admin_seo_sitemap_rebuild_post",
+    "path": "/api/admin/seo/sitemap/rebuild",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "toggle_seo_api_admin_seo_toggle_post",
+    "path": "/api/admin/seo/toggle",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "admin-seo"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "session_kick_api_admin_session_kick_post",
+    "path": "/api/admin/session/kick",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "session_list_api_admin_session_list_get",
+    "path": "/api/admin/session/list",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "ai_review_defaults_api_admin_setting_ai_review_defaults_get",
+    "path": "/api/admin/setting/ai-review/defaults",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "generate_review_prompt_api_admin_setting_ai_review_generate_post",
+    "path": "/api/admin/setting/ai-review/generate",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "ai_provider_defaults_api_admin_setting_ai_provider_defaults_get",
+    "path": "/api/admin/setting/ai/provider-defaults",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "ai_test_connection_api_admin_setting_ai_test_post",
+    "path": "/api/admin/setting/ai/test",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "get_settings_api_admin_setting_get_get",
+    "path": "/api/admin/setting/get",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "set_settings_api_admin_setting_set_post",
+    "path": "/api/admin/setting/set",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "get_site_info_api_admin_setting_site_get",
+    "path": "/api/admin/setting/site",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "queue_status_api_admin_task_monitor_queue_get",
+    "path": "/api/admin/task_monitor/queue",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "list_tasks_api_admin_task_monitor_tasks_get",
+    "path": "/api/admin/task_monitor/tasks",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "trigger_api_admin_task_monitor_trigger_post",
+    "path": "/api/admin/task_monitor/trigger",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "trash_list_api_admin_trash_list_get",
+    "path": "/api/admin/trash/list",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "trash_modules_api_admin_trash_modules_get",
+    "path": "/api/admin/trash/modules",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "trash_purge_api_admin_trash_purge_post",
+    "path": "/api/admin/trash/purge",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "trash_restore_api_admin_trash_restore_post",
+    "path": "/api/admin/trash/restore",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "assign_roles_api_admin_user_assignRoles_post",
+    "path": "/api/admin/user/assignRoles",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "get_captcha_api_admin_user_captcha_get",
+    "path": "/api/admin/user/captcha",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "change_password_api_admin_user_changePassword_post",
+    "path": "/api/admin/user/changePassword",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "do_delete_api_admin_user_doDelete_post",
+    "path": "/api/admin/user/doDelete",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-user"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_edit_api_admin_user_doEdit_post",
+    "path": "/api/admin/user/doEdit",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-user"
+    ]
+  },
+  {
+    "method": "POST",
+    "operationId": "do_export_api_admin_user_doExport_post",
+    "path": "/api/admin/user/doExport",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-user"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_detail_api_admin_user_getDetail_get",
+    "path": "/api/admin/user/getDetail",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_dict_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-user"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "get_list_api_admin_user_getList_get",
+    "path": "/api/admin/user/getList",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiResponse_ListData_"
+            }
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": [
+      "admin-user"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "user_info_api_admin_user_info_get",
+    "path": "/api/admin/user/info",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "login_api_admin_user_login_post",
+    "path": "/api/admin/user/login",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "logout_api_admin_user_logout_post",
+    "path": "/api/admin/user/logout",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "user_menus_api_admin_user_menus_get",
+    "path": "/api/admin/user/menus",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "refresh_token_api_admin_user_refreshToken_post",
+    "path": "/api/admin/user/refreshToken",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "user_role_ids_api_admin_user_roleIds_get",
+    "path": "/api/admin/user/roleIds",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "update_profile_api_admin_user_updateProfile_post",
+    "path": "/api/admin/user/updateProfile",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "message_list_api_client_message_list_get",
+    "path": "/api/client/message/list",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "message_read_api_client_message_read_post",
+    "path": "/api/client/message/read",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "message_read_all_api_client_message_readAll_post",
+    "path": "/api/client/message/readAll",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "message_unread_api_client_message_unread_get",
+    "path": "/api/client/message/unread",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "user_info_api_client_user_info_get",
+    "path": "/api/client/user/info",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "login_api_client_user_login_post",
+    "path": "/api/client/user/login",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "logout_api_client_user_logout_post",
+    "path": "/api/client/user/logout",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "refresh_token_api_client_user_refreshToken_post",
+    "path": "/api/client/user/refreshToken",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "POST",
+    "operationId": "register_api_client_user_register_post",
+    "path": "/api/client/user/register",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "get_items_api_dict_items_get",
+    "path": "/api/dict/items",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": [
+      "dict-public"
+    ]
+  },
+  {
+    "method": "GET",
+    "operationId": "proxy_private_file_api_file__file_id__get",
+    "path": "/api/file/{file_id}",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "health_health_get",
+    "path": "/health",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "health_live_health_live_get",
+    "path": "/health/live",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "health_ready_health_ready_get",
+    "path": "/health/ready",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "robots_robots_txt_get",
+    "path": "/robots.txt",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "sitemap_chunk_sitemap__n__xml_get",
+    "path": "/sitemap-{n}.xml",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "sitemap_index_sitemap_xml_get",
+    "path": "/sitemap.xml",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      }
+    },
+    "tags": []
+  },
+  {
+    "method": "GET",
+    "operationId": "indexnow_key_file__name__get",
+    "path": "/{name}",
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        },
+        "description": "Successful Response"
+      },
+      "422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        },
+        "description": "Validation Error"
+      }
+    },
+    "tags": []
+  }
+]
