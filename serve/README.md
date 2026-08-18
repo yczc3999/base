@@ -205,17 +205,18 @@ serve/
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. 配置
-cp .env.example .env
-# 编辑 .env：数据库 + Redis + APP_NAME
+# 2. 仅在 Base 仓库本机建立专属数据库（固定 base_platform_app@base_platform）
+cd ..
+export BASE_PLATFORM_DB_PASSWORD="$(openssl rand -base64 36)"
+scripts/provision-base-database.sh
+cd serve
 
-# 3. 建表
-# 执行 databases/migrations/ 下的 SQL
+# 下游 Fork/Clone 不执行上述脚本：必须在下游 .env 配置项目专属库/角色。
 
-# 4. 启动 API
+# 3. 启动 API
 uvicorn app.main:app --host 0.0.0.0 --port 3000
 
-# 5. 启动 Worker（队列 + 定时任务）
+# 4. 启动 Worker（队列 + 定时任务）
 python -m app.worker
 
 # API 文档：http://localhost:3000/docs（APP_DEBUG=true）
@@ -233,3 +234,4 @@ python -m app.worker
 | [docs/file-system-design.md](docs/file-system-design.md) | 文件系统设计 |
 | [docs/queue-task-design.md](docs/queue-task-design.md) | 队列 & 定时任务设计 |
 | [docs/route-registry-design.md](docs/route-registry-design.md) | 集中式路由注册表设计、实施与审计记录 |
+| [docs/database-boundary.md](docs/database-boundary.md) | Base 唯一数据库身份、ACL 与下游隔离合同 |

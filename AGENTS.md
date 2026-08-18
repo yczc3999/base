@@ -64,6 +64,9 @@ duplication.
 ## Repository boundaries
 
 - Keep the backend and frontend product-agnostic.
+- This Base checkout uses only `base_platform_app@base_platform`; the password
+  exists only in ignored `serve/.env`. Downstream projects must use their own
+  database and role and must never connect to, migrate, or test this database.
 - Keep secrets server-side and out of source, fixtures, logs, and generic settings.
 - Keep migrations transactional, preconditioned, and reversible.
 - Keep authorization on the server; hiding a frontend control is not authorization.
@@ -79,6 +82,7 @@ cd serve && alembic upgrade head
 cd serve && .venv/bin/python -m app.routes check
 cd admin && npm ci && npm run lint && npm run build
 python3 scripts/check-base-release.py
+python3 scripts/check-database-boundary.py
 git diff --check
 ```
 

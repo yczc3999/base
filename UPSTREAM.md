@@ -64,6 +64,14 @@ cd .. && git diff --check
 git push project <PROJECT_BRANCH>
 ```
 
+### 数据库隔离前置检查
+
+Base 仓库本机保留的 `base_platform_app@base_platform` 不随代码同步给下游使用。
+每个下游必须在自己的 secret 配置中设置项目专属 `DATABASE_NAME`、
+`DATABASE_USER`、`DATABASE_PASSWORD`，并确认其值均不是 `base_platform`、
+`base_platform_app`。下游严禁运行 `scripts/provision-base-database.sh`，因为该脚本
+只服务于 Base 仓库自身的固定数据库身份。
+
 ## 5. 迁移与冲突
 
 - 先读目标版本的 `CHANGELOG.md`，再执行任何数据库迁移。
@@ -77,8 +85,8 @@ git push project <PROJECT_BRANCH>
 每个下游项目应在自己的仓库记录：
 
 ```text
-BASE_UPSTREAM_VERSION=2.0.0
-BASE_UPSTREAM_TAG=base/v2.0.0
+BASE_UPSTREAM_VERSION=3.0.0
+BASE_UPSTREAM_TAG=base/v3.0.0
 BASE_SYNCED_AT=YYYY-MM-DDTHH:MM:SSZ
 ```
 

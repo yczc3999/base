@@ -3,8 +3,7 @@
 --
 -- 数据库: PostgreSQL 14+
 -- 用法:
---   createdb base
---   psql -d base -f init.sql
+--   BASE_PLATFORM_DB_PASSWORD='<secret>' scripts/provision-base-database.sh
 --
 -- 包含: 11 张表 + 索引 + 初始管理员 + RBAC 菜单/角色
 -- 默认管理员: admin / admin123

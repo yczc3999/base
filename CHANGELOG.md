@@ -15,6 +15,63 @@
 
 暂无。
 
+## [3.0.0] - 2026-08-18
+
+### 变更范围
+
+- Base 仓库本机数据库身份统一为固定的
+  `base_platform_app@base_platform`；`app.config`、`.env.example`、运行时、
+  SQL migration、Alembic 和健康检查不再使用共享 `base_user@base`。
+- 新增 `scripts/provision-base-database.sh`：只允许创建/维护上述固定身份，强制
+  `PUBLIC` 无 database CONNECT/schema 权限，专属角色无 superuser/createdb/
+  createrole/replication/bypassrls 且不得授予其他普通角色。
+- 新增 `scripts/check-database-boundary.py` 与测试，并接入发布门禁；默认配置、
+  示例配置、建库脚本和数据库边界文档发生漂移时发布直接失败。
+- 新增迁移 `028_1_normalize_legacy_menu_seeds.sql`，在新装库执行 029 菜单卫生
+  迁移前，事务化清理 SEO/settings 的已知旧种子 ID，解决唯一 slug 冲突。
+- 新增 `serve/docs/database-boundary.md`；AGENTS、CLAUDE、README、后端文档、
+  UPSTREAM 和问题账本同步记录同一边界。
+
+### 兼容性（MAJOR）
+
+- 未显式配置数据库的运行环境，其默认目标由 `base_user@base` 改为
+  `base_platform_app@base_platform`，属于运行配置不兼容变更，因此发布 MAJOR。
+- 已正确使用项目专属 `DATABASE_*` 的下游运行时不受默认值变化影响。
+- 下游不得使用 Base 专属 database/role，也不得运行 Base 本机 provision 脚本。
+
+### 迁移
+
+- Base 仓库本机：
+  ```bash
+  export BASE_PLATFORM_DB_PASSWORD="$(openssl rand -base64 36)"
+  scripts/provision-base-database.sh
+  python3 scripts/check-database-boundary.py
+  ```
+- 下游：同步前确认 `.env` 指向下游项目专属 database/role，再在该专属库执行
+  `cd serve && .venv/bin/python -m app.migrate && .venv/bin/alembic upgrade head`。
+- 新迁移只删除精确匹配旧 Base 种子的菜单 ID/slug 组合及其权限子项；使用事务，
+  不匹配的下游菜单不受影响。
+
+### 下游同步
+
+- 推荐源版本：`base/v3.0.0`。
+- 冲突热点：`serve/app/config.py`、`serve/.env.example`、
+  `serve/databases/migrations/`、`scripts/check-base-release.py`、`UPSTREAM.md`。
+- 同步后验证：
+  ```bash
+  python3 scripts/check-base-release.py
+  cd serve && pytest
+  cd ../admin && npm run lint && npm run build
+  cd .. && git diff --check
+  ```
+
+### 回滚
+
+- 应用代码可回滚到同步前提交，但不得把下游切到 Base 的 `base_platform`。
+- 迁移回滚时从下游自己的备份恢复被清理的已知旧菜单种子；Base 的数据库身份和
+  ACL 不回退到共享账户。
+- 已发布 Base tag 不移动；修正通过新的 SemVer 发布。
+
 ## [2.0.0] - 2026-08-17
 
 ### 变更范围

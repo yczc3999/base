@@ -62,6 +62,13 @@ Use existing factories, declarative CRUD, allowlists, hooks, and shared services
 Keep authorization server-side, persistence constraints explicit, and migrations
 reversible. Product-specific code does not belong in any Base layer.
 
+### 数据库唯一边界
+
+本 Base checkout 只使用 `base_platform_app@base_platform`。权威合同为
+`serve/docs/database-boundary.md`，静态门禁为
+`scripts/check-database-boundary.py`。下游 Fork/Clone 必须使用自己的专属
+database/role，严禁连接或迁移 Base 的 `base_platform`。
+
 ### 路由专项验证
 
 ```bash
@@ -82,6 +89,7 @@ cd serve && pytest
 cd serve && alembic upgrade head
 cd admin && npm run lint && npm run build
 python3 scripts/check-base-release.py
+python3 scripts/check-database-boundary.py
 git diff --check
 ```
 

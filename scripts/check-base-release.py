@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,7 +59,18 @@ def main() -> int:
     if tag not in upstream:
         fail(f"UPSTREAM.md does not document the current release tag {tag}")
 
+    boundary = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check-database-boundary.py")],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if boundary.returncode:
+        fail(boundary.stderr.strip() or "database boundary check failed")
+
     print(f"Base release metadata OK: v{version}")
+    print(boundary.stdout.strip())
     print(f"Expected immutable tag: {tag}")
     return 0
 

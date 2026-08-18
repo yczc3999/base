@@ -184,16 +184,16 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 - 后端全量：`289 passed in 2.98s`。
 - 前端：`npm run lint` 0 errors（2 个既有 `v-html` warning）；`npm run build` PASS。
 - 发布元数据：`scripts/check-base-release.py` PASS（v2.0.0）；`git diff --check` PASS。
-- 数据库账户已确认并修复：应用实际使用 `base_user@base`；本地 `.env` 已同步有效凭据，异步 SQLAlchemy 连接成功，重载后的 `/health/ready` 返回 `{"status":"ready"}`。
-- Alembic：密码问题解决后发现 `base` 库记录的是下游产品 revision `b1000077`，而 Base 仓库唯一 head 为 `cdabba1e3903`；该库含 133 张表及大量产品表，不得直接 `stamp` 覆盖版本。
+- v2.0.0 验收时曾确认旧运行配置指向 `base_user@base`；v3.0.0 已将该临时共享身份彻底替换为 `base_platform_app@base_platform`，见本账本“Base 数据库唯一身份”条目。
+- Alembic：只读检查发现旧 `base` 库记录的是其他项目 revision `b1000077`，而 Base 仓库唯一 head 为 `cdabba1e3903`；未对旧 `base` 执行 `stamp`、迁移、DDL 或数据写入。
 - Alembic 离线静态生成验证：`cd serve && .venv/bin/alembic upgrade head --sql` 成功生成唯一 head `cdabba1e3903` 的 baseline SQL（仅建 alembic_version + 插入版本号），与共享 `base` 库的 `b1000077` 无关，证明 Base 迁移链可从空库独立落到 head。
-- Alembic 独立库：以 PostgreSQL 管理权限创建 `base_verify`（owner=`base_user`），由 `base_user` 执行 `databases/init.sql` 后运行 `DATABASE_NAME=base_verify .venv/bin/alembic upgrade head`；`alembic current` 输出 `cdabba1e3903 (head)`，12 张表/序列对象均无非 `base_user` owner。
+- v2.0.0 的临时 `base_verify` 只用于一次性 Alembic 验收；v3.0.0 专属库通过后已删除，不再作为运行、测试或迁移目标。
 - 发布：本完成提交绑定 immutable tag `base/v2.0.0`。
 
 ### 阻塞项、非目标与风险/回滚
 
 - **当前阻塞**：无。
-- 独立验证使用 `DATABASE_NAME=base_verify`，因为 `alembic/env.py` 从 `app.config` 的分项 `DATABASE_*` 设置构建连接串；不使用未定义的 `DATABASE_URL` 覆盖。
+- 当前所有 Base 数据库验证只使用 `base_platform_app@base_platform`；下游项目必须使用自己的分项 `DATABASE_*`，不得覆盖回 Base 专属身份。
 - 非目标：不改 REST/RPC 风格、不改业务 Handler、不同时重构前端 Router、不添加产品路由。
 - 主要风险是漏路由、鉴权/权限漂移、fallback 遮蔽和 OpenAPI 变更；必须以 159 条 snapshot、policy catalog 和切换前提交/Tag 控制。
 - 回滚必须整体撤销 Registry 入口切换，不保留半切换状态；无 DB migration。
@@ -201,3 +201,59 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 ### 最后更新
 
 2026-08-18T02:36:27-04:00
+
+---
+
+## ✅ [已完成 2026-08-18] Base 数据库唯一身份、ACL 与下游隔离
+
+### 目标与用户价值
+
+消除 Base 运行时与其他项目共享 database/role 的歧义：明确一个唯一数据库，
+让运行、迁移、验收和账本指向同一身份，并从 PostgreSQL 权限层阻止普通项目角色
+访问，避免误迁移、误清理或跨项目数据污染。
+
+### 已确认决定
+
+- Base 唯一身份固定为 `base_platform_app@base_platform`，不提供名称覆盖入口。
+- 密码只保存在 Git 忽略、`0600` 的 `serve/.env`，不进入源码、示例、日志或通用 settings。
+- `PUBLIC` 无 database CONNECT/schema 权限；专属角色无管理特权且不得授予其他普通角色。
+- 下游 Fork/Clone 必须使用项目专属 database/role，严禁连接、迁移、备份、清理或测试 `base_platform`。
+- 旧 `base` 库不属于本次变更范围；只读识别后未执行任何写操作。临时 `base_verify` 在专属库验收完成后删除。
+
+### 精确文件与依赖
+
+- 默认身份：`serve/app/config.py::{BASE_DATABASE_NAME,BASE_DATABASE_USER,Settings}`
+- 示例配置：`serve/.env.example`
+- 建库/ACL/初始化：`scripts/provision-base-database.sh`
+- 静态门禁：`scripts/check-database-boundary.py`，并由 `scripts/check-base-release.py` 调用
+- 数据库合同：`serve/docs/database-boundary.md`
+- 新装迁移兼容：`serve/databases/migrations/028_1_normalize_legacy_menu_seeds.sql`
+- 测试：`serve/tests/test_database_boundary.py`
+- 账本：`AGENTS.md`、`CLAUDE.md`、`README.md`、`serve/README.md`、
+  `CHANGELOG.md`、`UPSTREAM.md`、`tofix.md`
+
+### 当前状态与验收证据
+
+- PostgreSQL：database owner=`base_platform_app`；ACL=`base_platform_app=CTc/...`，无 PUBLIC 项。
+- Role：`NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOREPLICATION/NOBYPASSRLS`；无成员关系。
+- 普通登录角色 CONNECT 矩阵：只有 `base_platform_app=true`，其余全部 false。
+- 完整 schema：20 张 public table（18 张模型表 + `schema_migrations` + `alembic_version`）。
+- SQL 迁移账本：29/29；Alembic：`cdabba1e3903 (head)`。
+- 本地运行时 `.env` 已切换且权限 `0600`；`/health/ready` 返回 `{"status":"ready"}`。
+- 建库脚本在同一库连续执行两次：第二次 SQL migration applied=0，schema/ACL
+  仍为 29/29，证明幂等且不会重新初始化数据。
+- 工程验证：后端 `291 passed`；路由检查 `159 http routes, 1 mounts`；前端
+  lint 0 errors（2 个既有 warning）/build PASS；release/boundary check 与
+  `git diff --check` PASS。
+- 发布目标：`base/v3.0.0`。
+
+### 阻塞项、非目标与风险/回滚
+
+- 当前阻塞：无。
+- 非目标：不读取、不迁移、不删除旧 `base` 或任何下游数据库；不把 Base 专属凭据交给下游。
+- PostgreSQL superuser 始终保留管理能力；它不是应用/项目角色，普通角色隔离由 ACL 强制。
+- 回滚代码不回滚数据库隔离；数据恢复只使用 `base_platform` 的专属备份。
+
+### 最后更新
+
+2026-08-18T03:03:00-04:00

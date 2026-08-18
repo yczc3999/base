@@ -853,5 +853,5 @@ git diff --check
 - Registry Catalog：160 entries，operationId 无空值，来源全部指向 `app/routes/` Manifest。
 - 当前 App OpenAPI 与冻结 fixture：159 operations / 159 paths 零差异。
 - 路由专项 77 passed；后端全量 289 passed；前端 lint 0 errors / build PASS。
-- 独立 PostgreSQL 验证库 `base_verify` 由 `base_user` 持有，执行 Base `init.sql` 后 Alembic 到达 `cdabba1e3903 (head)`；共享产品库未被 stamp 或改写。
+- v2.0.0 当次 Alembic 验收曾使用临时 `base_verify`，且未对旧共享库执行 stamp 或改写；v3.0.0 已删除临时库并统一到受 ACL 隔离的 `base_platform_app@base_platform`（见 `database-boundary.md`）。
 - release metadata 与 `git diff --check` 通过；发布提交绑定 immutable tag `base/v2.0.0`。

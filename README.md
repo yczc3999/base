@@ -8,6 +8,13 @@
 
 具体项目的业务模型、业务接口、品牌、页面、第三方业务接入、提示词、数据、迁移、测试 fixture 和部署配置，都必须放在 fork/clone 后的项目仓库中。
 
+## 数据库边界
+
+本 Base checkout 的唯一 PostgreSQL 身份是
+`base_platform_app@base_platform`，并通过数据库 ACL 隔离。任何下游项目都必须
+使用自己的专属 database/role，严禁连接、迁移、清理或测试 `base_platform`。
+完整合同见 `serve/docs/database-boundary.md`。
+
 ## 目录
 
 - `serve/`：FastAPI + PostgreSQL + Redis 通用后端基础设施。

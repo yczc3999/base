@@ -1,6 +1,9 @@
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 
+BASE_DATABASE_NAME = "base_platform"
+BASE_DATABASE_USER = "base_platform_app"
+
 
 class Settings(BaseSettings):
     # 应用
@@ -14,8 +17,8 @@ class Settings(BaseSettings):
     # PostgreSQL
     DATABASE_HOST: str = "localhost"
     DATABASE_PORT: int = 5432
-    DATABASE_NAME: str = "base"
-    DATABASE_USER: str = "base_user"
+    DATABASE_NAME: str = BASE_DATABASE_NAME
+    DATABASE_USER: str = BASE_DATABASE_USER
     DATABASE_PASSWORD: str = ""
     DATABASE_SCHEMA: str = "public"
     DATABASE_POOL_SIZE: int = 20
