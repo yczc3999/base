@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "project_id": "fixture_alpha_current",
+      "repository": "fixture-owner/fixture-alpha",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_bravo_one_release",
+      "repository": "fixture-owner/fixture-bravo",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_charlie_multi_release",
+      "repository": "fixture-owner/fixture-charlie",
+      "default_branch": "trunk",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_delta_missing_ledger",
+      "repository": "fixture-owner/fixture-delta",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_echo_invalid_version",
+      "repository": "fixture-owner/fixture-echo",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_foxtrot_disabled",
+      "repository": "fixture-owner/fixture-foxtrot",
+      "default_branch": "main",
+      "enabled": false,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_golf_preview",
+      "repository": "fixture-owner/fixture-golf",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "preview",
+      "provider": "github"
+    }
+  ]
+}

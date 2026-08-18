@@ -1,0 +1,331 @@
+name: Base upgrade receiver
+
+run-name: Base upgrade ${{ inputs.campaign_id }} to v${{ inputs.target_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: Stable downstream project identifier
+        required: true
+        type: string
+      target_version:
+        description: Canonical Base release version (X.Y.Z)
+        required: true
+        type: string
+      campaign_id:
+        description: Stable identifier for this campaign run
+        required: true
+        type: string
+      allow_major:
+        description: Explicitly permit a cross-major Base update
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: base-upgrade-receiver-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  receive:
+    name: Receive Base upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository default branch
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        id: setup_python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        id: setup_node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Configure upgrade commit identity
+        id: configure_identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install receiver contract dependencies
+        id: install_contract
+        run: python3 -m pip install -r scripts/requirements.txt
+
+      - name: Run the bounded Base upgrade receiver
+        id: receiver
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BASE_UPGRADE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_PROJECT_ID: ${{ inputs.project_id }}
+          INPUT_TARGET_VERSION: ${{ inputs.target_version }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
+          RESULT_FILE: ${{ runner.temp }}/base-upgrade-result.json
+          SUMMARY_FILE: ${{ runner.temp }}/base-upgrade-summary.md
+        run: |
+          scripts/run-base-upgrade.sh \
+            --project-id "$INPUT_PROJECT_ID" \
+            --target-version "$INPUT_TARGET_VERSION" \
+            --campaign-id "$INPUT_CAMPAIGN_ID" \
+            --allow-major "$INPUT_ALLOW_MAJOR" \
+            --result-file "$RESULT_FILE" \
+            --summary-file "$SUMMARY_FILE"
+
+      - name: Preserve a machine-readable prerequisite failure
+        if: always()
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          PYTHON_OUTCOME: ${{ steps.setup_python.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          IDENTITY_OUTCOME: ${{ steps.configure_identity.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install_contract.outcome }}
+          RECEIVER_OUTCOME: ${{ steps.receiver.outcome }}
+          GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+          INPUT_PROJECT_ID: ${{ inputs.project_id }}
+          INPUT_TARGET_VERSION: ${{ inputs.target_version }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
+          RESULT_FILE: ${{ runner.temp }}/base-upgrade-result.json
+          SUMMARY_FILE: ${{ runner.temp }}/base-upgrade-summary.md
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import tempfile
+          from pathlib import Path
+
+          result_path = Path(os.environ["RESULT_FILE"])
+          summary_path = Path(os.environ["SUMMARY_FILE"])
+          # A runner result is authoritative, including a failed result. Never
+          # replace it with less specific workflow-level evidence.
+          if result_path.is_file():
+              raise SystemExit(0)
+
+          identifier = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+          semver = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
+          project_id = os.environ["INPUT_PROJECT_ID"]
+          campaign_id = os.environ["INPUT_CAMPAIGN_ID"]
+          target_version = os.environ["INPUT_TARGET_VERSION"]
+          allow_major = os.environ["INPUT_ALLOW_MAJOR"].lower()
+          if (
+              identifier.fullmatch(project_id) is None
+              or identifier.fullmatch(campaign_id) is None
+              or len(target_version) > 64
+              or semver.fullmatch(target_version) is None
+              or allow_major not in {"true", "false"}
+          ):
+              print("workflow inputs are invalid; no fallback result can satisfy the result schema")
+              raise SystemExit(0)
+
+          outcomes = [
+              ("checkout", os.environ["CHECKOUT_OUTCOME"]),
+              ("setup_python", os.environ["PYTHON_OUTCOME"]),
+              ("setup_node", os.environ["NODE_OUTCOME"]),
+              ("commit_identity", os.environ["IDENTITY_OUTCOME"]),
+              ("dependency_install", os.environ["INSTALL_OUTCOME"]),
+              ("receiver", os.environ["RECEIVER_OUTCOME"]),
+          ]
+          failed_stage, outcome = next(
+              ((stage, value) for stage, value in outcomes if value != "success"),
+              ("receiver", "missing_result"),
+          )
+          repository = os.environ["GITHUB_REPOSITORY_VALUE"]
+          retry = (
+              "gh workflow run base-upgrade-receiver.yml "
+              f"--repo {repository} -f project_id={project_id} "
+              f"-f target_version={target_version} -f campaign_id={campaign_id} "
+              f"-f allow_major={allow_major}"
+          )
+          result = {
+              "campaign_id": campaign_id,
+              "project_id": project_id,
+              "source_version": None,
+              "target_version": target_version,
+              "status": "dispatch_failed",
+              "branch": None,
+              "pr_url": None,
+              "failed_stage": failed_stage,
+              "conflict_files": [],
+              "verification_summary": (
+                  "receiver prerequisite failed before a result was produced: "
+                  f"{failed_stage} ({outcome})"
+              ),
+              "retry_command": retry,
+              "rollback_command": (
+                  "no rollback required; no upgrade branch or pull request was published"
+              ),
+          }
+          result_path.parent.mkdir(parents=True, exist_ok=True)
+          summary_path.parent.mkdir(parents=True, exist_ok=True)
+          with tempfile.NamedTemporaryFile(
+              mode="w", encoding="utf-8", dir=result_path.parent,
+              prefix=f".{result_path.name}.", delete=False,
+          ) as handle:
+              json.dump(result, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+              result_tmp = Path(handle.name)
+          with tempfile.NamedTemporaryFile(
+              mode="w", encoding="utf-8", dir=summary_path.parent,
+              prefix=f".{summary_path.name}.", delete=False,
+          ) as handle:
+              handle.write(
+                  "## Base upgrade receiver\n\n"
+                  f"- Campaign: {campaign_id}\n"
+                  f"- Project: {project_id}\n"
+                  f"- Version: unknown to {target_version}\n"
+                  "- Status: dispatch_failed\n"
+                  f"- Failed stage: {failed_stage}\n"
+                  f"- Verification: {result['verification_summary']}\n"
+              )
+              summary_tmp = Path(handle.name)
+          os.replace(result_tmp, result_path)
+          os.replace(summary_tmp, summary_path)
+          PY
+
+      - name: Publish receiver summary
+        if: always()
+        env:
+          SUMMARY_FILE: ${{ runner.temp }}/base-upgrade-summary.md
+        run: |
+          if [[ -f "$SUMMARY_FILE" ]]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## Base upgrade receiver\n\nReceiver terminated before producing a summary.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the unique machine-readable result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: base-upgrade-result-${{ inputs.campaign_id }}
+          path: ${{ runner.temp }}/base-upgrade-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Apply the receiver result
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/base-upgrade-result.json
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          PYTHON_OUTCOME: ${{ steps.setup_python.outcome }}
+          NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          IDENTITY_OUTCOME: ${{ steps.configure_identity.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install_contract.outcome }}
+          RECEIVER_OUTCOME: ${{ steps.receiver.outcome }}
+          GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+          INPUT_PROJECT_ID: ${{ inputs.project_id }}
+          INPUT_TARGET_VERSION: ${{ inputs.target_version }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          path = Path(os.environ["RESULT_FILE"])
+          if not path.is_file():
+              raise SystemExit("receiver result is missing")
+          result = json.loads(path.read_text(encoding="utf-8"))
+          schema_path = Path("scripts/schemas/base-upgrade-result.schema.json")
+          try:
+              from jsonschema import Draft7Validator
+          except ImportError:
+              Draft7Validator = None
+          if Draft7Validator is not None and schema_path.is_file():
+              schema = json.loads(schema_path.read_text())
+              errors = sorted(
+                  Draft7Validator(schema).iter_errors(result),
+                  key=lambda error: list(error.path),
+              )
+              if errors:
+                  raise SystemExit(f"receiver result violates its schema: {errors[0].message}")
+          else:
+              # checkout/setup/pip can fail before the repository schema and
+              # jsonschema package are available. The fallback has one exact,
+              # embedded shape that remains independently verifiable.
+              identifier = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+              semver = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
+              project_id = os.environ["INPUT_PROJECT_ID"]
+              campaign_id = os.environ["INPUT_CAMPAIGN_ID"]
+              target_version = os.environ["INPUT_TARGET_VERSION"]
+              allow_major = os.environ["INPUT_ALLOW_MAJOR"].lower()
+              outcomes = [
+                  ("checkout", os.environ["CHECKOUT_OUTCOME"]),
+                  ("setup_python", os.environ["PYTHON_OUTCOME"]),
+                  ("setup_node", os.environ["NODE_OUTCOME"]),
+                  ("commit_identity", os.environ["IDENTITY_OUTCOME"]),
+                  ("dependency_install", os.environ["INSTALL_OUTCOME"]),
+                  ("receiver", os.environ["RECEIVER_OUTCOME"]),
+              ]
+              failed_stage, outcome = next(
+                  ((stage, value) for stage, value in outcomes if value != "success"),
+                  ("receiver", "missing_result"),
+              )
+              repository = os.environ["GITHUB_REPOSITORY_VALUE"]
+              expected_fallback = {
+                  "campaign_id": campaign_id,
+                  "project_id": project_id,
+                  "source_version": None,
+                  "target_version": target_version,
+                  "status": "dispatch_failed",
+                  "branch": None,
+                  "pr_url": None,
+                  "failed_stage": failed_stage,
+                  "conflict_files": [],
+                  "verification_summary": (
+                      "receiver prerequisite failed before a result was produced: "
+                      f"{failed_stage} ({outcome})"
+                  ),
+                  "retry_command": (
+                      "gh workflow run base-upgrade-receiver.yml "
+                      f"--repo {repository} -f project_id={project_id} "
+                      f"-f target_version={target_version} -f campaign_id={campaign_id} "
+                      f"-f allow_major={allow_major}"
+                  ),
+                  "rollback_command": (
+                      "no rollback required; no upgrade branch or pull request was published"
+                  ),
+              }
+              if (
+                  identifier.fullmatch(project_id) is None
+                  or identifier.fullmatch(campaign_id) is None
+                  or len(target_version) > 64
+                  or semver.fullmatch(target_version) is None
+                  or allow_major not in {"true", "false"}
+                  or result != expected_fallback
+              ):
+                  raise SystemExit("fallback receiver result violates its embedded contract")
+          expected = {
+              "project_id": os.environ["INPUT_PROJECT_ID"],
+              "target_version": os.environ["INPUT_TARGET_VERSION"],
+              "campaign_id": os.environ["INPUT_CAMPAIGN_ID"],
+          }
+          if any(result.get(key) != value for key, value in expected.items()):
+              raise SystemExit("receiver result identity does not match workflow inputs")
+          status = result.get("status")
+          if status not in {"pr_opened", "up_to_date"}:
+              raise SystemExit(f"Base upgrade receiver finished with status: {status}")
+          PY

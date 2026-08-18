@@ -1,0 +1,369 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://base-platform.local/schemas/base-upgrade-result.schema.json",
+  "title": "Base Upgrade Result",
+  "description": "Single-project result produced by a Base upgrade campaign. All keys are stable; fields that do not apply to a status are explicitly null. The schema rejects extra fields, secrets, and unknown statuses.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "campaign_id",
+    "project_id",
+    "source_version",
+    "target_version",
+    "status",
+    "branch",
+    "pr_url",
+    "failed_stage",
+    "conflict_files",
+    "verification_summary",
+    "retry_command",
+    "rollback_command"
+  ],
+  "properties": {
+    "campaign_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "source_version": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_version": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "dispatched",
+        "up_to_date",
+        "pr_opened",
+        "conflict",
+        "verification_failed",
+        "blocked",
+        "dispatch_failed"
+      ]
+    },
+    "branch": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9_-])?$",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "[\\r\\n]"
+              },
+              {
+                "pattern": "(?:^|/)\\."
+              },
+              {
+                "pattern": "\\.\\."
+              },
+              {
+                "pattern": "//"
+              },
+              {
+                "pattern": "@\\{"
+              },
+              {
+                "pattern": "\\.lock(?:/|$)"
+              }
+            ]
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pr_url": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^https://github\\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}/pull/[1-9][0-9]*$",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "/(?:\\.|\\.\\.)/pull/"
+              },
+              {
+                "pattern": "\\.[Gg][Ii][Tt]/pull/"
+              },
+              {
+                "pattern": "[\\r\\n]"
+              }
+            ]
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "failed_stage": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "conflict_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "pattern": "\\S",
+        "not": {
+          "anyOf": [
+            {
+              "pattern": "[\\u0000-\\u001F\\u007F-\\u009F\\\\]"
+            },
+            {
+              "pattern": "^/"
+            },
+            {
+              "pattern": "^[A-Za-z]:/"
+            },
+            {
+              "pattern": "(?:^|/)(?:\\.|\\.\\.)(?:/|$)"
+            },
+            {
+              "pattern": "//|/$"
+            }
+          ]
+        }
+      }
+    },
+    "verification_summary": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "\\S",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "[\\r\\n]"
+              },
+              {
+                "pattern": "[A-Za-z][A-Za-z0-9+.-]*://[^\\s/?#]*@[^\\s/?#]+"
+              }
+            ]
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retry_command": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "\\S",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "[\\r\\n]"
+          },
+          {
+            "pattern": "[A-Za-z][A-Za-z0-9+.-]*://[^\\s/?#]*@[^\\s/?#]+"
+          }
+        ]
+      }
+    },
+    "rollback_command": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "\\S",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "[\\r\\n]"
+          },
+          {
+            "pattern": "[A-Za-z][A-Za-z0-9+.-]*://[^\\s/?#]*@[^\\s/?#]+"
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pr_opened"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "branch": {
+            "type": "string",
+            "pattern": "^chore/base-v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+          },
+          "pr_url": {
+            "type": "string",
+            "pattern": "^https://github\\.com/"
+          },
+          "failed_stage": {
+            "type": "null"
+          },
+          "conflict_files": {
+            "maxItems": 0
+          },
+          "verification_summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "conflict"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "branch": {
+            "type": "null"
+          },
+          "pr_url": {
+            "type": "null"
+          },
+          "failed_stage": {
+            "const": "merge"
+          },
+          "conflict_files": {
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "planned",
+              "dispatched",
+              "up_to_date"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "branch": {
+            "type": "null"
+          },
+          "pr_url": {
+            "type": "null"
+          },
+          "failed_stage": {
+            "type": "null"
+          },
+          "conflict_files": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "verification_failed",
+              "blocked",
+              "dispatch_failed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "branch": {
+            "type": "null"
+          },
+          "pr_url": {
+            "type": "null"
+          },
+          "failed_stage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "conflict_files": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

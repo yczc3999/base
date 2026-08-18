@@ -1,0 +1,14 @@
+{
+  "campaign_id": "campaign-2026-08-18-001",
+  "project_id": "fixture_project_alpha",
+  "source_version": "3.1.0",
+  "target_version": "3.2.0",
+  "status": "pr_opened",
+  "branch": "chore/base-v3.2.0",
+  "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+  "failed_stage": null,
+  "conflict_files": [],
+  "verification_summary": "pytest PASS, lint PASS, build PASS",
+  "retry_command": "gh workflow run base-upgrade-receiver.yml --repo fixture-owner/fixture-repo-alpha -f target_version=3.2.0 -f campaign_id=campaign-2026-08-18-001 -f allow_major=false",
+  "rollback_command": "gh pr close 1 --repo fixture-owner/fixture-repo-alpha --delete-branch"
+}

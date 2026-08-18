@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "project_id": "fixture_project_alpha",
+      "repository": "fixture-owner/fixture-repo-alpha",
+      "default_branch": "main",
+      "enabled": true,
+      "channel": "stable",
+      "provider": "github"
+    },
+    {
+      "project_id": "fixture_project_beta",
+      "repository": "fixture-owner/fixture-repo-beta",
+      "default_branch": "develop",
+      "enabled": false,
+      "channel": "stable",
+      "provider": "github"
+    }
+  ]
+}

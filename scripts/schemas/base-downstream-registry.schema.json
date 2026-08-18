@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://base-platform.local/schemas/base-downstream-registry.schema.json",
+  "title": "Base Downstream Registry",
+  "description": "Declarative registry of downstream projects that may receive Base upgrade campaigns. The schema intentionally rejects extra fields, credentials, repository URLs, and version overrides; the authoritative current Base version must be discovered from each downstream PROJECT.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projects"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "projects": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "repository",
+          "default_branch",
+          "enabled",
+          "channel",
+          "provider"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "repository": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 140,
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$",
+            "not": {
+              "anyOf": [
+                {
+                  "pattern": "://"
+                },
+                {
+                  "pattern": "@"
+                },
+                {
+                  "pattern": "\\.[Gg][Ii][Tt]$"
+                },
+                {
+                  "pattern": "^git@"
+                },
+                {
+                  "pattern": "/$"
+                },
+                {
+                  "pattern": "/(?:\\.|\\.\\.)$"
+                },
+                {
+                  "pattern": "[\\r\\n]"
+                }
+              ]
+            }
+          },
+          "default_branch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9_-])?$",
+            "not": {
+              "anyOf": [
+                {
+                  "pattern": "[\\r\\n]"
+                },
+                {
+                  "pattern": "(?:^|/)\\."
+                },
+                {
+                  "pattern": "\\.\\."
+                },
+                {
+                  "pattern": "//"
+                },
+                {
+                  "pattern": "@\\{"
+                },
+                {
+                  "pattern": "\\.lock(?:/|$)"
+                }
+              ]
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "channel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "github"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

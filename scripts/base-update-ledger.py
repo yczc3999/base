@@ -4,39 +4,137 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
+
+from lib.base_release import (
+    BaseReleaseError,
+    SEMVER,
+    load_manifests as _load_manifests,
+    parse_project,
+    parse_project_text,
+    select_manifests,
+    validate_manifest,
+    version_tuple,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASES = ROOT / "releases"
-SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-REQUIRED_LISTS = (
-    "nodes",
-    "compatibility",
-    "migrations",
-    "downstream_actions",
-    "conflict_hotspots",
-    "verify",
-    "rollback",
+LedgerError = BaseReleaseError
+
+GITHUB_REPOSITORY = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$"
 )
-NODE_KINDS = {"added", "changed", "fixed", "removed", "security"}
 
 
-class LedgerError(RuntimeError):
-    pass
+def validate_upstream_repository(value: str) -> str:
+    """Validate the credential-free GitHub OWNER/REPO ledger identity."""
+
+    if (
+        not GITHUB_REPOSITORY.fullmatch(value)
+        or value.lower().endswith(".git")
+        or value.endswith("/.")
+        or value.endswith("/..")
+    ):
+        raise LedgerError(
+            "Base upstream repository must be canonical GitHub OWNER/REPO "
+            "without credentials, nested paths, or a .git suffix"
+        )
+    return value
 
 
-def version_tuple(value: str) -> tuple[int, int, int]:
-    match = SEMVER.fullmatch(value)
-    if not match:
-        raise LedgerError(f"invalid stable SemVer: {value!r}")
-    return tuple(int(part) for part in match.groups())
+def normalize_github_remote(value: str) -> str:
+    """Normalize a trusted github.com fetch URL to its public OWNER/REPO identity."""
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or "\n" in value
+        or "\r" in value
+    ):
+        raise LedgerError("upstream remote must be a one-line github.com URL")
+
+    path: str
+    scp_match = re.match(r"^git@github\.com:(.+)$", value, flags=re.IGNORECASE)
+    if scp_match:
+        path = scp_match.group(1)
+    else:
+        try:
+            parsed = urlsplit(value)
+            hostname = parsed.hostname
+            port = parsed.port
+        except ValueError as exc:
+            raise LedgerError("upstream remote is not a valid github.com URL") from exc
+        if parsed.scheme not in {"https", "ssh", "git"}:
+            raise LedgerError("upstream remote must use https, ssh, or git on github.com")
+        if hostname is None or hostname.casefold() != "github.com":
+            raise LedgerError("upstream remote must be hosted on github.com")
+        if parsed.password is not None:
+            raise LedgerError("upstream remote must not contain credentials")
+        if parsed.scheme in {"https", "git"} and parsed.username is not None:
+            raise LedgerError("upstream remote must not contain credentials")
+        if parsed.scheme == "ssh" and parsed.username not in {None, "git"}:
+            raise LedgerError("GitHub SSH upstream remote user must be git")
+        if port is not None:
+            raise LedgerError("upstream remote must use the standard github.com endpoint")
+        if parsed.query or parsed.fragment:
+            raise LedgerError("upstream remote must not contain query or fragment data")
+        path = parsed.path.removeprefix("/")
+
+    if path.lower().endswith(".git"):
+        path = path[:-4]
+    return validate_upstream_repository(path)
+
+
+def project_upstream_repository(values: dict[str, str]) -> str | None:
+    value = values.get("BASE_UPSTREAM_REPOSITORY")
+    return validate_upstream_repository(value) if value is not None else None
+
+
+def repository_for_project(path: Path) -> Path | None:
+    """Return the containing Git worktree, preserving legacy non-Git fixture use."""
+
+    lexical_path = path.absolute()
+    result = subprocess.run(
+        ["git", "-C", str(lexical_path.parent), "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        return None
+    repository = Path(result.stdout.strip()).resolve()
+    try:
+        path.resolve().relative_to(repository)
+    except ValueError:
+        raise LedgerError("PROJECT.md must remain inside its containing Git worktree")
+    return repository
+
+
+def discover_project_upstream_repository(path: Path) -> str | None:
+    """Backfill a legacy ledger from its repository's trusted upstream remote."""
+
+    repository = repository_for_project(path)
+    if repository is None:
+        return None
+    result = subprocess.run(
+        ["git", "-C", str(repository), "remote", "get-url", "upstream"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode or not result.stdout.strip():
+        raise LedgerError(
+            "PROJECT.md has no BASE_UPSTREAM_REPOSITORY and its Git repository "
+            "has no trusted upstream remote"
+        )
+    return normalize_github_remote(result.stdout.rstrip("\n"))
 
 
 def git(*args: str, check: bool = True) -> str:
@@ -52,84 +150,8 @@ def git(*args: str, check: bool = True) -> str:
     return result.stdout.strip()
 
 
-def _manifest_paths(ref: str | None) -> list[str]:
-    if ref:
-        output = git("ls-tree", "-r", "--name-only", ref, "releases")
-        return sorted(
-            line for line in output.splitlines()
-            if re.fullmatch(r"releases/base-v\d+\.\d+\.\d+\.json", line)
-        )
-    return [str(path.relative_to(ROOT)) for path in sorted(RELEASES.glob("base-v*.json"))]
-
-
-def _read_manifest(path: str, ref: str | None) -> dict[str, Any]:
-    raw = git("show", f"{ref}:{path}") if ref else (ROOT / path).read_text(encoding="utf-8")
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise LedgerError(f"invalid JSON in {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise LedgerError(f"{path} must contain an object")
-    return value
-
-
-def validate_manifest(manifest: dict[str, Any], path: str) -> None:
-    version = manifest.get("version")
-    if not isinstance(version, str):
-        raise LedgerError(f"{path}: version is required")
-    version_tuple(version)
-    expected_name = f"releases/base-v{version}.json"
-    if path != expected_name:
-        raise LedgerError(f"{path}: expected filename {expected_name}")
-    if manifest.get("schema_version") != 1:
-        raise LedgerError(f"{path}: schema_version must be 1")
-    if manifest.get("tag") != f"base/v{version}":
-        raise LedgerError(f"{path}: tag does not match version")
-    if manifest.get("semver") not in {"MAJOR", "MINOR", "PATCH"}:
-        raise LedgerError(f"{path}: semver must be MAJOR/MINOR/PATCH")
-    for field in ("released_at", "summary"):
-        if not isinstance(manifest.get(field), str) or not manifest[field].strip():
-            raise LedgerError(f"{path}: {field} must be a non-empty string")
-    for field in REQUIRED_LISTS:
-        if not isinstance(manifest.get(field), list):
-            raise LedgerError(f"{path}: {field} must be a list")
-    if not manifest["nodes"]:
-        raise LedgerError(f"{path}: at least one update node is required")
-    node_ids: set[str] = set()
-    for node in manifest["nodes"]:
-        if not isinstance(node, dict):
-            raise LedgerError(f"{path}: every node must be an object")
-        node_id = node.get("id")
-        if not isinstance(node_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]+", node_id):
-            raise LedgerError(f"{path}: invalid node id {node_id!r}")
-        if node_id in node_ids:
-            raise LedgerError(f"{path}: duplicate node id {node_id}")
-        node_ids.add(node_id)
-        if node.get("kind") not in NODE_KINDS:
-            raise LedgerError(f"{path}: node {node_id} has invalid kind")
-        for field in ("scope", "summary"):
-            if not isinstance(node.get(field), str) or not node[field].strip():
-                raise LedgerError(f"{path}: node {node_id} requires {field}")
-        files = node.get("files")
-        if not isinstance(files, list) or not files or not all(isinstance(item, str) for item in files):
-            raise LedgerError(f"{path}: node {node_id} requires files")
-    for field in REQUIRED_LISTS[1:]:
-        if not all(isinstance(item, str) and item.strip() for item in manifest[field]):
-            raise LedgerError(f"{path}: {field} entries must be non-empty strings")
-
-
 def load_manifests(ref: str | None = None) -> dict[str, dict[str, Any]]:
-    manifests: dict[str, dict[str, Any]] = {}
-    for path in _manifest_paths(ref):
-        manifest = _read_manifest(path, ref)
-        validate_manifest(manifest, path)
-        version = manifest["version"]
-        if version in manifests:
-            raise LedgerError(f"duplicate release manifest for {version}")
-        manifests[version] = manifest
-    if not manifests:
-        raise LedgerError("no Base release manifests found")
-    return manifests
+    return _load_manifests(ROOT, ref)
 
 
 def selected_manifests(
@@ -138,22 +160,7 @@ def selected_manifests(
     to_version: str,
     initial: bool = False,
 ) -> list[dict[str, Any]]:
-    start = version_tuple(from_version)
-    end = version_tuple(to_version)
-    if initial:
-        if to_version not in manifests:
-            raise LedgerError(f"missing target manifest {to_version}")
-        return [manifests[to_version]]
-    if start >= end:
-        raise LedgerError(f"target version {to_version} must be newer than {from_version}")
-    selected = [
-        manifest for version, manifest in manifests.items()
-        if start < version_tuple(version) <= end
-    ]
-    selected.sort(key=lambda item: version_tuple(item["version"]))
-    if not selected or selected[-1]["version"] != to_version:
-        raise LedgerError(f"missing target manifest {to_version}")
-    return selected
+    return select_manifests(manifests, from_version, to_version, initial)
 
 
 def changed_files(
@@ -219,21 +226,6 @@ def render_plan(
     )
     lines.extend(f"- `{item}`" for item in files or ["None"])
     return "\n".join(lines).rstrip() + "\n"
-
-
-def parse_project_text(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip()
-    return values
-
-
-def parse_project(path: Path) -> dict[str, str]:
-    if not path.exists():
-        raise LedgerError(f"missing downstream project ledger: {path}")
-    return parse_project_text(path.read_text(encoding="utf-8"))
 
 
 def update_project(path: Path, updates: dict[str, str]) -> None:
@@ -328,20 +320,37 @@ def command_plan(args: argparse.Namespace) -> None:
 
 def command_current(args: argparse.Namespace) -> None:
     values = (
-        parse_project_text(git("show", f"{args.ref}:{args.project}"))
-        if args.ref else parse_project(Path(args.project))
+        parse_project_text(git("show", f"{args.ref}:{args.project}"), strict=True)
+        if args.ref else parse_project(Path(args.project), strict=True)
     )
     version = values.get("BASE_UPSTREAM_VERSION")
     if not version:
         raise LedgerError("PROJECT.md has no BASE_UPSTREAM_VERSION")
     version_tuple(version)
+    project_upstream_repository(values)
     print(version)
 
 
 def command_record(args: argparse.Namespace) -> None:
     project = Path(args.project)
     history = Path(args.history)
-    values = parse_project(project)
+    values = parse_project(project, strict=True)
+    recorded_repository = project_upstream_repository(values)
+    requested_repository = (
+        validate_upstream_repository(args.upstream_repository)
+        if args.upstream_repository is not None
+        else None
+    )
+    if recorded_repository is None and requested_repository is None:
+        requested_repository = discover_project_upstream_repository(project)
+    if (
+        recorded_repository
+        and requested_repository
+        and recorded_repository.casefold() != requested_repository.casefold()
+    ):
+        raise LedgerError(
+            "PROJECT.md Base upstream repository does not match --upstream-repository"
+        )
     recorded = values.get("BASE_UPSTREAM_VERSION")
     if not args.initial and recorded != args.from_version:
         raise LedgerError(
@@ -382,6 +391,8 @@ def command_record(args: argparse.Namespace) -> None:
         ),
         "BASE_NEXT_UPDATE_COMMAND": "./scripts/sync-base-release.sh <TARGET_VERSION>",
     }
+    if requested_repository is not None and recorded_repository is None:
+        updates["BASE_UPSTREAM_REPOSITORY"] = requested_repository
     update_project(project, updates)
     append_history(
         history,
@@ -398,6 +409,16 @@ def command_initialize(args: argparse.Namespace) -> None:
     if project.exists():
         raise LedgerError(f"refusing to overwrite existing project ledger: {project}")
     synced_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    upstream_repository = (
+        validate_upstream_repository(args.upstream_repository)
+        if args.upstream_repository is not None
+        else None
+    )
+    repository_line = (
+        [f"BASE_UPSTREAM_REPOSITORY={upstream_repository}"]
+        if upstream_repository is not None
+        else []
+    )
     project.write_text(
         "\n".join([
             f"# {args.project_name}",
@@ -405,6 +426,7 @@ def command_initialize(args: argparse.Namespace) -> None:
             f"PROJECT_SLUG={args.project_slug}",
             f"DATABASE_NAME={args.db_name}",
             f"DATABASE_USER={args.db_user}",
+            *repository_line,
             f"BASE_UPSTREAM_VERSION={args.version}",
             f"BASE_UPSTREAM_TAG=base/v{args.version}",
             f"BOOTSTRAPPED_AT={synced_at}",
@@ -421,8 +443,13 @@ def command_initialize(args: argparse.Namespace) -> None:
         commit=args.commit,
         initial=True,
         verification_status=args.verification_status,
+        upstream_repository=upstream_repository,
     )
     command_record(record_args)
+
+
+def command_normalize_repository(args: argparse.Namespace) -> None:
+    print(normalize_github_remote(args.remote_url))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -455,6 +482,7 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--commit")
     record.add_argument("--initial", action="store_true")
     record.add_argument("--verification-status", default="NOT_RECORDED")
+    record.add_argument("--upstream-repository")
     record.set_defaults(func=command_record)
 
     initialize = subparsers.add_parser("initialize")
@@ -468,7 +496,12 @@ def build_parser() -> argparse.ArgumentParser:
     initialize.add_argument("--ref")
     initialize.add_argument("--commit")
     initialize.add_argument("--verification-status", default="NOT_RECORDED")
+    initialize.add_argument("--upstream-repository")
     initialize.set_defaults(func=command_initialize)
+
+    normalize_repository = subparsers.add_parser("normalize-repository")
+    normalize_repository.add_argument("--remote-url", required=True)
+    normalize_repository.set_defaults(func=command_normalize_repository)
     return parser
 
 

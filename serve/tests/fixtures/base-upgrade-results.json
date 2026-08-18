@@ -1,0 +1,46 @@
+[
+  {
+    "campaign_id": "fixture-campaign-001",
+    "project_id": "fixture_alpha_current",
+    "source_version": "3.2.0",
+    "target_version": "3.2.0",
+    "status": "up_to_date",
+    "branch": null,
+    "pr_url": null,
+    "failed_stage": null,
+    "conflict_files": [],
+    "verification_summary": "PROJECT.md already records the target version",
+    "retry_command": "no action required",
+    "rollback_command": "no action required"
+  },
+  {
+    "campaign_id": "fixture-campaign-001",
+    "project_id": "fixture_bravo_one_release",
+    "source_version": "3.1.0",
+    "target_version": "3.2.0",
+    "status": "pr_opened",
+    "branch": "chore/base-v3.2.0",
+    "pr_url": "https://github.com/fixture-owner/fixture-bravo/pull/7",
+    "failed_stage": null,
+    "conflict_files": [],
+    "verification_summary": "pytest PASS, lint PASS, build PASS",
+    "retry_command": "gh workflow run base-upgrade-receiver.yml --repo fixture-owner/fixture-bravo -f target_version=3.2.0",
+    "rollback_command": "gh pr close 7 --repo fixture-owner/fixture-bravo --delete-branch"
+  },
+  {
+    "campaign_id": "fixture-campaign-001",
+    "project_id": "fixture_charlie_multi_release",
+    "source_version": "1.0.0",
+    "target_version": "3.2.0",
+    "status": "conflict",
+    "branch": null,
+    "pr_url": null,
+    "failed_stage": "merge",
+    "conflict_files": [
+      "serve/app/config.py"
+    ],
+    "verification_summary": "merge conflict captured before abort",
+    "retry_command": "rerun the receiver workflow",
+    "rollback_command": "no action required; merge was aborted"
+  }
+]

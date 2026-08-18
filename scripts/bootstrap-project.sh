@@ -14,9 +14,9 @@ PROJECT_SLUG must match [a-z][a-z0-9_]{1,30}. It becomes:
   database: PROJECT_SLUG
   role:     PROJECT_SLUG_app
 
-The real bootstrap requires distinct `upstream` and project (`origin` or `project`)
-Git remotes, proving this is a downstream fork/clone. It installs dependencies,
-creates the isolated PostgreSQL identity,
+The real bootstrap requires a public github.com Base `upstream` and a distinct
+project (`origin` or `project`) Git remote, proving this is a downstream fork/clone.
+It installs dependencies, creates the isolated PostgreSQL identity,
 writes ignored runtime env files, runs migrations/tests/build, and writes PROJECT.md.
 EOF
 }
@@ -63,10 +63,16 @@ project_url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || \
   'downstream projects may not use the Base database identity'
 
 command -v python3 >/dev/null || db_die 'python3 is required'
+base_upstream_repository="$(
+  python3 "$ROOT/scripts/base-update-ledger.py" normalize-repository \
+    --remote-url "$upstream_url"
+)" || db_die \
+  'upstream remote must identify a public github.com OWNER/REPO Base repository'
 base_version="$(tr -d '\n' < "$ROOT/VERSION")"
 if [[ -f "$ROOT/PROJECT.md" ]]; then
   PROJECT_FILE="$ROOT/PROJECT.md" PROJECT_SLUG_VALUE="$project_slug" \
     DB_NAME_VALUE="$db_name" DB_ROLE_VALUE="$db_role" BASE_VERSION_VALUE="$base_version" \
+    BASE_REPOSITORY_VALUE="$base_upstream_repository" \
     python3 - <<'PY'
 import os
 from pathlib import Path
@@ -75,13 +81,23 @@ values = {}
 for line in Path(os.environ["PROJECT_FILE"]).read_text().splitlines():
     if "=" in line and not line.lstrip().startswith("#"):
         key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in values:
+            raise SystemExit(f"PROJECT.md contains duplicate key: {key}")
         values[key] = value
 expected = {
     "PROJECT_SLUG": os.environ["PROJECT_SLUG_VALUE"],
     "DATABASE_NAME": os.environ["DB_NAME_VALUE"],
     "DATABASE_USER": os.environ["DB_ROLE_VALUE"],
+    "BASE_UPSTREAM_REPOSITORY": os.environ["BASE_REPOSITORY_VALUE"],
     "BASE_UPSTREAM_VERSION": os.environ["BASE_VERSION_VALUE"],
 }
+if values.get("BASE_UPSTREAM_REPOSITORY", "").casefold() != expected[
+    "BASE_UPSTREAM_REPOSITORY"
+].casefold():
+    raise SystemExit("PROJECT.md Base upstream repository does not match upstream remote")
+expected.pop("BASE_UPSTREAM_REPOSITORY")
 if any(values.get(key) != value for key, value in expected.items()):
     raise SystemExit("PROJECT.md identity/version does not match this bootstrap invocation")
 PY
@@ -155,6 +171,7 @@ if [[ ! -f "$ROOT/PROJECT.md" ]]; then
     --project-name "$project_name" \
     --db-name "$db_name" \
     --db-user "$db_role" \
+    --upstream-repository "$base_upstream_repository" \
     --version "$base_version" \
     --commit "$(git -C "$ROOT" rev-parse HEAD)" \
     --verification-status "$verification_status"

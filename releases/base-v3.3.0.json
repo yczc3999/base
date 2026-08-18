@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "version": "3.3.0",
+  "tag": "base/v3.3.0",
+  "released_at": "2026-08-18",
+  "semver": "MINOR",
+  "summary": "下游升级合同、只读 campaign 与 GitHub receiver 基座",
+  "nodes": [
+    {
+      "id": "upgrade.contract-schemas",
+      "kind": "added",
+      "scope": "upgrade/contracts",
+      "summary": "固化 registry、单项目 result 与 batch Draft-07 合同及共享 operator 依赖",
+      "files": [
+        "scripts/schemas/base-downstream-registry.schema.json",
+        "scripts/schemas/base-upgrade-result.schema.json",
+        "scripts/schemas/base-upgrade-batch.schema.json",
+        "scripts/requirements.txt",
+        "serve/requirements-dev.txt",
+        "serve/tests/test_base_upgrade_contract.py",
+        "serve/tests/fixtures/base-downstream-registry.valid.json",
+        "serve/tests/fixtures/base-downstream-registry.invalid.json",
+        "serve/tests/fixtures/base-upgrade-result.valid.json",
+        "serve/tests/fixtures/base-upgrade-result.invalid.json"
+      ]
+    },
+    {
+      "id": "upgrade.read-only-campaign",
+      "kind": "added",
+      "scope": "upgrade/campaign",
+      "summary": "提供 GitHub 项目版本发现、跨版本只读计划、失败隔离与脱敏 batch 汇总",
+      "files": [
+        "scripts/base-upgrade-campaign.py",
+        "scripts/lib/base_release.py",
+        "serve/tests/test_base_upgrade_campaign.py",
+        "serve/tests/fixtures/base-downstream-registry.json",
+        "serve/tests/fixtures/base-project-states.json",
+        "serve/tests/fixtures/base-upgrade-results.json"
+      ]
+    },
+    {
+      "id": "downstream.upstream-identity",
+      "kind": "changed",
+      "scope": "downstream/ledger",
+      "summary": "PROJECT 账本持久化公开 GitHub Base upstream identity，并强化 strict 版本与 append-only 历史一致性",
+      "files": [
+        "scripts/base-update-ledger.py",
+        "scripts/bootstrap-project.sh",
+        "serve/tests/test_base_update_ledger.py",
+        "serve/tests/test_project_bootstrap.py"
+      ]
+    },
+    {
+      "id": "downstream.github-receiver",
+      "kind": "added",
+      "scope": "downstream/automation",
+      "summary": "在下游 fresh checkout 原子同步目标 Base tag，验证后 non-force push 固定分支并创建或更新 PR",
+      "files": [
+        ".github/workflows/base-upgrade-receiver.yml",
+        "scripts/run-base-upgrade.sh",
+        "scripts/sync-base-release.sh",
+        "scripts/test-base-upgrade-e2e.sh",
+        "serve/tests/test_base_upgrade_workflow.py",
+        "serve/tests/test_base_upgrade_e2e.py"
+      ]
+    },
+    {
+      "id": "upgrade.automation-contract-docs",
+      "kind": "added",
+      "scope": "docs",
+      "summary": "记录只读计划、receiver、公开 upstream、首次依赖恢复、幂等、失败与回滚边界",
+      "files": [
+        "CLAUDE.md",
+        "UPSTREAM.md",
+        "serve/docs/downstream-upgrade-automation.md",
+        "serve/docs/todo-downstream-upgrade-automation-2026-08-18.md"
+      ]
+    },
+    {
+      "id": "release.v3-3-0-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.3.0 版本、前端包元数据、变更账本与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.3.0.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "MINOR：HTTP API、数据库 schema 与运行配置不变，现有下游可继续使用原手工同步流程。",
+    "自动 receiver 首版仅支持 GitHub.com；BASE_UPSTREAM_REPOSITORY 必须是公开可读 Base 仓库的 canonical OWNER/REPO。",
+    "sync-base-release.sh TARGET_VERSION 保持兼容；fresh checkout 新增可选 --install-deps，降级始终拒绝，跨 MAJOR 必须显式批准。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移；首次 v3.3.0 同步从下游真实 upstream remote 规范化补录 BASE_UPSTREAM_REPOSITORY。"
+  ],
+  "downstream_actions": [
+    "只从不可变 base/v3.3.0 tag 同步 receiver 基座，不复制未发布 workflow、runner 或脚本。",
+    "v3.2.0 下游先执行 ./scripts/sync-base-release.sh 3.3.0；若目标 tree 已 merge 但因缺目标依赖验证停止，在保留 MERGE_HEAD 的同一工作区执行 ./scripts/sync-base-release.sh 3.3.0 --continue --install-deps。",
+    "已 abort 或 CI 工作区已销毁时从干净默认分支重新同步，不得使用 --continue。",
+    "确认 PROJECT.md 包含准确 BASE_UPSTREAM_REPOSITORY=OWNER/REPO，且与 BASE_UPDATES.md 最后一条 version/commit 一致。",
+    "在下游 GitHub Actions 配置允许 contents:write 与 pull-requests:write 后启用 receiver；中央 fleet dispatcher 尚未包含在本版本。"
+  ],
+  "conflict_hotspots": [
+    ".github/workflows/base-upgrade-receiver.yml",
+    "scripts/base-update-ledger.py",
+    "scripts/sync-base-release.sh",
+    "scripts/bootstrap-project.sh",
+    "scripts/lib/base_release.py",
+    "scripts/requirements.txt",
+    "serve/requirements-dev.txt",
+    "PROJECT.md",
+    "BASE_UPDATES.md",
+    "CLAUDE.md",
+    "UPSTREAM.md"
+  ],
+  "verify": [
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "cd serve && .venv/bin/python -m app.routes check && .venv/bin/pytest",
+    "cd admin && npm ci && npm run lint && npm run build",
+    "cd serve && .venv/bin/pytest tests/test_base_upgrade_workflow.py tests/test_base_upgrade_e2e.py tests/test_project_bootstrap.py tests/test_base_update_ledger.py -q",
+    "scripts/test-base-upgrade-e2e.sh",
+    "scripts/bootstrap-project.sh fixture_project --plan",
+    "git diff --check"
+  ],
+  "rollback": [
+    "未推送时执行 git merge --abort；receiver 的 conflict/verification_failed 已在上传 result 前 abort。",
+    "已创建但未合并的 PR：关闭 PR 并删除 chore/base-vTARGET 分支，默认分支不受影响。",
+    "已合并 v3.3.0：revert 整个同步 merge commit，并向 BASE_UPDATES.md 追加回滚事实，不删除既有历史。",
+    "禁用或删除 receiver workflow 即停止自动接收；无数据库回滚；已发布 base/v3.3.0 tag 不移动。"
+  ]
+}

@@ -15,6 +15,88 @@
 
 暂无。
 
+## [3.3.0] - 2026-08-18
+
+### 变更范围
+
+- 新增下游升级 registry、单项目 result 与 batch 三条 Draft-07 JSON Schema，以及
+  `base-upgrade-campaign.py` 的 registry 校验、GitHub `PROJECT.md` 只读发现、跨版本
+  计划和脱敏 JSON/Markdown 汇总；一个项目失败不会中止其他项目。
+- campaign、ledger 与 receiver 复用 canonical core SemVer、Release Manifest 选择、
+  strict `PROJECT.md` parser 和集中脱敏；Provider token、Authorization/Bearer、URL
+  userinfo 与敏感赋值不会进入日志或 artifact。
+- `PROJECT.md` 新增 canonical `BASE_UPSTREAM_REPOSITORY=OWNER/REPO`。bootstrap 与
+  ledger 只从真实 GitHub remote 规范化写入；receiver 不接受 dispatch URL 覆盖，并
+  以匿名 fetch 验证公开 Base upstream。
+- 新增 `.github/workflows/base-upgrade-receiver.yml` 与
+  `scripts/run-base-upgrade.sh`：fresh 默认分支 checkout、repository 级串行、默认拒绝
+  跨 MAJOR、固定 `chore/base-vTARGET`、non-force push，以及成功后新建 Draft PR 或
+  幂等更新已有开放 PR；默认分支从不直接写入。
+- receiver 严格校验项目身份、两个下游账本、源/目标 tag、原子 merge parents 与已有
+  分支/PR 所有权。冲突或验证失败先生成 schema-valid result/summary，再 abort，不
+  push 半成品；输出复验结构关联并集中脱敏。
+- checkout、toolchain setup、依赖安装或 runner 在合法输入下未产出 result 时，
+  workflow 的 `if: always()` fallback 生成 schema-valid `dispatch_failed` 再上传；
+  runner 同时精确核对账本 timestamp 与单行 verification evidence。
+- PR 正文列出完整跨版本 update nodes、逐项 **PASS** 验证、retry 与 rollback。回滚
+  只操作本次运行实际创建的分支/PR；复用的既有分支或 PR 永不自动删除。
+- `sync-base-release.sh` 新增 `--install-deps`，在 merge 目标 tree 后安装 operator/
+  backend requirements 与 `npm ci`，再执行 route、pytest、lint/build、database
+  boundary 和 diff checks。新增动态 bare-repository E2E，覆盖 clean、幂等、dirty、
+  缺 tag、祖先漂移、冲突、验证失败、首次依赖恢复及 secret 不泄漏。
+
+### 兼容性（MINOR）
+
+- HTTP API、数据库 schema 与运行配置不变；无数据库 migration。
+- 现有下游可继续手工同步；自动 receiver 仅支持 GitHub.com，且 Base upstream 必须
+  公开可读。启用 receiver 前，`PROJECT.md` 必须包含准确的
+  `BASE_UPSTREAM_REPOSITORY`，并与 `BASE_UPDATES.md` 最后一条记录一致。
+- `sync-base-release.sh TARGET_VERSION` 保持兼容；fresh checkout/CI 推荐显式增加
+  `--install-deps`。降级始终拒绝，跨 MAJOR 必须显式 `allow_major=true`。
+
+### 迁移
+
+- 无数据库 migration。
+- 无运行时数据迁移；v3.3.0 同步提交会从下游现有真实 `upstream` remote 发现并写入
+  `BASE_UPSTREAM_REPOSITORY`，不得手工猜测或写入 credential-bearing URL。
+
+### 下游同步
+
+- 推荐源版本：`base/v3.3.0`。首次 receiver 接入必须同步正式 tag，禁止复制未发布
+  workflow、runner 或脚本。
+- v3.3.0 及以后标准更新：
+  `./scripts/sync-base-release.sh TARGET_VERSION --install-deps`。
+- v3.2.0 首次同步先运行 `./scripts/sync-base-release.sh 3.3.0`。若目标 tree 已 merge
+  但验证因 fresh 环境缺依赖而停止，必须保留同一工作区的 `MERGE_HEAD`，再运行
+  `./scripts/sync-base-release.sh 3.3.0 --continue --install-deps`；已 abort 或销毁的
+  工作区从干净默认分支重来。
+- 同步后确认 `PROJECT.md`/`BASE_UPDATES.md` 与 v3.3.0 commit 一致，再由下游自己的
+  GitHub Actions 权限启用 receiver。中央 fleet dispatcher 仍属于后续版本。
+- 冲突热点：`.github/workflows/`、`scripts/base-update-ledger.py`、
+  `scripts/sync-base-release.sh`、`scripts/bootstrap-project.sh`、`PROJECT.md`、
+  `BASE_UPDATES.md`、`serve/requirements-dev.txt`、`CLAUDE.md`、`UPSTREAM.md`。
+
+### 验证
+
+- T0～T2 组合定向测试：272 passed；T2 workflow/E2E/bootstrap/ledger 四文件：
+  78 passed；动态 Git E2E：9/9 PASS；后端完整测试：563 passed。
+- Route Manifest：159 routes、1 mount；Alembic upgrade、release check、database
+  boundary、bootstrap plan、frontend lint/build、runner `bash -n` 与
+  `git diff --check` 全部通过。
+- GitHub Actions 使用官方 v7 release 的 immutable SHA；fallback result、严格账本
+  evidence、PR body 与资源所有权 rollback 均有回归覆盖。
+
+### 回滚
+
+- receiver 本次未创建远端资源时删除 result/summary 即可；冲突/验证失败已 abort，
+  不存在远端半成品。
+- 本次新建但未合并的 PR 才自动关闭，本次新推的 `chore/base-vTARGET` 才自动删除；
+  幂等复用的既有分支/PR 不自动删除，默认分支不受影响。
+- 下游已合并 v3.3.0：revert 整个同步 merge commit，并向 `BASE_UPDATES.md` 追加回滚
+  事实，不删除既有历史；无数据库需要回滚。
+- 禁用 receiver workflow 即停止自动接收；已发布 `base/v3.3.0` tag 不移动，修正通过
+  新 SemVer 发布。
+
 ## [3.2.0] - 2026-08-18
 
 ### 变更范围

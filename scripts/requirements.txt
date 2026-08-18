@@ -1,0 +1,2 @@
+# Dependencies for reusable Base operator scripts and their contract tests.
+jsonschema>=4.18

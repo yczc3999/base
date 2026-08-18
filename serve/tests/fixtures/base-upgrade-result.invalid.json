@@ -1,0 +1,616 @@
+{
+  "cases": [
+    {
+      "name": "missing-campaign-id",
+      "document": {
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "required"
+      }
+    },
+    {
+      "name": "missing-rollback-command",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve/app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "required"
+      }
+    },
+    {
+      "name": "missing-project-id",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "up_to_date",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "project already at target version",
+        "retry_command": "no retry required",
+        "rollback_command": "no action required"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "required"
+      }
+    },
+    {
+      "name": "extra-field",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort",
+        "unknown_metric": "42"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "token-field",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort",
+        "token": "ghp_fixture_secret"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "secret-field",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "dispatch_failed",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "provider",
+        "conflict_files": [],
+        "verification_summary": null,
+        "retry_command": "python3 scripts/base-upgrade-campaign.py plan --dry-run",
+        "rollback_command": "no branch created",
+        "database_password": "fixture-secret"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "invalid-status",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "failed",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": null,
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "status"
+        ],
+        "validator": "enum"
+      }
+    },
+    {
+      "name": "invalid-target-version",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "latest",
+        "status": "planned",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": null,
+        "retry_command": "./scripts/sync-base-release.sh <TARGET_VERSION>",
+        "rollback_command": "no action required"
+      },
+      "expected_error": {
+        "path": [
+          "target_version"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "invalid-source-version",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "v3.1.0",
+        "target_version": "3.2.0",
+        "status": "blocked",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "version_gate",
+        "conflict_files": [],
+        "verification_summary": "BASE_UPSTREAM_VERSION is not a plain SemVer",
+        "retry_command": "fix PROJECT.md BASE_UPSTREAM_VERSION and re-dispatch",
+        "rollback_command": "no action required"
+      },
+      "expected_error": {
+        "path": [
+          "source_version"
+        ],
+        "validator": "anyOf"
+      }
+    },
+    {
+      "name": "invalid-conflict-files-type",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": "serve/app/config.py",
+        "verification_summary": null,
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files"
+        ],
+        "validator": "type"
+      }
+    },
+    {
+      "name": "invalid-branch",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": 123,
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "branch"
+        ],
+        "validator": "anyOf"
+      }
+    },
+    {
+      "name": "invalid-pr-url",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "not-a-url",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "./scripts/sync-base-release.sh 3.2.0 --continue",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "pr_url"
+        ],
+        "validator": "anyOf"
+      }
+    },
+    {
+      "name": "credential-pr-url",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://TOKEN@github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "retry campaign",
+        "rollback_command": "close PR"
+      },
+      "expected_error": {
+        "path": [
+          "pr_url"
+        ],
+        "validator": "anyOf"
+      }
+    },
+    {
+      "name": "pr-opened-without-branch",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": null,
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS",
+        "retry_command": "retry campaign",
+        "rollback_command": "close PR"
+      },
+      "expected_error": {
+        "path": [
+          "branch"
+        ],
+        "validator": "type"
+      }
+    },
+    {
+      "name": "conflict-without-files",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files"
+        ],
+        "validator": "minItems"
+      }
+    },
+    {
+      "name": "conflict-file-absolute-path",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "/serve/app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-windows-absolute-path",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "C:/serve/app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-backslash",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve\\app\\config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-empty-segment",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve//app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-dot-segment",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve/./app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-parent-segment",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve/../app/config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-nul-character",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve/app/\u0000config.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "credential-url-in-verification-summary",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "run https://fixture-user:fixture-pass@example.test/task",
+        "retry_command": "gh workflow run base-upgrade-receiver.yml --repo fixture-owner/fixture-repo-alpha -f target_version=3.2.0 -f campaign_id=campaign-2026-08-18-001 -f allow_major=false",
+        "rollback_command": "gh pr close 1 --repo fixture-owner/fixture-repo-alpha --delete-branch"
+      },
+      "expected_error": {
+        "path": [
+          "verification_summary"
+        ],
+        "validator": "anyOf"
+      }
+    },
+    {
+      "name": "credential-url-in-retry-command",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS, lint PASS, build PASS",
+        "retry_command": "run https://fixture-user:fixture-pass@example.test/task",
+        "rollback_command": "gh pr close 1 --repo fixture-owner/fixture-repo-alpha --delete-branch"
+      },
+      "expected_error": {
+        "path": [
+          "retry_command"
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "credential-url-in-rollback-command",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "pr_opened",
+        "branch": "chore/base-v3.2.0",
+        "pr_url": "https://github.com/fixture-owner/fixture-repo-alpha/pull/1",
+        "failed_stage": null,
+        "conflict_files": [],
+        "verification_summary": "pytest PASS, lint PASS, build PASS",
+        "retry_command": "gh workflow run base-upgrade-receiver.yml --repo fixture-owner/fixture-repo-alpha -f target_version=3.2.0 -f campaign_id=campaign-2026-08-18-001 -f allow_major=false",
+        "rollback_command": "run https://fixture-user:fixture-pass@example.test/task"
+      },
+      "expected_error": {
+        "path": [
+          "rollback_command"
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "conflict-file-control-character",
+      "document": {
+        "campaign_id": "campaign-2026-08-18-001",
+        "project_id": "fixture_project_alpha",
+        "source_version": "3.1.0",
+        "target_version": "3.2.0",
+        "status": "conflict",
+        "branch": null,
+        "pr_url": null,
+        "failed_stage": "merge",
+        "conflict_files": [
+          "serve/app/\tconfig.py"
+        ],
+        "verification_summary": null,
+        "retry_command": "retry campaign",
+        "rollback_command": "git merge --abort"
+      },
+      "expected_error": {
+        "path": [
+          "conflict_files",
+          0
+        ],
+        "validator": "not"
+      }
+    }
+  ]
+}

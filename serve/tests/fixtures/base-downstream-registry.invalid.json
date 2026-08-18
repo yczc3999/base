@@ -1,0 +1,311 @@
+{
+  "cases": [
+    {
+      "name": "missing-required-field",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0
+        ],
+        "validator": "required"
+      }
+    },
+    {
+      "name": "extra-field",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github",
+            "region": "us-east-1"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0
+        ],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "current-version-not-allowed",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github",
+            "current_version": "3.1.0"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0
+        ],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "token-field",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github",
+            "token": "ghp_fixture_secret"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0
+        ],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "secret-field",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github",
+            "database_password": "fixture-secret"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0
+        ],
+        "validator": "additionalProperties"
+      }
+    },
+    {
+      "name": "invalid-provider-enum",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "gitlab"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "provider"
+        ],
+        "validator": "enum"
+      }
+    },
+    {
+      "name": "invalid-channel",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "Stable Channel",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "channel"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "repository-url",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "https://github.com/fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "repository"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "repository-credential",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "https://user:pass@github.com/fixture-owner/fixture-repo-alpha.git",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "repository"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "repository-git-suffix",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha.git",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "repository"
+        ],
+        "validator": "not"
+      }
+    },
+    {
+      "name": "repository-ssh-form",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "git@github.com:fixture-owner/fixture-repo-alpha.git",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "repository"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "repository-nested-path",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/group/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ]
+      },
+      "expected_error": {
+        "path": [
+          "projects",
+          0,
+          "repository"
+        ],
+        "validator": "pattern"
+      }
+    },
+    {
+      "name": "top-level-token-field",
+      "document": {
+        "schema_version": 1,
+        "projects": [
+          {
+            "project_id": "fixture_project_alpha",
+            "repository": "fixture-owner/fixture-repo-alpha",
+            "default_branch": "main",
+            "enabled": true,
+            "channel": "stable",
+            "provider": "github"
+          }
+        ],
+        "access_token": "ghp_fixture_secret"
+      },
+      "expected_error": {
+        "path": [],
+        "validator": "additionalProperties"
+      }
+    }
+  ]
+}

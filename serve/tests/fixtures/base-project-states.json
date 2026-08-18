@@ -1,0 +1,10 @@
+{
+  "repositories": {
+    "fixture-owner/fixture-alpha": "# Fixture Alpha\n\nBASE_UPSTREAM_VERSION=3.2.0\n",
+    "fixture-owner/fixture-bravo": "# Fixture Bravo\n\nBASE_UPSTREAM_VERSION=3.1.0\n",
+    "fixture-owner/fixture-charlie": "# Fixture Charlie\n\nBASE_UPSTREAM_VERSION=1.0.0\n",
+    "fixture-owner/fixture-echo": "# Fixture Echo\n\nBASE_UPSTREAM_VERSION=v3.1\n",
+    "fixture-owner/fixture-foxtrot": "# Fixture Foxtrot\n\nBASE_UPSTREAM_VERSION=3.1.0\n",
+    "fixture-owner/fixture-golf": "# Fixture Golf\n\nBASE_UPSTREAM_VERSION=3.1.0\n"
+  }
+}

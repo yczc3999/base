@@ -111,6 +111,27 @@ records the exact current Base version/tag/commit and next command;
 script prints the cross-version plan before merge and commits code plus both
 ledgers atomically.
 
+T0～T2 自动升级合同、只读计划器与下游 receiver（已本地验收、尚未发布）：
+`serve/docs/downstream-upgrade-automation.md` 定义 registry、单项目 result 与 batch
+JSON Schema（`scripts/schemas/`）。`scripts/base-upgrade-campaign.py` 提供
+`validate-registry`、只读 `plan` 与 `summarize`；只处理匹配 channel 的 enabled
+项目，从下游默认分支 `PROJECT.md` 发现真实版本，输出稳定排序且集中脱敏的
+JSON/Markdown artifact。registry 只接受 `OWNER/REPO`，不接受
+`current_version` 或任何 secret/Token 字段；跨 MAJOR 计划必须显式
+`--allow-major`，降级始终停止。`.github/workflows/base-upgrade-receiver.yml` 在下游
+fresh checkout 中以 `PROJECT.md` 的 `BASE_UPSTREAM_REPOSITORY=OWNER/REPO` 恢复公开
+GitHub Base upstream，串行调用 `scripts/run-base-upgrade.sh` 与
+`scripts/sync-base-release.sh TARGET --install-deps`；只有原子同步和完整验证通过后才写
+`chore/base-vTARGET` 并创建或更新 PR，冲突/验证失败只产出脱敏、schema-valid result
+后 abort，不写默认分支。checkout/setup/pip/runner 未产出 result 时，workflow 对合法
+输入以 `if: always()` 生成 `dispatch_failed` fallback；runner 精确关联账本 timestamp/
+verification，PR 正文列出 update nodes、逐项 PASS、retry 与 rollback。自动回滚只
+操作本次创建资源，复用的既有分支/PR 不删除。中央 Provider 派发器和批次执行仍属于
+T3+；receiver 基座尚待 T2.5 commit/tag/push 为不可变 `base/v3.3.0`。
+最终本地证据：组合定向 272 passed、T2 四文件 78 passed、后端 563 passed、动态 Git
+E2E 9/9；159 routes + 1 mount、Alembic、release/database boundary、bootstrap、前端
+lint/build、runner `bash -n` 与 diff check 全部通过。
+
 ## Clean repository rule
 
 The repository must remain free of product names, product business terminology,
