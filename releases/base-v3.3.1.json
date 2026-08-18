@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "version": "3.3.1",
+  "tag": "base/v3.3.1",
+  "released_at": "2026-08-18",
+  "semver": "PATCH",
+  "summary": "补全 receiver Draft PR 的跨版本 Manifest 合同并中性化正文文本",
+  "nodes": [
+    {
+      "id": "downstream.receiver-pr-body-manifest-contract",
+      "kind": "fixed",
+      "scope": "downstream/automation",
+      "summary": "Draft PR 正文完整呈现 current/target、更新节点、迁移、冲突热点、下游动作、发布验证、运行证据、重试与回滚，并将 Manifest 自由文本渲染为惰性 Markdown",
+      "files": [
+        "scripts/run-base-upgrade.sh",
+        "serve/tests/test_base_upgrade_workflow.py",
+        "UPSTREAM.md"
+      ]
+    },
+    {
+      "id": "release.v3-3-1-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.3.1 PATCH 版本、前端包元数据、变更账本与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.3.1.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "PATCH：HTTP API、数据库 schema、receiver dispatch inputs、result schema、分支与 PR 所有权规则不变。",
+    "仅增强 Draft PR 正文的审阅信息和 Markdown 文本边界，不改变下游同步结果。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移。"
+  ],
+  "downstream_actions": [
+    "v3.3.0 下游执行 ./scripts/sync-base-release.sh 3.3.1 --install-deps。",
+    "同步后使用原有 dispatch inputs 重新派发；无需修改 receiver secret、payload 或分支策略。",
+    "只从不可变 base/v3.3.1 tag 同步，禁止单独复制 runner 或测试文件。"
+  ],
+  "conflict_hotspots": [
+    "scripts/run-base-upgrade.sh"
+  ],
+  "verify": [
+    "cd serve && .venv/bin/pytest tests/test_base_upgrade_workflow.py -q",
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "scripts/bootstrap-project.sh fixture_project --plan",
+    "bash -n scripts/run-base-upgrade.sh",
+    "cd admin && npm run lint && npm run build",
+    "git diff --check"
+  ],
+  "rollback": [
+    "未合并的 receiver PR 继续按既有所有权规则关闭或删除；本修复不改变该逻辑。",
+    "已合并 v3.3.1 时 revert 整个同步 merge commit，并向 BASE_UPDATES.md 追加回滚事实；无数据库回滚。",
+    "已发布 base/v3.3.0 tag 不移动；v3.3.1 修正通过独立不可变 tag 发布。"
+  ]
+}

@@ -121,8 +121,9 @@ BASE_NEXT_UPDATE_COMMAND=./scripts/sync-base-release.sh <TARGET_VERSION>
 
 ## 7. 下游升级自动化合同、只读计划与 receiver
 
-Base 仓库已固化三条自动升级 JSON Schema、只读 campaign CLI 和 GitHub 下游
-receiver；中央 Provider 派发器仍属于 T3，当前尚未发布 receiver 基座 tag：
+Base 仓库已在 `base/v3.3.0` 固化三条自动升级 JSON Schema、只读
+campaign CLI 和 GitHub 下游 receiver；中央 Provider 派发器仍属于 T3，
+不在 v3.3.x receiver 基座中：
 
 - `scripts/schemas/base-downstream-registry.schema.json`：声明式下游项目清单。
   `repository` 固定为 GitHub canonical `OWNER/REPO`，OWNER/REPO 分别最长
@@ -209,9 +210,11 @@ contract dependency 安装或 runner 对合法 inputs 未产出 result，后续
 账本所有权校验不仅匹配 version/commit：`PROJECT.md` 的
 `BASE_LAST_SYNCED_AT` 必须是 canonical UTC 秒级 timestamp，并与 `BASE_UPDATES.md`
 最后一条的 `Synced at` 精确相同；最后一条还必须恰有一个匹配 heading、Base commit
-和非空单行 verification result。PR 正文来自受信 Release Manifest 范围，列出完整
-cross-version update nodes、目标 tag/计划/同步/发布/原子账本的逐项 PASS evidence，
-以及可执行 retry/rollback。
+和非空单行 verification result。PR 正文来自受信 Release Manifest 范围，列出
+current/target、完整 cross-version update nodes、migrations、conflict hotspots、
+downstream actions、release verification，以及目标 tag/计划/同步/发布/原子账本
+的逐项 PASS evidence 和可执行 retry/rollback。Manifest 自由文本先转为惰性
+Markdown 字符实体，不会产生标题、链接、HTML、代码或命令执行语义。
 
 rollback 只基于本次运行实际创建的资源：本次新建 PR 才关闭，本次新推分支才删除；
 复用的既有分支/PR 永不自动删除。PR 创建失败但本次已新推分支时只删除该新分支。
@@ -242,3 +245,17 @@ campaign 与 ledger 共用同一个 SemVer/Manifest/parser/redaction 模块。T1
 下游分支或账本；单次运行回滚只需删除本地输出 artifact。实现级回滚必须先把 ledger
 共享逻辑恢复到原位置，再删除 campaign、batch schema、共享模块及对应依赖/tests，
 不能误删仍属 T0 的 registry/result schema。
+
+### v3.3.0 → v3.3.1 PR 正文修复
+
+v3.3.1 是无 migration 的 PATCH，只增强 receiver 产生的 Draft PR 正文。v3.3.0
+下游执行：
+
+```bash
+./scripts/sync-base-release.sh 3.3.1 --install-deps
+```
+
+同步后使用原有 dispatch inputs 重新派发即可。receiver 会在新 Draft PR 或已有开放
+PR 中显示所有选中 Manifest 的完整升级合同；分支、PR 所有权、验证、
+result 与 rollback 行为不变。仅从不可变 `base/v3.3.1` tag 同步，不单独
+复制 runner 或测试文件。

@@ -34,6 +34,38 @@ def result_validator():
     return Draft7Validator(schema)
 
 
+def render_manifest_plan(
+    fixture_root: Path,
+    *,
+    source_version: str,
+    target_version: str,
+    target_commit: str,
+) -> str:
+    source = RUNNER.read_text(encoding="utf-8")
+    function = source.split("render_update_nodes() {", 1)[1].split("\nPY\n}", 1)[0]
+    body = function.split("python3 - <<'PY'\n", 1)[1]
+    env = os.environ.copy()
+    env.update(
+        {
+            "ROOT_VALUE": str(fixture_root),
+            "SOURCE_VERSION_VALUE": source_version,
+            "TARGET_VERSION_VALUE": target_version,
+            "TARGET_COMMIT_VALUE": target_commit,
+        }
+    )
+    completed = subprocess.run(
+        ["python3", "-"],
+        input=body,
+        cwd=fixture_root,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return completed.stdout
+
+
 def receiver_ledger_fixture(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     fixture = tmp_path / "receiver-ledger"
     (fixture / "scripts" / "lib").mkdir(parents=True)
@@ -312,12 +344,85 @@ def test_runner_has_valid_shell_syntax_and_no_force_or_command_override():
     assert "verify_atomic_upgrade_ref" in source
     assert "render_update_nodes" in source
     assert "### Cross-version update nodes" in source
+    assert "- Current: `base/v%s`" in source
+    assert 'render_list("Migrations", manifest["migrations"])' in source
+    assert 'render_list("Conflict hotspots", manifest["conflict_hotspots"], code=True)' in source
+    assert 'render_list("Downstream actions", manifest["downstream_actions"])' in source
+    assert 'render_list("Release verification", manifest["verify"], code=True)' in source
     assert "### Verification evidence" in source
     assert "— **PASS**" in source
     assert "prospective_pr_rollback_command" in source
     assert "new_branch_pushed=1" in source
     assert "new_pr_created=1" in source
     assert "gh pr ready" not in source
+
+
+def test_pr_manifest_plan_renders_every_selected_release_contract_section():
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "base/v3.3.0^{commit}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    rendered = render_manifest_plan(
+        ROOT,
+        source_version="3.1.0",
+        target_version="3.3.0",
+        target_commit=target_commit,
+    )
+    assert rendered.count("##### Update nodes") == 2
+    assert rendered.count("##### Migrations") == 2
+    assert rendered.count("##### Conflict hotspots") == 2
+    assert rendered.count("##### Downstream actions") == 2
+    assert rendered.count("##### Release verification") == 2
+    assert "#### Base v3.2.0" in rendered
+    assert "#### Base v3.3.0" in rendered
+    assert "scripts/base-update-ledger.py" in rendered
+    assert "python3 scripts/check-base-release.py" in rendered
+    assert "BASE_UPSTREAM_REPOSITORY" in rendered
+
+
+def test_pr_manifest_plan_neutralizes_markdown_and_never_executes_manifest_text(tmp_path):
+    fixture = tmp_path / "manifest-renderer"
+    module_dir = fixture / "scripts" / "lib"
+    module_dir.mkdir(parents=True)
+    sentinel = tmp_path / "manifest-text-was-executed"
+    manifest = {
+        "version": "1.1.0",
+        "nodes": [
+            {
+                "id": "fixture.node",
+                "kind": "changed",
+                "scope": "fixture",
+                "summary": "[link](https://example.invalid) <script> `tick`",
+            }
+        ],
+        "migrations": ["line one\n# injected heading"],
+        "conflict_hotspots": ["docs/[fixture]`note`.md"],
+        "downstream_actions": ["$(touch downstream-action)"],
+        "verify": [f"touch {sentinel}"],
+    }
+    (module_dir / "base_release.py").write_text(
+        "def load_manifests(root, ref):\n"
+        f"    return {{'1.1.0': {manifest!r}}}\n\n"
+        "def select_manifests(manifests, source, target):\n"
+        "    return [manifests['1.1.0']]\n",
+        encoding="utf-8",
+    )
+    rendered = render_manifest_plan(
+        fixture,
+        source_version="1.0.0",
+        target_version="1.1.0",
+        target_commit="a" * 40,
+    )
+    assert not sentinel.exists()
+    assert "&#x5B;link&#x5D;(https://example.invalid)" in rendered
+    assert "&#x3C;script&#x3E;" in rendered
+    assert "&#x60;tick&#x60;" in rendered
+    assert "line one&#xA;&#x23; injected heading" in rendered
+    assert "docs/&#x5B;fixture&#x5D;&#x60;note&#x60;.md" in rendered
+    assert "&#x24;(touch downstream-action)" in rendered
 
 
 def test_fixture_mode_fails_closed_in_ci_and_writes_schema_result(tmp_path):

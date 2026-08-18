@@ -15,6 +15,50 @@
 
 暂无。
 
+## [3.3.1] - 2026-08-18
+
+### 变更范围
+
+- 修复 receiver Draft PR 正文的跨版本变更计划：在现有 current/target、update
+  nodes、验证证据、retry 和 rollback 之外，完整渲染每个选中 Release Manifest
+  的 migrations、conflict hotspots、downstream actions 与 release verification。
+- Manifest 文本通过严格 Markdown 中性化后写入 PR；换行、标题、链接、HTML、
+  反引号与 shell-like 文本均不会变成 Markdown 语法或被执行。
+- 新增回归测试，覆盖 3.1.0→3.3.0 跨版本合同的全部分节以及恶意 Manifest
+  文本的惰性渲染。
+
+### 兼容性（PATCH）
+
+- HTTP API、数据库 schema、receiver dispatch inputs、result schema、分支与 PR 所有权
+  规则不变；无数据库 migration。
+- 该修复只增强 Draft PR 正文的审阅信息与文本边界，不改变下游同步结果。
+
+### 迁移
+
+- 无数据库 migration，无运行时数据迁移。
+
+### 下游同步
+
+- v3.3.0 下游执行 `./scripts/sync-base-release.sh 3.3.1 --install-deps`。
+- 同步后重新派发原 campaign，receiver 将创建新 Draft PR 或幂等更新已有
+  开放 PR 的正文；无需修改 dispatch payload。
+- 冲突热点：`scripts/run-base-upgrade.sh`。
+
+### 验证
+
+- `cd serve && .venv/bin/pytest tests/test_base_upgrade_workflow.py -q`。
+- `python3 scripts/check-base-release.py`、`python3 scripts/check-database-boundary.py`、
+  `scripts/bootstrap-project.sh fixture_project --plan`、`bash -n scripts/run-base-upgrade.sh`
+  与 `git diff --check`。
+
+### 回滚
+
+- 未合并的 receiver PR 按原所有权规则关闭/删除；本修复不改变该逻辑。
+- 已合并 v3.3.1 时 revert 整个同步 merge commit，并在 `BASE_UPDATES.md`
+  追加回滚事实；无数据库需要回滚。
+- 已发布 `base/v3.3.0` tag 不移动；本修复使用新的不可变
+  `base/v3.3.1` tag。
+
 ## [3.3.0] - 2026-08-18
 
 ### 变更范围

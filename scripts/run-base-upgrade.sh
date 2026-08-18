@@ -146,7 +146,6 @@ render_update_nodes() {
   ROOT_VALUE="$ROOT" SOURCE_VERSION_VALUE="$source_version" \
     TARGET_VERSION_VALUE="$target_version" TARGET_COMMIT_VALUE="$target_commit" \
     python3 - <<'PY'
-import html
 import os
 import sys
 from pathlib import Path
@@ -165,16 +164,40 @@ if not selected:
     raise SystemExit("upgrade manifest range is empty")
 
 def markdown(value):
-    return html.escape(str(value), quote=True).replace("`", "&#x60;")
+    """Render trusted manifest text as inert Markdown, never as syntax or code."""
+
+    return "".join(
+        character
+        if character.isascii()
+        and (character.isalnum() or character in " .,:;_-/()+")
+        else f"&#x{ord(character):X};"
+        for character in str(value)
+    )
+
+
+def render_list(title, values, *, code=False):
+    print(f"\n##### {title}")
+    if not values:
+        print("- None declared.")
+        return
+    for value in values:
+        rendered = markdown(value)
+        print(f"- `{rendered}`" if code else f"- {rendered}")
 
 for manifest in selected:
     print(f"#### Base v{markdown(manifest['version'])}")
+    print("\n##### Update nodes")
     for node in manifest["nodes"]:
         print(
             f"- `{markdown(node['id'])}` "
             f"[{markdown(node['kind'])}/{markdown(node['scope'])}]: "
             f"{markdown(node['summary'])}"
         )
+    render_list("Migrations", manifest["migrations"])
+    render_list("Conflict hotspots", manifest["conflict_hotspots"], code=True)
+    render_list("Downstream actions", manifest["downstream_actions"])
+    render_list("Release verification", manifest["verify"], code=True)
+    print()
 PY
 }
 
@@ -725,7 +748,7 @@ rollback_value="$(prospective_pr_rollback_command)"
   printf '## Base upgrade\n\n'
   printf -- '- Project: `%s`\n' "$project_id"
   printf -- '- Campaign: `%s`\n' "$campaign_id"
-  printf -- '- Source: `base/v%s`\n' "$source_version"
+  printf -- '- Current: `base/v%s`\n' "$source_version"
   printf -- '- Target: `base/v%s`\n' "$target_version"
   printf -- '- Branch: `%s`\n\n' "$branch"
   printf '### Cross-version update nodes\n\n'
