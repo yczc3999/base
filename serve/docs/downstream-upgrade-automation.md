@@ -1,12 +1,13 @@
 # Base 下游升级自动化合同
 
-**状态**：T0～T4 已完成，receiver 基座已以不可变 `base/v3.3.0`
-发布；T3 operator dispatch、evidence 与 PR 正文增强已通过 T4 完整验证，尚未
-发布。T5 等待私有 operator/ops 仓库和 3 个真实非生产/低风险下游。
+**状态**：✅ T0～T5 已完成；receiver 基座、bootstrap patches、operator dispatch
+与 workflow-path 修正已分别以不可变 `base/v3.3.0`～`base/v3.4.1` 发布，并通过
+3 个真实非生产下游的成功与幂等 campaign。
 **关联 TODO**：`serve/docs/todo-downstream-upgrade-automation-2026-08-18.md`
 **已发布基线**：`base/v3.3.0`（`abc907682edd55d0b58624c6b0fc78c73b8e41e1`）
 **已发布 bootstrap PATCH**：`base/v3.3.1`、`base/v3.3.2`
-**计划发布**：`base/v3.4.0` campaign（本文件不构成发布 Manifest）
+**已发布 campaign**：`base/v3.4.0`、`base/v3.4.1`
+（`081cd1407fb902aebbd344c1518cf361e1ec9587`）
 
 本文档定义 Base 下游自动升级流程的**数据合同、只读计划、下游执行与 operator
 派发边界**。已固化 registry、单项目 result、batch 和 evidence 四种 JSON 格式，
@@ -406,7 +407,7 @@ fixture mode 只允许非 CI 动态本地仓库，不能在 `CI`/`GITHUB_ACTIONS
 这会验证 `MERGE_HEAD`、安装目标依赖并重跑完整检查，随后原子记录两个 ledger。已经
 abort 或销毁的 CI 工作区不具备 `--continue` 条件，必须从干净默认分支重新开始。
 
-### 4.5 T3 GitHub operator dispatch（已完成工程验证，尚未发布）
+### 4.5 T3 GitHub operator dispatch（已发布并完成试点）
 
 `dispatch` 是一次有界、按项目故障隔离的生产路径：
 
@@ -478,7 +479,7 @@ workflow identity、实际 operator commit、排序/唯一性、时间顺序和 
   `159 routes, 1 mount` PASS；
 - frontend `npm ci`/lint/build PASS（保留 2 个既有 lint warning 与 npm audit 报告的
   9 个既有 vulnerability，均不由 T3 引入）；
-- release check PASS（当前 v3.4.0，9 个 Manifest）；database boundary、bootstrap plan、
+- release check PASS（v3.4.0 发布时 9 个 Manifest）；database boundary、bootstrap plan、
   `git diff --check` 全部 PASS。
 
 ### 4.7 T5 前置：v3.3.1 receiver bootstrap patch
@@ -495,7 +496,12 @@ T5 必须先从已发布 `base/v3.3.0` 创建严格 PATCH backport：只包含
 campaign example workflow 或 dispatch fixtures/tests。完整验证并发布不可变
 `base/v3.3.1` 后，又以 `base/v3.3.2` 修复真实外层 no-commit 同步中 E2E 对
 `MERGE_HEAD` 的相对路径误读。3 个试点必须手工采用 v3.3.2；主线 T3 基于该 tag
-发布 `base/v3.4.0`，最后自动演练 v3.3.2→v3.4.0。
+发布 `base/v3.4.0`。首轮 v3.3.2→v3.4.0 演练证明，下游 `GITHUB_TOKEN` 会拒绝
+push 目标 tree 新增的 workflow 文件；三个项目均 `blocked@push`，未留下分支或 PR。
+`base/v3.4.1` 因此将 onboarding 示例移到
+`examples/github-actions/base-upgrade-campaign.yml`，不扩大 receiver 权限；随后
+v3.3.2→v3.4.1 的三个 Draft PR 全部成功，第二次不同 campaign ID 重跑全部复用原
+分支和 PR，三个默认分支均保持不变。
 
 ---
 
@@ -566,15 +572,18 @@ ops artifact 不会回滚下游事实。下游分支、PR 和 ledger 继续严�
 
 ---
 
-## 8. 当前未完成内容
+## 8. 完成状态
 
 - T3/T4 实现、fixture/mock 合同、完整回归与故障矩阵已完成；
-- 不含 dispatcher 的 `base/v3.3.1` receiver 正文 PATCH 与 `base/v3.3.2` 嵌套
-  E2E Git-dir PATCH 已发布；
-- 尚未在真实私有 operator 仓库与 3 个已手工采用 v3.3.2 的非生产/低风险下游
-  执行 v3.3.2→v3.4.0 T5 试点；
-- T3 已进入 v3.4.0 本地发布元数据，但尚未创建不可变
-  `base/v3.4.0` tag；已发布 `base/v3.3.0`/`base/v3.3.1`/`base/v3.3.2` 不移动。
+- `base/v3.3.1` receiver 正文 PATCH、`base/v3.3.2` 嵌套 E2E Git-dir PATCH、
+  `base/v3.4.0` operator campaign 与 `base/v3.4.1` workflow-path PATCH 均已发布为
+  不可变 tag；v3.4.1 commit 为
+  `081cd1407fb902aebbd344c1518cf361e1ec9587`；
+- 三项目首轮 v3.4.0 campaign 均 `blocked@push` 且 0 branch/PR；v3.4.1 成功轮
+  `pr_opened=3`；幂等轮复用 3 个原分支/PR，默认分支和 Draft 状态不变；
+- batch、summary、evidence 的 SHA-256、opaque operator run ID 和私有 evidence
+  commit 已记录在关联 TODO；真实 repository、run/PR URL 与 credential 未进入 Base；
+- T0～T5 全部完成，保留每个 channel 最多 3 个 enabled 项目的 v1 硬上限。
 
 ---
 

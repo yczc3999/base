@@ -1,9 +1,9 @@
 # Base 下游项目自动升级 TODO
 
 **创建**：2026-08-18
-**最后更新**：2026-08-18T11:40:47Z
-**状态**：T0～T4 已完成；`base/v3.3.0`～`base/v3.4.0` 已发布；
-T5 首轮证明 workflow-path push blocker，正在发布 v3.4.1 并重新 campaign
+**最后更新**：2026-08-18T12:11:29Z
+**状态**：✅ T0～T5 全部完成；`base/v3.3.0`～`base/v3.4.1` 均已发布；
+三项目成功轮与跨 campaign 幂等轮均已通过
 **发布路径**：已发布 `base/v3.3.0` receiver 基座 → 严格 backport
 `base/v3.3.1` PR 正文合同 PATCH → `base/v3.3.2` 嵌套 E2E PATCH →
 `base/v3.4.0` campaign（MINOR）→ `base/v3.4.1` workflow-path PATCH
@@ -28,7 +28,7 @@ T5 首轮证明 workflow-path push blocker，正在发布 v3.4.1 并重新 campa
 
 ### 成功指标
 
-首批至少以 3 个无凭据、纯合成 fixture 下游仓库进行演练并达到：
+首批以 3 个私有、非生产、无产品数据的下游仓库进行真实 CI 演练并达到：
 
 1. 无冲突项目自动创建升级 PR 的成功率为 100%；
 2. 单项目无需人工准备升级分支或逐文件比较；
@@ -56,8 +56,9 @@ T5 首轮证明 workflow-path push blocker，正在发布 v3.4.1 并重新 campa
    Base 发版。
 8. **TODO 本身不触发发版**：开始实现并形成可复用能力时再执行 v3.3.0 发布合同。
 9. **首次接入只走已发布 Base tag**：不复制未发布 workflow/runner。v3.3.0
-   已提供 receiver 基座；T5 试点必须先采用 v3.3.1 正文 backport，再采用修复嵌套 merge 验证的 v3.3.2；
-   v3.3.2 receiver 在自动升级到 v3.4.0 时可生成完整 PR 正文并完成全量验证。
+   提供 receiver 基座；T5 试点先采用 v3.3.1 正文 backport，再采用修复嵌套 merge
+   验证的 v3.3.2；最终通过 v3.3.2→v3.4.1 自动 campaign 生成完整 PR 正文并完成
+   全量验证。
 10. **D1 托管范围**：首版只支持 GitHub.com；Base upstream 以已提交的
     canonical `OWNER/REPO` 身份恢复，receiver 不接受任意 upstream URL。
 11. **D2 PR 策略**：新建 PR 为 Draft，不自动合并；幂等更新已有开放 PR 时保留其
@@ -102,7 +103,8 @@ T5 首轮证明 workflow-path push blocker，正在发布 v3.4.1 并重新 campa
    因此必须先从 v3.3.0 严格 backport 并发布 v3.3.1（只含 PR 正文增强/测试/
    标准发布元数据，不含 dispatcher）→ 真实同步发现嵌套 E2E Git-dir 缺陷并发布
    v3.3.2 PATCH → 3 试点手工采用 v3.3.2 → 主线基于 v3.3.2 发布 v3.4.0 →
-   自动 v3.3.2→v3.4.0 campaign。
+   首轮识别 workflow-path push blocker → v3.4.1 PATCH → 三项目成功与幂等
+   campaign。
 5. T1～T4 的通用实现属于 Base；真实 registry、Provider credential、三个试点项目、
    PR 和 evidence 属于外部 operator/downstream，T5 需要外部仓库上下文。
 
@@ -548,7 +550,7 @@ receiver workflow 为 active，Base repository 已按确认值保持 PUBLIC。�
 **Base 精确文件**：
 
 - 更新 `scripts/base-upgrade-campaign.py`
-- 新建 `.github/workflows/base-upgrade-campaign-example.yml`
+- 新建 `examples/github-actions/base-upgrade-campaign.yml`
 - 新建 `serve/tests/test_base_upgrade_dispatch.py`
 - 新建 `serve/tests/fixtures/github-api/README.md`
 - 新建 `serve/tests/fixtures/github-api/campaign.json`
@@ -661,14 +663,14 @@ git diff --check
 - Alembic upgrade PASS；Route Manifest PASS（`159 routes, 1 mount`）；
 - `npm ci`、frontend lint/build PASS；lint 保留 2 个既有 warning，npm audit 报告 9 个
   既有 vulnerability，均不由 T3 引入；
-- `check-base-release.py` PASS（当前 v3.4.0，9 个 Manifest）；
+- `check-base-release.py` PASS（v3.4.0 发布时 9 个 Manifest；v3.4.1 为 10 个）；
 - database boundary、bootstrap plan、动态 Git E2E `9/9`、`git diff --check` 全部 PASS。
 
 ---
 
 ### T5 · 试点、发布与下游采用
 
-**状态**：🟡 v3.3.1/v3.3.2 已发布且 3 个试点已手工采用；待 v3.4.0 campaign
+**状态**：✅ 完成（2026-08-18）
 **依赖**：T4、D5
 **预计**：1 天 + 试点观察
 
@@ -688,14 +690,17 @@ git diff --check
    `base/v3.4.0`；不得移动任何已发布 tag；
 6. 从私有 operator 派发 v3.4.0 campaign；首轮真实证据确认三个项目均在
    non-force push 阶段被 GitHub 拒绝，因为目标新增 `.github/workflows` 示例文件；
-7. 以 v3.4.1 PATCH 将示例移动到 `examples/github-actions/`，固定 operator tools 到
+7. 以 v3.4.1 PATCH 将示例移动到
+   `examples/github-actions/base-upgrade-campaign.yml`，固定 operator tools 到
    v3.4.1 并用新 campaign ID 重试，验证三个 receiver 自动创建/更新 Draft PR，且
    PR 正文包含 nodes、migrations、conflict hotspots、downstream actions、
    release/runtime verification、retry 和 rollback；
-8. 记录成功率、人工耗时、冲突文件和失败阶段；
-9. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
+8. 以第二个不同 campaign ID 再次派发同一目标，验证三个项目均复用同一远端分支与
+   Draft PR，默认分支 SHA、分支 head、PR identity/count 与 Draft 状态全部不变；
+9. 记录成功率、冲突文件、失败阶段、三件套 hash 与私有 evidence commit；
+10. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
    缺陷进入 `base/v3.4.1`，不得修改或移动已发布 tag；
-10. 非试点下游通过原有方式同步至少 v3.3.2 并获得完整 receiver，从下一次 Base 更新开始
+11. 非试点下游通过原有方式同步至少 v3.3.2 并获得完整 receiver，从下一次 Base 更新开始
    进入自动升级流程。
 
 **v3.3.1 严格 backport 精确文件**：
@@ -707,7 +712,7 @@ git diff --check
 - 更新 `UPSTREAM.md`
 - 新建 `releases/base-v3.3.1.json`
 
-backport diff 必须证明不含 `.github/workflows/base-upgrade-campaign-example.yml`、
+backport diff 必须证明不含 `examples/github-actions/base-upgrade-campaign.yml`、
 `scripts/schemas/base-upgrade-evidence.schema.json`、`serve/tests/test_base_upgrade_dispatch.py`、
 `serve/tests/fixtures/github-api/` 或 `scripts/base-upgrade-campaign.py` 的 T3 dispatch 变更。
 v3.3.1 Manifest 只记录 receiver 合同与发布元数据两个稳定节点：
@@ -723,7 +728,8 @@ v3.3.1 Manifest 只记录 receiver 合同与发布元数据两个稳定节点：
 
 稳定节点：`downstream.nested-merge-e2e-gitdir`、`release.v3-3-2-metadata`。
 
-**v3.4.0 主线精确发布文件**：
+**v3.4.0 主线发布元数据文件**（完整精确 scope 以
+`releases/base-v3.4.0.json` 为准）：
 
 - 更新 `VERSION` 为 `3.4.0`
 - 更新 `CHANGELOG.md`
@@ -732,12 +738,27 @@ v3.3.1 Manifest 只记录 receiver 合同与发布元数据两个稳定节点：
 - 新建 `releases/base-v3.4.0.json`
 - 更新 `UPSTREAM.md`、`CLAUDE.md`、`serve/docs/downstream-upgrade-automation.md` 与本 TODO
 
-**Manifest 稳定节点建议**：
+**v3.4.0 Manifest 稳定节点**：
 
 - `downstream.fleet-registry-contract`
 - `downstream.dispatched-sync-workflow`
 - `downstream.upgrade-campaign-reporting`
 - `downstream.upgrade-recovery-guards`
+- `downstream.upgrade-automation-docs`
+- `release.v3-4-0-metadata`
+
+**v3.4.1 PATCH 精确文件**：
+
+- 新建 `examples/github-actions/base-upgrade-campaign.yml`
+- 更新 `serve/tests/test_base_upgrade_dispatch.py`
+- 更新 `CLAUDE.md`、`UPSTREAM.md`、`serve/docs/downstream-upgrade-automation.md` 与本 TODO
+- 更新 `VERSION`、`CHANGELOG.md`、`admin/package.json`、`admin/package-lock.json`
+- 新建 `releases/base-v3.4.1.json`
+
+稳定节点：`downstream.operator-example-nonworkflow-path`、
+`release.v3-4-1-metadata`。当前 operator onboarding 合同只引用
+`examples/github-actions/base-upgrade-campaign.yml`；该示例不进入下游 GitHub 自动识别
+的 workflow 路径。
 
 **发布验收证据**：
 
@@ -772,13 +793,55 @@ git push origin refs/tags/base/v3.4.0
 git ls-remote --exit-code --tags origin refs/tags/base/v3.4.0
 ```
 
-只有远端 v3.3.1、v3.3.2 与 v3.4.0 tag 都验证成功，且三个试点的默认分支已真实
-记录 v3.3.2，才能执行第 5 步真实 campaign；下游
-`scripts/sync-base-release.sh` 必须能从 `upstream` fetch 到该 tag。
+首轮真实 campaign 暴露 workflow-path blocker 后，以新 PATCH commit 发布并远端
+复验，不移动既有 tag：
+
+```bash
+test "$(git rev-parse 'refs/tags/base/v3.4.1^{commit}')" = \
+  "081cd1407fb902aebbd344c1518cf361e1ec9587"
+git ls-remote --exit-code --tags origin refs/tags/base/v3.4.1
+```
+
+远端 v3.3.1、v3.3.2、v3.4.0 与 v3.4.1 tag 均已验证；三个试点默认分支真实
+记录 v3.3.2，并从 `upstream` fetch 已发布 v3.4.1 tag 完成 receiver campaign。
+
+**T5 完成证据（最后验证：2026-08-18T12:11:29Z）**：
+
+- `base/v3.4.1` 本地/远端 tag 对应 commit：
+  `081cd1407fb902aebbd344c1518cf361e1ec9587`；
+- `operator-run-01`（workflow success，`operator_commit=665e916255b7f02e572d8ced980fedbce64f4a94`）/
+  `pilot-v340-20260818-01`：3 个 receiver 全部
+  `status=blocked`、`failed_stage=push`，branch=0、PR=0；这是预期保留的首轮
+  failure-isolation 证据；
+- `operator-run-02`（workflow success，`operator_commit=081cd1407fb902aebbd344c1518cf361e1ec9587`）/
+  `pilot-v341-20260818-02`：3 个 receiver 全部
+  `status=pr_opened`，均创建 `chore/base-v3.4.1` Draft PR，默认分支未变化；
+- `operator-run-03`（workflow success，同一 v3.4.1 `operator_commit`）/
+  `pilot-v341-20260818-03`：3 个 receiver 仍全部
+  `status=pr_opened`，复用与上一轮完全相同的 branch/PR；PR 数量、identity、分支
+  head、Draft 状态和三个默认分支 SHA 均未变化；脱敏 before/after Provider state
+  SHA-256 同为
+  `bc91103a898b23c2a386131df875f7af4c3ee3d3b5af5b0b1129ce0106da3eda`；
+- 三轮私有 evidence commits 分别为
+  `9910df80b59c06c7caf9e645ef13c0e146b67f2d`、
+  `0bc04ccaa8d88c3edb9f6f5b3f8117c3e8fdfed7`、
+  `8d2849bc6ee33db4ccda66f7b49bea5c6a4e6099`；Base 不记录对应真实 repo 或 URL；
+- 三轮 batch/summary/evidence 三件套 SHA-256：
+
+| campaign | batch | summary | evidence |
+|---|---|---|---|
+| `pilot-v340-20260818-01` | `6091dff3ff30fb8406a37f6912f53bd93a3df70f73e10d16c86d0bdd2dd75097` | `aa10507d1e1acaba3c46c3ddc25a20bb9472a27745aee2c0de901d1221d88781` | `81184da71460f29c5ee88b888eb777801a0188624f34fbce853cb566ce379b6e` |
+| `pilot-v341-20260818-02` | `ae3a88e070b3ef50264f840466cc5e697642922e60336edce0e725c052380b39` | `af049286a5b33ab28cbbb846a5aef4701193f347e504630fb271d4c88bfef8e6` | `ba140881c6a0dd61a4a3645693820277db4e26140a5ac6d27e90de6b3a363ebf` |
+| `pilot-v341-20260818-03` | `9c4ecc3539cdc52e9bc086921a783af25a8ef22662dd284bf9e219210679ca48` | `94594ef02b55d79ce6cfd9096d72157e4da763df2757fe698e89b84ca13fd98e` | `3fbe8740da1f8aecb31ca2a9133f588240f9b9b2f9a440c7ffec3304c0b21a79` |
+
+- v3.4.1 发布前完整验证：backend `613 passed`；Alembic、159 routes + 1 mount、
+  frontend lint/build、release/database boundary、bootstrap plan、动态 Git E2E 9/9、
+  shell/pycompile 与 diff 全部 PASS；`check-base-release.py` 确认当前 v3.4.1、10 个
+  Release Manifest。
 
 **完成条件**：代码、文档、测试、Manifest 和试点证据全部成立后，才可将本 TODO
 状态改为完成。只有构建通过、没有真实试点 PR，不算完成；若试点暴露 Base 缺陷，
-修复版本（例如 v3.4.1）发布并重新试点通过后才算完成。
+修复版本发布并重新试点通过后才算完成。上述证据已满足全部条件。
 
 ---
 
@@ -797,13 +860,11 @@ git ls-remote --exit-code --tags origin refs/tags/base/v3.4.0
 
 ### 当前阻塞项
 
-- D1～D6 已按推荐值确认，产品决策门已解除；
-- T5 首先需从 v3.3.0 严格 backport/发布不含 dispatcher 的 v3.3.1 PR 正文合同补丁；
-  随后需要 Base 仓库外的真实私有 operator/ops 仓库、Provider credential，以及 3 个
-  已手工采用 `base/v3.3.2` receiver 的非生产/低风险下游。具体仓库、registry、
-  run/PR/evidence 只在外部私有 operator 仓库选定和记录，不写入 Base；
-- 若现有下游未建立 v3.2.0 ledger，必须先按
-  `serve/docs/base-update-ledger.md` 建立真实 baseline，禁止猜测版本。
+- 无。D1～D6 已确认，T0～T5 已完成；
+- 后续新增下游若尚未建立 ledger，仍必须先按
+  `serve/docs/base-update-ledger.md` 建立真实 baseline，禁止猜测版本；
+- 具体 registry、Provider credential、run/PR URL 与完整 evidence 继续只存于外部
+  私有 operator/ops 仓库，不进入 Base。
 
 ---
 
@@ -839,7 +900,7 @@ D5 试点槽位已确认 + 发布 v3.3.1/v3.3.2
     ↓
 3 项目手工采用 v3.3.2 → 主线基于 v3.3.2 → 发布 v3.4.0
     ↓
-T5 三项目自动 v3.3.2→v3.4.0 升级试点
+T5 首轮 blocked@push → 发布 v3.4.1 → 三项目成功轮 → 幂等复用轮
 ```
 
 | 任务 | 状态 | 依赖 | 可复现完成证据 |
@@ -851,7 +912,7 @@ T5 三项目自动 v3.3.2→v3.4.0 升级试点
 | T2.5 receiver 基座发布 | ✅ 完成 | T2、D1 | `abc9076` + 远端 `base/v3.3.0` + active workflow |
 | T3 派发与 Draft PR | ✅ 完成 | T1、T2.5、D1～D4 | 322 targeted；campaign+dispatch 95；workflow 23；E2E 9/9 |
 | T4 验证与故障演练 | ✅ 完成 | T0～T3 | backend 613；Alembic/routes/frontend/release/boundary/bootstrap/E2E/diff PASS |
-| T5 试点与发布 | 🟡 v3.4.0 首轮发现 push blocker，v3.4.1 修复中 | T4、D5 | 3 个 v3.3.2→v3.4.1 Draft PR + campaign evidence |
+| T5 试点与发布 | ✅ 完成 | T4、D5 | v3.4.0 3×blocked@push/0 branch/PR；v3.4.1 3×Draft PR；跨 campaign 3×同 branch/PR 复用 |
 
 ---
 

@@ -123,8 +123,9 @@ BASE_NEXT_UPDATE_COMMAND=./scripts/sync-base-release.sh <TARGET_VERSION>
 
 Base 仓库已在不可变 `base/v3.3.0` 固化三条自动升级 JSON Schema、只读
 campaign CLI 和 GitHub 下游 receiver，并以 `base/v3.3.1` PATCH 补全 receiver PR
-正文合同。T3 operator dispatch 与第四条 evidence schema 已通过 T4 工程验证，
-尚未发布：
+正文合同、以 `base/v3.3.2` PATCH 修复嵌套 merge E2E。T3 operator dispatch 与
+第四条 evidence schema 已由 `base/v3.4.0` 发布；operator 示例的 workflow-path
+权限修正已由 `base/v3.4.1` 发布并完成三项目真实试点：
 
 - `scripts/schemas/base-downstream-registry.schema.json`：声明式下游项目清单。
   `repository` 固定为 GitHub canonical `OWNER/REPO`，OWNER/REPO 分别最长
@@ -261,8 +262,12 @@ migrations、conflict hotspots、downstream actions 和 release verification 分
 3. 真实同步发现嵌套 E2E 相对 Git-dir 缺陷，以 `base/v3.3.2` PATCH 修复并验证；
 4. 三个试点使用手工 `sync-base-release.sh` 合同采用 v3.3.2，不复制文件；
 5. 主线 T3 基于该确切 PATCH 后发布不可变 `base/v3.4.0`；
-6. 只对账本已记录 v3.3.2 的试点派发 v3.4.0，验证自动 v3.3.2→v3.4.0
-   Draft PR。
+6. 只对账本已记录 v3.3.2 的试点派发 v3.4.0；首轮三个 receiver 均在
+   `push` 阶段因目标 tree 新增 workflow 文件而 `blocked`，未创建分支或 PR；
+7. 以 `base/v3.4.1` 将 operator onboarding 示例移至
+   `examples/github-actions/base-upgrade-campaign.yml`，保持 receiver 最小权限；
+8. 三项目 v3.3.2→v3.4.1 全部创建 Draft PR；使用不同 campaign ID 重跑后全部
+   复用同一 `chore/base-v3.4.1` 分支和 PR，默认分支保持不变。
 
 ### T3 operator campaign（`base/v3.4.1`）
 
@@ -321,6 +326,32 @@ artifact 回收失败也保留 run locator 和已知时间，以 nullable collec
 `failure_stage` 表示部分证据。模板在 `if: always()` 终止门中重新校验三份
 artifact、`operator_commit`、identity、唯一性、时间顺序与 result/evidence 对应，
 然后上传固定名 `base-upgrade-campaign-evidence`。
+
+### T5 三项目试点证据（2026-08-18）
+
+`base/v3.4.1` 已发布到 commit
+`081cd1407fb902aebbd344c1518cf361e1ec9587`，本地与远端不可变 tag 均解析到该
+commit。Base 只记录 campaign ID、聚合结果、SHA-256 和私有 evidence commit；真实
+repository、run/PR URL 与 Provider token 仍只存在于私有 operator/ops evidence。
+
+| opaque operator run | campaign | receiver 聚合 | 私有 evidence commit |
+|---|---|---|---|
+| `operator-run-01`（success） | `pilot-v340-20260818-01` | `blocked@push=3`，branch=0，PR=0 | `9910df80b59c06c7caf9e645ef13c0e146b67f2d` |
+| `operator-run-02`（success） | `pilot-v341-20260818-02` | `pr_opened=3`，3 个 Draft PR，默认分支未变 | `0bc04ccaa8d88c3edb9f6f5b3f8117c3e8fdfed7` |
+| `operator-run-03`（success） | `pilot-v341-20260818-03` | `pr_opened=3`，同一分支/PR 全部复用，默认分支未变 | `8d2849bc6ee33db4ccda66f7b49bea5c6a4e6099` |
+
+私有归档中的 batch/summary/evidence 三件套 SHA-256：
+
+| campaign | batch | summary | evidence |
+|---|---|---|---|
+| `pilot-v340-20260818-01` | `6091dff3ff30fb8406a37f6912f53bd93a3df70f73e10d16c86d0bdd2dd75097` | `aa10507d1e1acaba3c46c3ddc25a20bb9472a27745aee2c0de901d1221d88781` | `81184da71460f29c5ee88b888eb777801a0188624f34fbce853cb566ce379b6e` |
+| `pilot-v341-20260818-02` | `ae3a88e070b3ef50264f840466cc5e697642922e60336edce0e725c052380b39` | `af049286a5b33ab28cbbb846a5aef4701193f347e504630fb271d4c88bfef8e6` | `ba140881c6a0dd61a4a3645693820277db4e26140a5ac6d27e90de6b3a363ebf` |
+| `pilot-v341-20260818-03` | `9c4ecc3539cdc52e9bc086921a783af25a8ef22662dd284bf9e219210679ca48` | `94594ef02b55d79ce6cfd9096d72157e4da763df2757fe698e89b84ca13fd98e` | `3fbe8740da1f8aecb31ca2a9133f588240f9b9b2f9a440c7ffec3304c0b21a79` |
+
+第三轮另保存脱敏 Provider state 的 before/after 快照；两者 SHA-256 均为
+`bc91103a898b23c2a386131df875f7af4c3ee3d3b5af5b0b1129ce0106da3eda`，证明三个
+PR identity、升级分支 head、Draft 状态与默认分支 SHA 全部未变化。三轮 operator
+workflow 均完成，未自动合并任何 PR；T5 至此完成。
 
 operator 依赖统一来自 `scripts/requirements.txt`，后端 dev requirements 复用该文件；
 campaign 与 ledger 共用同一个 SemVer/Manifest/parser/redaction 模块。T1 不修改任何

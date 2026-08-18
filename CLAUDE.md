@@ -139,14 +139,20 @@ run URL 仍会暴露 repository identity，因此真实 evidence 只存私有 op
 artifact。evidence 用 `operator_commit` 绑定实际工具 checkout，并在获得 run ID 后立即
 保留条目；后续 poll/artifact 失败使用 nullable 字段加 `failure_stage` 保留部分证据。
 T3/T4 工程验证已完成（322 targeted、后端 613、动态 Git E2E 9/9，Alembic/
-routes/frontend/release/boundary/bootstrap/diff 全部 PASS），但 T3 尚未发布。由于
-workflow dispatch 运行下游当前默认分支上的 receiver/runner，已从 v3.3.0
+routes/frontend/release/boundary/bootstrap/diff 全部 PASS）。由于 workflow dispatch
+运行下游当前默认分支上的 receiver/runner，已从 v3.3.0
 严格 backport 并发布 `base/v3.3.1`（`8721b75a8906d36072c72c54d767aba8802ecdff`）：
 只含 runner PR 正文 Manifest 分节、对应测试和标准 PATCH 元数据，不含
 dispatcher。真实同步随后发现嵌套 E2E 误读外层 `MERGE_HEAD`，已以
 `base/v3.3.2`（`36fb626e578db78198bb61620177280dae18191f`）PATCH 修复。三个试点
-手工采用 v3.3.2 后，主线 T3 基于该 tag 发布 `base/v3.4.0`，再演练自动
-v3.3.2→v3.4.0 campaign。
+手工采用 v3.3.2 后，主线 T3 已以 `base/v3.4.0`
+（`665e916255b7f02e572d8ced980fedbce64f4a94`）发布。首轮三项目真实 campaign
+均在 `push` 阶段被 GitHub 的 workflow-file 权限边界阻断，且未留下分支或 PR；
+因此示例已移至 `examples/github-actions/base-upgrade-campaign.yml`，并发布不可变
+`base/v3.4.1`（`081cd1407fb902aebbd344c1518cf361e1ec9587`）。随后三项目
+v3.3.2→v3.4.1 campaign 全部创建 Draft PR；第二个不同 campaign ID 全部复用同一
+`chore/base-v3.4.1` 分支和 PR，三个默认分支均保持不变。T0～T5 已完成；真实
+registry、run/PR locator 与完整 evidence 继续只保留在私有 operator/ops 仓库。
 
 ## Clean repository rule
 
