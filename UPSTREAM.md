@@ -72,6 +72,15 @@ Base 仓库本机保留的 `base_platform_app@base_platform` 不随代码同步�
 `base_platform_app`。下游严禁运行 `scripts/provision-base-database.sh`，因为该脚本
 只服务于 Base 仓库自身的固定数据库身份。
 
+新 Fork/Clone 完成 `upstream` remote 后，使用：
+
+```bash
+scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
+```
+
+脚本自动完成项目专属 database/role、环境文件、依赖、迁移、测试/build 和
+`PROJECT.md` 账本。已存在的下游项目继续使用自己的数据库，不重新 bootstrap。
+
 ## 5. 迁移与冲突
 
 - 先读目标版本的 `CHANGELOG.md`，再执行任何数据库迁移。
@@ -85,8 +94,8 @@ Base 仓库本机保留的 `base_platform_app@base_platform` 不随代码同步�
 每个下游项目应在自己的仓库记录：
 
 ```text
-BASE_UPSTREAM_VERSION=3.0.0
-BASE_UPSTREAM_TAG=base/v3.0.0
+BASE_UPSTREAM_VERSION=3.1.0
+BASE_UPSTREAM_TAG=base/v3.1.0
 BASE_SYNCED_AT=YYYY-MM-DDTHH:MM:SSZ
 ```
 

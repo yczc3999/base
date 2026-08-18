@@ -15,6 +15,52 @@
 
 暂无。
 
+## [3.1.0] - 2026-08-18
+
+### 变更范围
+
+- 新增 `scripts/bootstrap-project.sh`：下游 Fork/Clone 一条命令完成项目标识、
+  专属 PostgreSQL database/role、随机密码、ACL、环境文件、依赖安装、完整
+  schema/migration、路由检查、后端测试和前端 lint/build。
+- 新增共享 `scripts/lib/provision-postgres-database.sh`；Base 专属 provision 与
+  下游 bootstrap 复用同一初始化内核，消除数据库安装/ACL/验收逻辑重复。
+- bootstrap 强制要求 URL 不同的 Base upstream/project remotes，拒绝 Base 保留
+  标识；未知非空数据库、owner 不匹配或迁移账本缺失时立即停止，不使用
+  Base/其他项目数据库兜底。
+- 自动生成 Git 忽略且 `0600` 的前后端 runtime env，以及不含密码、供下游提交的
+  `PROJECT.md` 同步账本。
+- 修正备份锁/任务锁测试对 `base:` Redis 前缀的硬编码，改为跟随
+  `settings.APP_NAME`，确保下游项目名下全量测试仍成立。
+- 新增 `serve/docs/project-bootstrap.md`、静态发布门禁与 4 项自动测试。
+
+### 兼容性（MINOR）
+
+- 新能力向后兼容；现有 Base 与下游数据库身份、HTTP API 和 schema 不变。
+- 已存在的下游项目无需重新 bootstrap，继续按自己的环境执行同步和迁移。
+
+### 迁移
+
+- 无新增数据库 migration。
+- 新项目：
+  ```bash
+  scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
+  ```
+- 仅预览派生身份：
+  `scripts/bootstrap-project.sh PROJECT_SLUG "Project Name" --plan`。
+
+### 下游同步
+
+- 推荐源版本：`base/v3.1.0`。
+- 冲突热点：`scripts/`、`README.md`、`CLAUDE.md`、`UPSTREAM.md`。
+- 同步后继续使用下游现有专属数据库，运行完整 release/test/lint/build 验证。
+
+### 回滚
+
+- 已存在项目回滚只需撤销 bootstrap/common-library 文件，不改变数据库身份。
+- 新项目首次初始化失败时，只删除该项目生成的 database/role、ignored env 和
+  `PROJECT.md`；严禁操作 Base 或其他项目数据库。
+- 已发布 Base tag 不移动；修正通过新的 SemVer 发布。
+
 ## [3.0.0] - 2026-08-18
 
 ### 变更范围

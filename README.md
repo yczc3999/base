@@ -31,9 +31,12 @@ git clone <BASE_REPOSITORY_URL> <PROJECT_DIRECTORY>
 cd <PROJECT_DIRECTORY>
 git remote rename origin upstream
 git remote add origin <PROJECT_REPOSITORY_URL>
+scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 ```
 
-进入 fork/clone 后的项目目录再添加业务代码；本仓库保持可被多个项目直接复用的纯基础状态。
+该命令自动创建项目专属 database/role、环境文件、依赖、完整 schema/migration、
+测试/build 与 `PROJECT.md` 账本。进入 fork/clone 后的项目目录再添加业务代码；
+本仓库保持可被多个项目直接复用的纯基础状态。
 
 ## 必读文件
 

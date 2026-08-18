@@ -20,10 +20,13 @@ git clone <BASE_REPOSITORY_URL> <PROJECT_DIRECTORY>
 cd <PROJECT_DIRECTORY>
 git remote rename origin upstream
 git remote add origin <PROJECT_REPOSITORY_URL>
+scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 ```
 
 Development then happens only in `<PROJECT_DIRECTORY>`. Keep this repository as
-the upstream generic foundation.
+the upstream generic foundation. The bootstrap command creates the downstream-only
+database/role, ignored runtime env files, dependencies, migrations, validation and
+`PROJECT.md` ledger; it rejects the Base database identity.
 
 ## What belongs here
 

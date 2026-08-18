@@ -212,6 +212,8 @@ scripts/provision-base-database.sh
 cd serve
 
 # 下游 Fork/Clone 不执行上述脚本：必须在下游 .env 配置项目专属库/角色。
+# 完成 upstream remote 后，改用一键项目初始化：
+scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 
 # 3. 启动 API
 uvicorn app.main:app --host 0.0.0.0 --port 3000
@@ -235,3 +237,4 @@ python -m app.worker
 | [docs/queue-task-design.md](docs/queue-task-design.md) | 队列 & 定时任务设计 |
 | [docs/route-registry-design.md](docs/route-registry-design.md) | 集中式路由注册表设计、实施与审计记录 |
 | [docs/database-boundary.md](docs/database-boundary.md) | Base 唯一数据库身份、ACL 与下游隔离合同 |
+| [docs/project-bootstrap.md](docs/project-bootstrap.md) | 下游一键初始化、专属数据库与验收合同 |

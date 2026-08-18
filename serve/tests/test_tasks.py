@@ -4,6 +4,8 @@ BaseTask 测试 — 防重复锁 / 错误隔离
 
 import pytest
 
+from app.config import settings
+
 
 @pytest.mark.asyncio
 async def test_lock_prevents_concurrent_execution(mock_redis):
@@ -37,7 +39,7 @@ async def test_lock_blocks_second_holder(mock_redis):
         async def run(self):
             ran.append(1)
 
-    key = f"base:task:lock:TaskB"
+    key = f"{settings.APP_NAME}:task:lock:TaskB"
     await mock_redis.set(key, "other-holder", ex=120, nx=True)
 
     t = TaskB()
@@ -59,7 +61,7 @@ async def test_lock_owner_token_release(mock_redis):
 
     t = TaskC()
     await t.execute()
-    key = f"base:task:lock:TaskC"
+    key = f"{settings.APP_NAME}:task:lock:TaskC"
     assert await mock_redis.get(key) is None
 
 
@@ -78,5 +80,5 @@ async def test_task_error_does_not_crash(mock_redis):
     t = TaskD()
     await t.execute()  # 不抛异常即通过
     # 异常后锁仍被正确释放
-    key = f"base:task:lock:TaskD"
+    key = f"{settings.APP_NAME}:task:lock:TaskD"
     assert await mock_redis.get(key) is None

@@ -88,6 +88,10 @@ npm install
 npm run dev
 ```
 
+下游首次 Fork/Clone 推荐从仓库根目录运行
+`scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"`；它使用 `npm ci` 安装
+依赖并生成 Git 忽略的 `admin/.env`，其中 `VITE_APP_TITLE` 为项目名称。
+
 ## 新增 CRUD 页面
 
 **后端有 `crud_router("order", order_logic)` → 前端新建一个 `.vue`：**

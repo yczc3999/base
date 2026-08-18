@@ -257,3 +257,59 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 ### 最后更新
 
 2026-08-18T03:03:00-04:00
+
+---
+
+## ✅ [已完成 2026-08-18] 下游 Fork/Clone 一键开箱
+
+### 目标与用户价值
+
+让新项目在完成 Fork/Clone 和 `upstream` remote 后，通过一条命令获得可开发、
+可测试、数据库隔离的完整运行环境，消除手工建库、配 env、安装依赖和逐项验收。
+
+### 已确认决定
+
+- 标准命令：`scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"`。
+- database=`PROJECT_SLUG`，role=`PROJECT_SLUG_app`；Base 标识全部保留并拒绝。
+- Base 与下游共用一个通用 PostgreSQL 初始化内核，不复制迁移/ACL 逻辑。
+- 缺少 `upstream`、缺少项目 remote，或两个 remote URL 相同时停止，防止在 Base
+  原仓库直接生成产品项目。
+- 密码随机生成，只进入 ignored `serve/.env`；`PROJECT.md` 只记录非敏感同步信息。
+- 默认完成依赖安装、SQL/Alembic、route check、pytest、lint 和 build，不留下半验收状态。
+
+### 精确文件
+
+- 下游入口：`scripts/bootstrap-project.sh`
+- 共享内核：`scripts/lib/provision-postgres-database.sh`
+- Base 固定入口：`scripts/provision-base-database.sh`
+- 合同：`serve/docs/project-bootstrap.md`
+- 门禁：`scripts/check-database-boundary.py`
+- 测试：`serve/tests/test_project_bootstrap.py`
+- 使用说明：`AGENTS.md`、`CLAUDE.md`、`README.md`、`serve/README.md`、
+  `admin/README.md`、`UPSTREAM.md`、`serve/docs/database-boundary.md`
+
+### 验收证据
+
+- 隔离临时 Fork 使用 `fork_fixture` 实际执行 bootstrap 成功：完整 schema、
+  SQL migration 29/29、Alembic head 到达 `cdabba1e3903`。
+- 生成 `fork_fixture_app@fork_fixture`；项目 role 对项目库 CONNECT=true、对
+  `base_platform` CONNECT=false；Base role 对 fixture CONNECT=false。
+- 自动生成的前后端 `.env` 权限 `0600` 且密码未输出；`PROJECT.md` 不含密码。
+- fixture database/role 与临时工作树已在验收后删除，Base 数据库保持 ready。
+- 首轮完整 Fork 测试发现备份锁/任务锁测试写死 `base:` 前缀；已改为
+  `settings.APP_NAME`，复跑临时 Fork：291 passed、路由检查通过、前端 lint
+  0 errors/build PASS。
+- 当前 Base 完整工程验证：295 passed、路由 `159 http routes, 1 mounts`、
+  前端 lint 0 errors/build PASS；发布证据记录在 `base/v3.1.0`。
+
+### 阻塞、非目标与回滚
+
+- 当前阻塞：无。
+- 前置依赖为本机 Python/Node/OpenSSL/PostgreSQL 与 postgres 管理权限；脚本不代替
+  操作系统包管理器。
+- 非目标：不在 Base 仓库生成具体项目，不替已有下游重建数据库。
+- 回滚只删除新项目自己的 database/role/env/`PROJECT.md`，不得操作 Base 或其他项目。
+
+### 最后更新
+
+2026-08-18T03:15:00-04:00

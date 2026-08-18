@@ -18,6 +18,10 @@ following:
 - product prompts, strategy code, workflows, fixtures, screenshots, branding, or copy;
 - product-specific deployment configuration, secrets, data, or runtime artifacts.
 
+After establishing the downstream `upstream` remote, initialize a new project with
+`scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"`. The script must never
+be executed in this Base repository and rejects the Base database identity.
+
 An agent must not treat a request naming a concrete product or business domain as
 permission to extend this repository. The request belongs in a fork/clone. Only
 changes that remain useful, generic, documented, and product-agnostic belong here.
@@ -83,6 +87,7 @@ cd serve && .venv/bin/python -m app.routes check
 cd admin && npm ci && npm run lint && npm run build
 python3 scripts/check-base-release.py
 python3 scripts/check-database-boundary.py
+scripts/bootstrap-project.sh fixture_project --plan
 git diff --check
 ```
 

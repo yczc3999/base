@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.logics.db_backup as db_backup_mod
+from app.config import settings
 from app.models.base import Base
 from app.models.db_backup import DbBackup
 from app.logics.base import BizError
@@ -145,7 +146,8 @@ async def test_do_backup_failure(db, mock_redis, backups_root, monkeypatch):
 async def test_do_backup_lock_prevents_concurrent(db, mock_redis, backups_root, monkeypatch):
     """Redis 锁被占用时拒绝再次备份"""
     _mock_pg_dump_success(monkeypatch, backups_root)
-    await mock_redis.set("base:backup:lock", "1", ex=3600, nx=True)
+    lock_key = f"{settings.APP_NAME}:backup:lock"
+    await mock_redis.set(lock_key, "1", ex=3600, nx=True)
     with pytest.raises(BizError, match="已有备份任务"):
         await db_backup_mod.db_backup_logic.do_backup(db)
 
@@ -213,7 +215,8 @@ async def test_backup_lock_released_after_success(db, mock_redis, backups_root, 
     _mock_pg_dump_success(monkeypatch, backups_root)
     await db_backup_mod.db_backup_logic.do_backup(db)
     # 锁已释放
-    assert await mock_redis.get("base:backup:lock") is None
+    lock_key = f"{settings.APP_NAME}:backup:lock"
+    assert await mock_redis.get(lock_key) is None
     # 可立即再次备份
     result = await db_backup_mod.db_backup_logic.do_backup(db)
     assert result["filename"]

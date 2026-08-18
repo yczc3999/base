@@ -41,6 +41,10 @@ GRANT USAGE, CREATE ON SCHEMA public TO base_platform_app;
 `DATABASE_NAME`、`DATABASE_USER` 和随机密码，例如 `<project>_app@<project>`；
 这些值只记录在下游仓库自己的部署账本中。
 
+标准入口为 `scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"`。它调用与
+Base 相同的通用建库内核，但强制拒绝 Base 保留标识，并生成下游专属身份；完整
+流程见 `project-bootstrap.md`。
+
 Base 发布只交付 schema/migration 代码。下游同步 Base tag 时，仅在下游项目专属
 数据库执行迁移；不得把 Base 本机数据库作为共享库或验证库。
 

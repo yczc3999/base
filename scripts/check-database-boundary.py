@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -77,6 +78,35 @@ def main() -> int:
         if assignment not in provision:
             fail(f"provisioning script is missing fixed identity: {assignment}")
 
+    shared_library = "scripts/lib/provision-postgres-database.sh"
+    bootstrap_path = ROOT / "scripts/bootstrap-project.sh"
+    bootstrap = bootstrap_path.read_text(encoding="utf-8")
+    for relative, text in (
+        ("scripts/provision-base-database.sh", provision),
+        ("scripts/bootstrap-project.sh", bootstrap),
+    ):
+        if shared_library not in text or "provision_postgres_database" not in text:
+            fail(f"{relative} must use the shared database provisioning core")
+    for required in (
+        "remote get-url upstream",
+        "project remote must differ",
+        "base_platform_app",
+        "PROJECT.md",
+        "BOOTSTRAP_SKIP_INSTALL",
+    ):
+        if required not in bootstrap:
+            fail(f"project bootstrap is missing {required!r}")
+
+    plan = subprocess.run(
+        [str(bootstrap_path), "fixture_project", "Fixture Project", "--plan"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if plan.returncode or "fixture_project_app" not in plan.stdout:
+        fail(plan.stderr.strip() or "project bootstrap plan check failed")
+
     boundary = (ROOT / "serve/docs/database-boundary.md").read_text(encoding="utf-8")
     for required in (EXPECTED_NAME, EXPECTED_USER, "REVOKE ALL ON DATABASE", "下游"):
         if required not in boundary:
@@ -90,6 +120,7 @@ def main() -> int:
         "UPSTREAM.md",
         "tofix.md",
         "serve/README.md",
+        "serve/docs/project-bootstrap.md",
     )
     for relative in ledgers:
         text = (ROOT / relative).read_text(encoding="utf-8")
