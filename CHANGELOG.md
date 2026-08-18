@@ -15,6 +15,41 @@
 
 暂无。
 
+## [3.4.1] - 2026-08-18
+
+### 变更范围
+
+- 将 operator campaign 示例从 GitHub 自动识别的 `.github/workflows/` 移到
+  `examples/github-actions/`。真实 v3.4.0 试点证明，下游 `GITHUB_TOKEN` 对包含新增
+  workflow 文件的升级分支会拒绝 push；示例只属于私有 ops onboarding，不应进入下游
+  workflow 路径。
+- 更新模板路径测试与 operator 文档；dispatcher、evidence schema、receiver inputs/result
+  和同步内核不变。
+
+### 兼容性（PATCH）
+
+- 无 HTTP API、数据库 schema 或运行时数据变化。
+- v3.3.2 下游应直接以 `base/v3.4.1` 为目标；最终目标 tree 不含新增的下游 workflow
+  文件，因此现有最小 `GITHUB_TOKEN` 可 non-force push 升级分支。
+
+### 下游操作
+
+- 私有 operator/ops 仓库继续使用已复制的 campaign workflow；新安装从
+  `examples/github-actions/base-upgrade-campaign.yml` 复制。
+- 将 `BASE_PLATFORM_REF` 固定到不可变 `base/v3.4.1`，以新的 campaign ID 对
+  v3.3.2 下游派发 3.4.1。
+
+### 验证
+
+- `cd serve && .venv/bin/pytest tests/test_base_upgrade_dispatch.py -q`。
+- 后端完整 pytest、Route Manifest、Alembic、前端 lint/build、release/database boundary、
+  bootstrap plan、动态 Git E2E、shell syntax 与 `git diff --check`。
+
+### 回滚
+
+- 停止 operator workflow 或撤销 token；未合并 PR/本次新建分支按 receiver 资源事实回滚。
+- 不移动 `base/v3.4.0`；本修复使用新的不可变 `base/v3.4.1` tag。
+
 ## [3.4.0] - 2026-08-18
 
 ### 变更范围

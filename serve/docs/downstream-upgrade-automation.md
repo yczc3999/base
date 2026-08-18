@@ -20,7 +20,7 @@
 
 | 层 | 位置 | 内容 | 归属 |
 |---|---|---|---|
-| Base 通用合同与工具 | `scripts/schemas/*.schema.json`、`scripts/base-upgrade-campaign.py`、`scripts/run-base-upgrade.sh`、`.github/workflows/base-upgrade-receiver.yml`、`.github/workflows/base-upgrade-campaign-example.yml`、`scripts/lib/base_release.py`、本文档 | schema、计划/派发/批次汇总、下游 receiver、operator 模板、共享 release/脱敏边界 | Base 仓库，产品无关 |
+| Base 通用合同与工具 | `scripts/schemas/*.schema.json`、`scripts/base-upgrade-campaign.py`、`scripts/run-base-upgrade.sh`、`.github/workflows/base-upgrade-receiver.yml`、`examples/github-actions/base-upgrade-campaign.yml`、`scripts/lib/base_release.py`、本文档 | schema、计划/派发/批次汇总、下游 receiver、operator 模板、共享 release/脱敏边界 | Base 仓库，产品无关 |
 | operator 实例配置 | 私有 operator/ops 仓库（例如 `fleet/projects.json`） | 真实项目清单、channel、enabled 开关、Provider secret、campaign workflow/evidence | operator 仓库，不进入 Base |
 | 下游运行文件 | 各下游仓库 `PROJECT.md`、`BASE_UPDATES.md` | 真实 Base 版本、同步历史、验证记录 | 下游仓库，不进入 Base |
 
@@ -459,7 +459,7 @@ encrypted entry、超限大小/压缩率、非 UTF-8、重复 JSON key 与非终
 校验 schema、campaign/project/target/source 和已有 PR identity；仅允许竞态期间下游
 已被其他 campaign 升到 target 时，`up_to_date` 的 source 等于 target。
 
-`.github/workflows/base-upgrade-campaign-example.yml` 必须复制到私有 operator/ops 仓库，
+`examples/github-actions/base-upgrade-campaign.yml` 必须复制到私有 operator/ops 仓库，
 不在 Base 中直接运行。该仓库预先配置 `fleet/projects.json`、
 `BASE_UPGRADE_GITHUB_TOKEN` secret、`BASE_PLATFORM_REPOSITORY` managed variable 和指向已
 发布不可变 tag/commit 的 `BASE_PLATFORM_REF`。workflow checkout 私有 ops 仓库根目录，

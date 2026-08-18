@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "version": "3.4.1",
+  "tag": "base/v3.4.1",
+  "released_at": "2026-08-18",
+  "semver": "PATCH",
+  "summary": "将 operator workflow 示例移出下游受保护的 GitHub workflow 路径",
+  "nodes": [
+    {
+      "id": "downstream.operator-example-nonworkflow-path",
+      "kind": "fixed",
+      "scope": "upgrade/operator",
+      "summary": "避免只读 onboarding 示例触发下游 GITHUB_TOKEN workflow-file push 限制",
+      "files": [
+        "examples/github-actions/base-upgrade-campaign.yml",
+        "serve/tests/test_base_upgrade_dispatch.py",
+        "CLAUDE.md",
+        "UPSTREAM.md",
+        "serve/docs/downstream-upgrade-automation.md",
+        "serve/docs/todo-downstream-upgrade-automation-2026-08-18.md"
+      ]
+    },
+    {
+      "id": "release.v3-4-1-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.4.1 PATCH 版本、前端包元数据、变更账本与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.4.1.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "PATCH：dispatcher、receiver、result/evidence schema、HTTP API 与数据库 schema 不变。",
+    "v3.3.2 下游直接以 v3.4.1 为目标时，最终 tree 不新增 .github/workflows 文件。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移。"
+  ],
+  "downstream_actions": [
+    "私有 operator 已复制的 workflow 可继续使用；新安装从 examples/github-actions/base-upgrade-campaign.yml 复制。",
+    "将 BASE_PLATFORM_REF 固定为不可变 base/v3.4.1，并以新 campaign ID 对 v3.3.2 下游派发。",
+    "不得扩大下游 GITHUB_TOKEN 或把中央 operator token 下发给 receiver 来规避 workflow-file push 限制。"
+  ],
+  "conflict_hotspots": [
+    ".github/workflows/base-upgrade-campaign-example.yml",
+    "examples/github-actions/base-upgrade-campaign.yml"
+  ],
+  "verify": [
+    "cd serve && .venv/bin/pytest tests/test_base_upgrade_dispatch.py -q",
+    "cd serve && .venv/bin/pytest",
+    "cd serve && .venv/bin/python -m app.routes check",
+    "cd admin && npm ci && npm run lint && npm run build",
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "scripts/bootstrap-project.sh fixture_project --plan",
+    "scripts/test-base-upgrade-e2e.sh",
+    "git diff --check"
+  ],
+  "rollback": [
+    "停止 operator workflow 或撤销 operator token。",
+    "关闭本次创建的 Draft PR 并删除本次新推分支；复用资源不自动删除。",
+    "不移动 base/v3.4.0；修正使用新的不可变 base/v3.4.1 tag。"
+  ]
+}

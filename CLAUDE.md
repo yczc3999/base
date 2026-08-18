@@ -132,7 +132,7 @@ rollback。冲突/验证失败只产出脱敏 result 后 abort，不写默认分
 T3 operator 实现使用 GitHub REST `2026-03-10`；dispatch POST 不发送已移除的
 `return_run_details`，严格接受 `200` run locator，响应丢失时先按唯一
 run-name/event/ref/时间窗口恢复，然后按 run ID 轮询并下载唯一 result artifact。
-`.github/workflows/base-upgrade-campaign-example.yml` 是要复制到私有 operator/ops 仓库的
+`examples/github-actions/base-upgrade-campaign.yml` 是要复制到私有 operator/ops 仓库的
 人工批准模板；该仓库管理 registry、Token、不可变 Base tools ref 与 evidence。
 `project_id` 必须是 operator 预分配的稳定、非敏感 opaque ID，并不会被工具自动匿名化；
 run URL 仍会暴露 repository identity，因此真实 evidence 只存私有 ops 仓库/受保护

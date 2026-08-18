@@ -2,11 +2,11 @@
 
 **创建**：2026-08-18
 **最后更新**：2026-08-18T11:40:47Z
-**状态**：T0～T4 已完成；`base/v3.3.0`/`base/v3.3.1`/`base/v3.3.2` 已发布；
-T5 的 3 个私有合成试点已手工采用 v3.3.2，v3.4.0 待发布与自动 campaign
+**状态**：T0～T4 已完成；`base/v3.3.0`～`base/v3.4.0` 已发布；
+T5 首轮证明 workflow-path push blocker，正在发布 v3.4.1 并重新 campaign
 **发布路径**：已发布 `base/v3.3.0` receiver 基座 → 严格 backport
 `base/v3.3.1` PR 正文合同 PATCH → `base/v3.3.2` 嵌套 E2E PATCH →
-`base/v3.4.0` campaign（MINOR）
+`base/v3.4.0` campaign（MINOR）→ `base/v3.4.1` workflow-path PATCH
 
 ---
 
@@ -686,13 +686,16 @@ git diff --check
    `base/v3.3.2`，不复制 workflow/runner；
 5. 主线 T3 基于精确 `base/v3.3.2`，以标准 MINOR 合同发布不可变
    `base/v3.4.0`；不得移动任何已发布 tag；
-6. 从私有 operator 派发 v3.4.0 campaign，验证三个 v3.3.2 receiver 自动创建/更新
-   Draft PR，且 PR 正文包含 nodes、migrations、conflict hotspots、downstream
-   actions、release/runtime verification、retry 和 rollback；
-7. 记录成功率、人工耗时、冲突文件和失败阶段；
-8. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
+6. 从私有 operator 派发 v3.4.0 campaign；首轮真实证据确认三个项目均在
+   non-force push 阶段被 GitHub 拒绝，因为目标新增 `.github/workflows` 示例文件；
+7. 以 v3.4.1 PATCH 将示例移动到 `examples/github-actions/`，固定 operator tools 到
+   v3.4.1 并用新 campaign ID 重试，验证三个 receiver 自动创建/更新 Draft PR，且
+   PR 正文包含 nodes、migrations、conflict hotspots、downstream actions、
+   release/runtime verification、retry 和 rollback；
+8. 记录成功率、人工耗时、冲突文件和失败阶段；
+9. 只将可复用修正回收到 Base，不把试点项目资料提交到 Base；试点发现的 Base
    缺陷进入 `base/v3.4.1`，不得修改或移动已发布 tag；
-9. 非试点下游通过原有方式同步至少 v3.3.2 并获得完整 receiver，从下一次 Base 更新开始
+10. 非试点下游通过原有方式同步至少 v3.3.2 并获得完整 receiver，从下一次 Base 更新开始
    进入自动升级流程。
 
 **v3.3.1 严格 backport 精确文件**：
@@ -848,7 +851,7 @@ T5 三项目自动 v3.3.2→v3.4.0 升级试点
 | T2.5 receiver 基座发布 | ✅ 完成 | T2、D1 | `abc9076` + 远端 `base/v3.3.0` + active workflow |
 | T3 派发与 Draft PR | ✅ 完成 | T1、T2.5、D1～D4 | 322 targeted；campaign+dispatch 95；workflow 23；E2E 9/9 |
 | T4 验证与故障演练 | ✅ 完成 | T0～T3 | backend 613；Alembic/routes/frontend/release/boundary/bootstrap/E2E/diff PASS |
-| T5 试点与发布 | 🟡 v3.3.1/v3.3.2 已发布，3 个手工采用完成 | T4、D5 | 3 个 v3.3.2→v3.4.0 Draft PR + `base/v3.4.0` campaign evidence |
+| T5 试点与发布 | 🟡 v3.4.0 首轮发现 push blocker，v3.4.1 修复中 | T4、D5 | 3 个 v3.3.2→v3.4.1 Draft PR + campaign evidence |
 
 ---
 

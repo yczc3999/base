@@ -264,10 +264,10 @@ migrations、conflict hotspots、downstream actions 和 release verification 分
 6. 只对账本已记录 v3.3.2 的试点派发 v3.4.0，验证自动 v3.3.2→v3.4.0
    Draft PR。
 
-### T3 operator campaign（尚未发布）
+### T3 operator campaign（`base/v3.4.1`）
 
 operator/ops 仓库必须保持私有，并在自己的默认分支提交
-`fleet/projects.json`。将 `.github/workflows/base-upgrade-campaign-example.yml` 复制到该
+`fleet/projects.json`。将 `examples/github-actions/base-upgrade-campaign.yml` 复制到该
 仓库后，配置：
 
 - managed variable `BASE_PLATFORM_REPOSITORY=OWNER/REPO`；

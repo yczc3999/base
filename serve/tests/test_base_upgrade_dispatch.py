@@ -902,7 +902,7 @@ def test_artifact_set_stages_every_member_before_replacing_old_outputs(tmp_path)
 def test_example_workflow_has_120_minute_gate_and_three_artifact_final_validation():
     import yaml
 
-    path = ROOT / ".github/workflows/base-upgrade-campaign-example.yml"
+    path = ROOT / "examples/github-actions/base-upgrade-campaign.yml"
     document = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
     job = document["jobs"]["dispatch"]
     assert job["timeout-minutes"] == "120"
@@ -922,7 +922,7 @@ def test_example_workflow_has_120_minute_gate_and_three_artifact_final_validatio
 def _workflow_validation_script():
     import yaml
 
-    path = ROOT / ".github/workflows/base-upgrade-campaign-example.yml"
+    path = ROOT / "examples/github-actions/base-upgrade-campaign.yml"
     document = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
     step = next(
         item
