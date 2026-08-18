@@ -15,6 +15,58 @@
 
 暂无。
 
+## [3.2.0] - 2026-08-18
+
+### 变更范围
+
+- 新增 `releases/base-vX.Y.Z.json` 发布 Manifest；每个版本把变化拆成稳定更新
+  node，逐项记录类型、范围、文件、兼容性、迁移、下游动作、冲突点、验证与回滚。
+- 回填 v1.0.0、v2.0.0、v3.0.0、v3.1.0 Manifest；新发布缺 Manifest、节点为空、
+  版本/日期与 CHANGELOG 不一致时，`check-base-release.py` 阻止发布。
+- 新增 `scripts/base-update-ledger.py`：可在合并前聚合 CURRENT→TARGET 跨过的每个
+  Base 版本，输出完整节点和两个 Base tag 之间的精确文件差异。
+- 下游 `PROJECT.md` 现在记录准确 Base version/tag/commit、最后同步时间、历史账本
+  位置、下次计划命令和更新命令；`BASE_UPDATES.md` 追加保存每次采用/更新详情。
+- `scripts/sync-base-release.sh` 改为更新前打印计划，使用 `--no-commit` 合并，随后
+  运行 route/pytest/lint/build/diff 验证，再将代码、`PROJECT.md` 和含 PASS 证据的
+  `BASE_UPDATES.md` 原子提交为同一个 merge commit；`--continue` 可从冲突、验证或
+  commit hook 失败恢复，且不会重复追加历史。
+- bootstrap 自动建立两个下游账本；新增完整设计合同与 6 项账本/同步测试。
+
+### 兼容性（MINOR）
+
+- HTTP、schema 与运行配置不变；已有下游可以继续运行。
+- v3.2.0 起下游同步合同新增两个必须提交的版本账本。v3.1.0 项目首次合并
+  v3.2.0 后按 `serve/docs/base-update-ledger.md` 执行一次 ledger record/amend；
+  后续版本由新 sync 脚本自动维护。
+
+### 迁移
+
+- 无数据库 migration。
+- 账本迁移（v3.1.0 → v3.2.0）：
+  ```bash
+  python3 scripts/base-update-ledger.py record \
+    --from 3.1.0 --to 3.2.0 --ref refs/tags/base/v3.2.0
+  git add PROJECT.md BASE_UPDATES.md
+  git commit --amend --no-edit
+  ```
+
+### 下游同步
+
+- 推荐源版本：`base/v3.2.0`。
+- 更新前方案：
+  `python3 scripts/base-update-ledger.py plan --from CURRENT --to 3.2.0 --ref refs/tags/base/v3.2.0`。
+- 标准更新：`./scripts/sync-base-release.sh 3.2.0`。
+- 冲突热点：`scripts/sync-base-release.sh`、`scripts/bootstrap-project.sh`、
+  `PROJECT.md`、`BASE_UPDATES.md`、`CHANGELOG.md`。
+
+### 回滚
+
+- 合并未提交：`git merge --abort`。
+- 已提交：revert 整个同步 merge commit，并向 `BASE_UPDATES.md` 追加回滚事实，
+  不删除已有历史。
+- 无数据库变更；已发布 Base tag 不移动。
+
 ## [3.1.0] - 2026-08-18
 
 ### 变更范围

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "version": "3.1.0",
+  "tag": "base/v3.1.0",
+  "released_at": "2026-08-18",
+  "semver": "MINOR",
+  "summary": "下游 Fork/Clone 一键初始化与项目数据库隔离",
+  "nodes": [
+    {
+      "id": "bootstrap.project-one-command",
+      "kind": "added",
+      "scope": "scripts",
+      "summary": "一条命令生成项目身份、依赖、数据库、环境、迁移和完整验收",
+      "files": ["scripts/bootstrap-project.sh", "serve/docs/project-bootstrap.md"]
+    },
+    {
+      "id": "database.shared-provision-core",
+      "kind": "changed",
+      "scope": "database/scripts",
+      "summary": "Base 与下游入口复用同一 PostgreSQL 初始化与 ACL 内核",
+      "files": ["scripts/lib/provision-postgres-database.sh", "scripts/provision-base-database.sh"]
+    },
+    {
+      "id": "tests.dynamic-app-prefix",
+      "kind": "fixed",
+      "scope": "tests",
+      "summary": "Redis 锁测试跟随 settings.APP_NAME，保证改名后的下游全量测试通过",
+      "files": ["serve/tests/test_db_backup.py", "serve/tests/test_tasks.py"]
+    }
+  ],
+  "compatibility": ["向后兼容；已有项目无需重新 bootstrap。"],
+  "migrations": ["无新增数据库 migration。"],
+  "downstream_actions": ["新项目运行 scripts/bootstrap-project.sh；已有项目继续使用自己的 database/role。"],
+  "conflict_hotspots": ["scripts/", "README.md", "CLAUDE.md", "UPSTREAM.md"],
+  "verify": ["运行 bootstrap --plan。", "新项目执行 route check、pytest、lint、build。"],
+  "rollback": ["只删除新项目自己的 database/role/env/PROJECT.md，不操作 Base 或其他项目。"]
+}

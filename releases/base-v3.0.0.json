@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "version": "3.0.0",
+  "tag": "base/v3.0.0",
+  "released_at": "2026-08-18",
+  "semver": "MAJOR",
+  "summary": "固定 Base 专属数据库身份并从 PostgreSQL ACL 隔离下游",
+  "nodes": [
+    {
+      "id": "database.canonical-identity",
+      "kind": "security",
+      "scope": "database",
+      "summary": "Base 唯一身份固定为 base_platform_app@base_platform",
+      "files": ["serve/app/config.py", "serve/.env.example", "serve/docs/database-boundary.md"]
+    },
+    {
+      "id": "database.provision-and-gate",
+      "kind": "added",
+      "scope": "scripts",
+      "summary": "新增专属建库、ACL、schema 验收与发布门禁",
+      "files": ["scripts/provision-base-database.sh", "scripts/check-database-boundary.py"]
+    },
+    {
+      "id": "database.legacy-menu-normalization",
+      "kind": "fixed",
+      "scope": "migration",
+      "summary": "新装库在菜单卫生迁移前清理精确匹配的旧 SEO/settings 种子",
+      "files": ["serve/databases/migrations/028_1_normalize_legacy_menu_seeds.sql"]
+    }
+  ],
+  "compatibility": ["默认数据库身份变化属于 MAJOR；显式配置项目专属 DATABASE_* 的下游不受影响。"],
+  "migrations": ["运行 028_1_normalize_legacy_menu_seeds.sql；只影响精确匹配的旧 Base 菜单种子。"],
+  "downstream_actions": ["确认下游 DATABASE_NAME/USER 均为项目专属值，严禁使用 Base 身份。"],
+  "conflict_hotspots": ["serve/app/config.py", "serve/.env.example", "serve/databases/migrations/", "scripts/"],
+  "verify": ["python3 scripts/check-database-boundary.py", "在下游专属数据库运行 SQL/Alembic。"],
+  "rollback": ["代码可回退，但下游不得切换到 Base 数据库身份。"]
+}

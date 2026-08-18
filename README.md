@@ -23,6 +23,8 @@
 - `VERSION`：当前 Base 发布版本。
 - `CHANGELOG.md`：每个 Base 版本的变更账本。
 - `UPSTREAM.md`：下游 Fork/Clone 项目的同步合同。
+- `releases/base-vX.Y.Z.json`：每个版本逐节点、逐文件的机器更新清单。
+- `serve/docs/base-update-ledger.md`：下游当前版本、更新计划和追加历史合同。
 
 ## 开发方式
 

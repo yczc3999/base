@@ -238,3 +238,4 @@ python -m app.worker
 | [docs/route-registry-design.md](docs/route-registry-design.md) | 集中式路由注册表设计、实施与审计记录 |
 | [docs/database-boundary.md](docs/database-boundary.md) | Base 唯一数据库身份、ACL 与下游隔离合同 |
 | [docs/project-bootstrap.md](docs/project-bootstrap.md) | 下游一键初始化、专属数据库与验收合同 |
+| [docs/base-update-ledger.md](docs/base-update-ledger.md) | Base 发布节点、下游版本与自动同步历史合同 |

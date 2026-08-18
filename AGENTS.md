@@ -99,12 +99,16 @@ credential, database schema, or external service.
 
 Every change must state why it is reusable by multiple downstream projects.
 Every releasable change must bump `VERSION`, update `CHANGELOG.md`, synchronize
-the frontend package metadata, pass `scripts/check-base-release.py`, and receive
-an immutable `base/vX.Y.Z` Git tag. The release entry must include compatibility,
-migrations, downstream sync commands, conflict hotspots, and rollback.
+the frontend package metadata, add `releases/base-vX.Y.Z.json`, pass
+`scripts/check-base-release.py`, and receive an immutable `base/vX.Y.Z` Git tag.
+Every Manifest must assign stable update-node IDs and list exact scope/files,
+compatibility, migrations, downstream actions, conflict hotspots, verification,
+and rollback. A release without this machine-readable node ledger is incomplete.
 
 Downstream projects update only through the `upstream` remote and a Base release
 tag, preferably with `scripts/sync-base-release.sh`. Never copy random files,
 merge an unversioned Base branch, or silently overwrite product code. Do not
 create a product task, product manifest, or product roadmap in this repo. Product
 work starts only after creating a fork/clone and moving to that repository.
+Every downstream must commit `PROJECT.md` (current Base version/tag/commit and next
+update command) and append every adoption/update to `BASE_UPDATES.md`.

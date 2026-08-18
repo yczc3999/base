@@ -41,8 +41,9 @@ scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 5. 撤销 PUBLIC 和其他普通角色权限，只保留项目 role；
 6. 安装完整 Base schema，运行 SQL migration 与 Alembic；
 7. 写入 Git 忽略且 `0600` 的 `serve/.env`、`admin/.env`；
-8. 生成不含密码、应提交到下游仓库的 `PROJECT.md` 同步账本；
-9. 执行 route check、后端全量测试、前端 lint/build。
+8. 执行 route check、后端全量测试、前端 lint/build；
+9. 验证通过后生成不含密码、应提交到下游仓库的 `PROJECT.md` 当前版本账本，
+   以及包含验证结果的 append-only `BASE_UPDATES.md` 采用历史。
 
 密码不打印、不进入进程参数、不写入 `PROJECT.md` 或 Git 跟踪文件。
 
@@ -66,5 +67,6 @@ scripts/bootstrap-project.sh acme_portal "Acme Portal" --plan
 ## 回滚
 
 首次初始化失败时，只删除本项目生成的 `<project>` database、`<project>_app`
-role、`serve/.env`、`admin/.env` 和 `PROJECT.md`。不得删除或修改
-`base_platform`、其他项目数据库或 Base 发布账本。
+role、`serve/.env` 和 `admin/.env`。`PROJECT.md`、`BASE_UPDATES.md` 仅在确认这是
+失败的首次初始化且尚未提交时删除。不得删除或修改 `base_platform`、其他项目
+数据库或 Base 发布账本。

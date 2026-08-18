@@ -42,3 +42,10 @@ def test_bootstrap_and_base_provision_share_database_core():
         text = (ROOT / relative).read_text(encoding="utf-8")
         assert library in text
         assert "provision_postgres_database" in text
+
+
+def test_bootstrap_initializes_downstream_version_ledgers():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "base-update-ledger.py" in text
+    assert "PROJECT.md" in text
+    assert "BASE_UPDATES.md" in text

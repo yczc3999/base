@@ -104,6 +104,13 @@ entry. Publish it as the immutable tag `base/vX.Y.Z`. Downstream projects keep
 an `upstream` remote and merge only a named Base tag; use
 `scripts/sync-base-release.sh X.Y.Z` and follow `UPSTREAM.md`.
 
+Each Base release also has `releases/base-vX.Y.Z.json`, whose stable update nodes
+are the machine-readable authority for what changed. Downstream `PROJECT.md`
+records the exact current Base version/tag/commit and next command;
+`BASE_UPDATES.md` is the append-only detailed adoption/update history. The sync
+script prints the cross-version plan before merge and commits code plus both
+ledgers atomically.
+
 ## Clean repository rule
 
 The repository must remain free of product names, product business terminology,

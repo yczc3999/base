@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "version": "2.0.0",
+  "tag": "base/v2.0.0",
+  "released_at": "2026-08-17",
+  "semver": "MAJOR",
+  "summary": "集中式 Route Registry 替代 Controller 分散路由",
+  "nodes": [
+    {
+      "id": "routes.central-registry",
+      "kind": "added",
+      "scope": "backend/routes",
+      "summary": "新增 Laravel 风格 group/middleware/verb/CRUD 路由注册表与全局目录",
+      "files": ["serve/app/routes/", "serve/app/main.py", "serve/app/deps.py"]
+    },
+    {
+      "id": "controllers.remove-router-declarations",
+      "kind": "removed",
+      "scope": "backend/controllers",
+      "summary": "Controller 移除 APIRouter、装饰器与 include_router，只保留 Handler",
+      "files": ["serve/app/controllers/", "serve/tests/test_controller_route_boundary.py"]
+    },
+    {
+      "id": "routes.contract-gates",
+      "kind": "added",
+      "scope": "tests",
+      "summary": "冻结 159 个 HTTP 契约并增加路由冲突、权限和边界校验",
+      "files": ["serve/tests/fixtures/route-catalog-v1.json", "serve/tests/test_route_registry.py"]
+    }
+  ],
+  "compatibility": ["HTTP 契约保持 159/159 一致。", "直接导入 Controller router 对象的 Python 集成不兼容。"],
+  "migrations": ["无数据库 migration。"],
+  "downstream_actions": ["下游路由改由 app.routes.register_routes(app) 或 routes/extensions.py 注册。"],
+  "conflict_hotspots": ["serve/app/main.py", "serve/app/controllers/", "serve/app/routes/", "serve/app/deps.py"],
+  "verify": ["python -m app.routes check", "运行路由专项测试与后端全量测试。"],
+  "rollback": ["整体回退 Registry、Controller 和入口切换，不保留半切换状态。"]
+}

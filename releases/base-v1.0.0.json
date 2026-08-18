@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "version": "1.0.0",
+  "tag": "base/v1.0.0",
+  "released_at": "2026-08-17",
+  "semver": "MAJOR",
+  "summary": "建立产品无关、可供下游复用的 Base Platform 基线",
+  "nodes": [
+    {
+      "id": "foundation.clean-baseline",
+      "kind": "changed",
+      "scope": "repository",
+      "summary": "清除产品实现并固定 Base/Fork 仓库边界",
+      "files": ["AGENTS.md", "CLAUDE.md", "README.md"]
+    },
+    {
+      "id": "release.version-contract",
+      "kind": "added",
+      "scope": "release",
+      "summary": "建立 VERSION、CHANGELOG、UPSTREAM 与不可变 Base tag 合同",
+      "files": ["VERSION", "CHANGELOG.md", "UPSTREAM.md", "scripts/check-base-release.py"]
+    }
+  ],
+  "compatibility": ["首个干净 Base 基线；具体产品必须在独立 Fork/Clone 中开发。"],
+  "migrations": ["无产品数据库迁移；下游使用自己的数据库执行 Base schema 初始化。"],
+  "downstream_actions": ["创建独立项目仓库并保留 Base upstream remote。"],
+  "conflict_hotspots": ["首次采用，无历史 Base 合并冲突。"],
+  "verify": ["运行后端测试、前端 lint/build、release check 和 git diff check。"],
+  "rollback": ["回到采用 Base 前的下游分支或提交，不移动 Base tag。"]
+}

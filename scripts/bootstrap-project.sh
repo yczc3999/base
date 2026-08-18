@@ -63,6 +63,30 @@ project_url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || \
   'downstream projects may not use the Base database identity'
 
 command -v python3 >/dev/null || db_die 'python3 is required'
+base_version="$(tr -d '\n' < "$ROOT/VERSION")"
+if [[ -f "$ROOT/PROJECT.md" ]]; then
+  PROJECT_FILE="$ROOT/PROJECT.md" PROJECT_SLUG_VALUE="$project_slug" \
+    DB_NAME_VALUE="$db_name" DB_ROLE_VALUE="$db_role" BASE_VERSION_VALUE="$base_version" \
+    python3 - <<'PY'
+import os
+from pathlib import Path
+
+values = {}
+for line in Path(os.environ["PROJECT_FILE"]).read_text().splitlines():
+    if "=" in line and not line.lstrip().startswith("#"):
+        key, value = line.split("=", 1)
+        values[key] = value
+expected = {
+    "PROJECT_SLUG": os.environ["PROJECT_SLUG_VALUE"],
+    "DATABASE_NAME": os.environ["DB_NAME_VALUE"],
+    "DATABASE_USER": os.environ["DB_ROLE_VALUE"],
+    "BASE_UPSTREAM_VERSION": os.environ["BASE_VERSION_VALUE"],
+}
+if any(values.get(key) != value for key, value in expected.items()):
+    raise SystemExit("PROJECT.md identity/version does not match this bootstrap invocation")
+PY
+fi
+
 command -v npm >/dev/null || db_die 'npm is required'
 command -v openssl >/dev/null || db_die 'openssl is required'
 
@@ -106,19 +130,6 @@ path.write_text("\n".join(lines) + "\n")
 path.chmod(0o600)
 PY
 
-base_version="$(tr -d '\n' < "$ROOT/VERSION")"
-bootstrapped_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-cat > "$ROOT/PROJECT.md" <<EOF
-# $project_name
-
-PROJECT_SLUG=$project_slug
-DATABASE_NAME=$db_name
-DATABASE_USER=$db_role
-BASE_UPSTREAM_VERSION=$base_version
-BASE_UPSTREAM_TAG=base/v$base_version
-BOOTSTRAPPED_AT=$bootstrapped_at
-EOF
-
 if [[ "${BOOTSTRAP_SKIP_CHECKS:-0}" != 1 ]]; then
   (
     cd "$ROOT/serve"
@@ -130,6 +141,23 @@ if [[ "${BOOTSTRAP_SKIP_CHECKS:-0}" != 1 ]]; then
     npm run lint
     npm run build
   )
+fi
+
+if [[ ! -f "$ROOT/PROJECT.md" ]]; then
+  verification_status="PASS: route check, backend pytest, frontend lint/build"
+  if [[ "${BOOTSTRAP_SKIP_CHECKS:-0}" == 1 ]]; then
+    verification_status="SKIPPED: BOOTSTRAP_SKIP_CHECKS=1 fixture/CI mode"
+  fi
+  python3 "$ROOT/scripts/base-update-ledger.py" initialize \
+    --project "$ROOT/PROJECT.md" \
+    --history "$ROOT/BASE_UPDATES.md" \
+    --project-slug "$project_slug" \
+    --project-name "$project_name" \
+    --db-name "$db_name" \
+    --db-user "$db_role" \
+    --version "$base_version" \
+    --commit "$(git -C "$ROOT" rev-parse HEAD)" \
+    --verification-status "$verification_status"
 fi
 
 printf 'Project ready: %s; database=%s@%s; ledger=PROJECT.md\n' \

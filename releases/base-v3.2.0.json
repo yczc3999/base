@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "version": "3.2.0",
+  "tag": "base/v3.2.0",
+  "released_at": "2026-08-18",
+  "semver": "MINOR",
+  "summary": "Base 发布节点清单与下游自动升级账本",
+  "nodes": [
+    {
+      "id": "release.machine-readable-manifests",
+      "kind": "added",
+      "scope": "release",
+      "summary": "每个 Base tag 配套机器可读 Manifest，逐节点标记范围、文件、迁移、动作和回滚",
+      "files": ["releases/", "scripts/check-base-release.py"]
+    },
+    {
+      "id": "downstream.update-plan-ledger",
+      "kind": "added",
+      "scope": "downstream",
+      "summary": "自动生成跨版本更新计划、精确文件差异、当前版本与 append-only 同步历史",
+      "files": ["scripts/base-update-ledger.py", "PROJECT.md", "BASE_UPDATES.md"]
+    },
+    {
+      "id": "downstream.atomic-sync-record",
+      "kind": "changed",
+      "scope": "scripts",
+      "summary": "Base tag 合并与 PROJECT/BASE_UPDATES 记录进入同一 merge commit",
+      "files": ["scripts/sync-base-release.sh", "scripts/bootstrap-project.sh"]
+    },
+    {
+      "id": "release.ledger-contract-tests",
+      "kind": "added",
+      "scope": "tests/docs",
+      "summary": "新增 Manifest/下游账本校验、更新方案测试与操作合同",
+      "files": ["serve/tests/test_base_update_ledger.py", "serve/docs/base-update-ledger.md"]
+    }
+  ],
+  "compatibility": ["向后兼容；现有下游首次同步 v3.2.0 时建立 PROJECT.md/BASE_UPDATES.md 后即可进入自动账本流程。"],
+  "migrations": ["无数据库 migration。"],
+  "downstream_actions": ["确认 PROJECT.md 记录当前 Base 版本。", "以后只使用 scripts/sync-base-release.sh TARGET_VERSION 更新。"],
+  "conflict_hotspots": ["scripts/sync-base-release.sh", "scripts/bootstrap-project.sh", "PROJECT.md", "BASE_UPDATES.md", "CHANGELOG.md"],
+  "verify": ["python3 scripts/base-update-ledger.py validate --current 3.2.0", "运行 release check、pytest、lint/build。"],
+  "rollback": ["同步未提交时执行 git merge --abort；已提交时 revert 同步 merge commit，保留 append-only 历史并追加回滚记录。"]
+}

@@ -69,8 +69,25 @@ def main() -> int:
     if boundary.returncode:
         fail(boundary.stderr.strip() or "database boundary check failed")
 
+    manifests = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/base-update-ledger.py"),
+            "validate",
+            "--current",
+            version,
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if manifests.returncode:
+        fail(manifests.stderr.strip() or "release manifest check failed")
+
     print(f"Base release metadata OK: v{version}")
     print(boundary.stdout.strip())
+    print(manifests.stdout.strip())
     print(f"Expected immutable tag: {tag}")
     return 0
 

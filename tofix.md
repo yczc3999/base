@@ -313,3 +313,64 @@ vue-router 的 `redirect` 在**解析阶段**就完成重定向, **跳过目标�
 ### 最后更新
 
 2026-08-18T03:15:00-04:00
+
+---
+
+## ✅ [已完成 2026-08-18] Base 发布节点与下游版本/更新历史账本
+
+### 目标与用户价值
+
+让 Base 每次发布明确回答“更新了哪些节点、哪些文件、是否迁移、怎么验证和回滚”；
+让所有 Fork/基座项目明确回答“当前用了哪个 Base 版本、历次更新了什么、下次如何
+计划和执行更新”，避免凭记忆合并或代码版本与账本脱节。
+
+### 已确认决定
+
+- 每个 Base 版本必须有 `releases/base-vX.Y.Z.json`，更新 node 使用稳定 ID。
+- `CHANGELOG.md` 是人读发布账本；Manifest 是机器同步权威，两者版本/日期必须一致。
+- 下游提交 `PROJECT.md` 保存当前 Base version/tag/commit 和下一次计划/更新命令。
+- 下游提交 append-only `BASE_UPDATES.md`，逐次记录跨版本节点、精确 Base 文件 diff、
+  迁移、动作、冲突点、验证、回滚、时间和 commit。
+- sync 在合并前打印计划，合并后执行完整工程验证，并将 Base 代码与含 PASS 证据的
+  两个账本原子提交；冲突/验证失败发生在账本写入前，commit hook 失败后可从
+  merge 前 HEAD 重建账本继续，不重复历史。
+
+### 精确文件
+
+- 发布 Manifest：`releases/base-v*.json`
+- 计划/记录 CLI：`scripts/base-update-ledger.py`
+- 原子同步：`scripts/sync-base-release.sh`
+- 新项目接入：`scripts/bootstrap-project.sh`
+- 发布门禁：`scripts/check-base-release.py`
+- 合同：`serve/docs/base-update-ledger.md`、`UPSTREAM.md`
+- 测试：`serve/tests/test_base_update_ledger.py`
+
+### 验收证据
+
+- 回填 v1.0.0、v2.0.0、v3.0.0、v3.1.0，并新增 v3.2.0 Manifest；5/5 schema 校验通过。
+- v3.0.0→v3.2.0 计划正确聚合 v3.1.0/v3.2.0 的全部 update nodes。
+- 临时下游账本完成 initialize→record，`PROJECT.md` 从 v3.1.0 更新到 v3.2.0，
+  `BASE_UPDATES.md` 保留初次采用和升级两段历史，版本不匹配时明确阻断。
+- 账本/同步/bootstrap/database boundary 专项 13 passed；`--continue` 固定从
+  merge 前 HEAD 读取源版本并重建派生账本，覆盖重复执行边界。
+- 新项目 bootstrap 同时生成 PROJECT/BASE_UPDATES；标准 sync 使用 no-commit merge
+  后记录账本并形成单一 merge commit。
+- 隔离 Git upstream/downstream 模拟 v3.2.0→v3.3.0：更新前准确列出 synthetic node
+  与 tag 间文件 diff；合并后 302 tests、lint 0 errors、build PASS；最终 merge commit
+  有 2 个 parent，目标 tag 为祖先，PROJECT 更新到 v3.3.0，BASE_UPDATES 追加 PASS 证据。
+- 另以一次性 commit hook 故障中断同步，再用 `--continue` 完整复验：最终仅有 1 条
+  v3.2.0→v3.3.0 历史、2-parent merge、目标 tag 祖先关系成立、工作树完全干净。
+- 当前 Base：302 passed；路由 `159 http routes, 1 mounts`；前端 lint 0 errors
+  （2 个既有 warning）/build PASS；release/Manifest/boundary/diff checks PASS。
+- 完整工程验证与模拟下游 tag 更新结果记录在 `base/v3.2.0`。
+
+### 阻塞、非目标与回滚
+
+- 当前阻塞：无。
+- 非目标：不把下游产品变更写入 Base Manifest，不在账本保存 secret。
+- v3.1.0 下游首次合并 v3.2.0 需按合同执行一次 record + amend；后续全自动。
+- 同步未提交执行 `git merge --abort`；已提交 revert 整个 merge，并追加回滚历史。
+
+### 最后更新
+
+2026-08-18T03:41:04-04:00

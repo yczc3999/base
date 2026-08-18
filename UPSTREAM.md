@@ -24,9 +24,11 @@ git remote -v
 2. 按 SemVer 更新 `VERSION`。
 3. 同步 `admin/package.json` 和 `admin/package-lock.json` 的版本号。
 4. 在 `CHANGELOG.md` 新增同版本条目，写清变更、兼容性、迁移、同步和回滚。
-5. 运行 `python3 scripts/check-base-release.py`、后端测试、前端 lint/build 和 `git diff --check`。
-6. 创建发布提交：`release(base): vX.Y.Z`。
-7. 创建不可变 tag：`base/vX.Y.Z`，再推送提交和 tag。
+5. 新增 `releases/base-vX.Y.Z.json`，为每个更新节点记录稳定 ID、类型、范围、
+   文件、兼容性、迁移、下游动作、冲突点、验证与回滚。
+6. 运行 `python3 scripts/check-base-release.py`、后端测试、前端 lint/build 和 `git diff --check`。
+7. 创建发布提交：`release(base): vX.Y.Z`。
+8. 创建不可变 tag：`base/vX.Y.Z`，再推送提交和 tag。
 
 禁止复用旧版本号、移动已发布 tag、覆盖已发布账本或只提交代码不写升级说明。
 
@@ -51,8 +53,16 @@ git fetch upstream --tags --prune
 脚本会检查工作树、获取 tag，并执行：
 
 ```bash
-git merge --no-ff refs/tags/base/vX.Y.Z
+git merge --no-ff --no-commit refs/tags/base/vX.Y.Z
 ```
+
+合并前脚本从目标 tag 聚合 CURRENT→TARGET 之间的所有 Manifest，打印“更新哪些”；
+随后执行 route/pytest/lint/build/diff 验证；通过后更新 `PROJECT.md`、追加含 PASS
+证据的 `BASE_UPDATES.md`，把代码合并和版本账本放进同一个 merge commit。
+发生冲突或验证失败时在账本变更前停止，可修复或 `git merge --abort`。
+冲突或验证/commit hook 问题修复并 `git add` 后使用
+`./scripts/sync-base-release.sh X.Y.Z --continue`；脚本会核对 MERGE_HEAD、从 merge
+前的 HEAD 恢复源版本依据、避免重复历史、重新验证并完成同一个原子 merge commit。
 
 没有脚本时使用上面的命令手动同步。同步完成后：
 
@@ -79,7 +89,8 @@ scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 ```
 
 脚本自动完成项目专属 database/role、环境文件、依赖、迁移、测试/build 和
-`PROJECT.md` 账本。已存在的下游项目继续使用自己的数据库，不重新 bootstrap。
+`PROJECT.md` 当前账本和 `BASE_UPDATES.md` 追加历史。已存在的下游项目继续使用
+自己的数据库，不重新 bootstrap。
 
 ## 5. 迁移与冲突
 
@@ -94,9 +105,15 @@ scripts/bootstrap-project.sh PROJECT_SLUG "Project Name"
 每个下游项目应在自己的仓库记录：
 
 ```text
-BASE_UPSTREAM_VERSION=3.1.0
-BASE_UPSTREAM_TAG=base/v3.1.0
-BASE_SYNCED_AT=YYYY-MM-DDTHH:MM:SSZ
+BASE_UPSTREAM_VERSION=3.2.0
+BASE_UPSTREAM_TAG=base/v3.2.0
+BASE_UPSTREAM_COMMIT=<immutable commit>
+BASE_LAST_SYNCED_AT=YYYY-MM-DDTHH:MM:SSZ
+BASE_UPDATE_LEDGER=BASE_UPDATES.md
+BASE_NEXT_UPDATE_COMMAND=./scripts/sync-base-release.sh <TARGET_VERSION>
 ```
 
-完成一次同步后更新这三项。下游项目不得修改 Base 的 `CHANGELOG.md`；产品变更写入下游自己的账本。
+`PROJECT.md` 保存当前状态；每次采用/同步的全部节点、文件差异、迁移、动作、验证
+和回滚追加到 `BASE_UPDATES.md`。下游不得修改 Base 的 `CHANGELOG.md`；产品变更写入
+下游自己的产品账本。完整格式和 v3.2.0 首次接入见
+`serve/docs/base-update-ledger.md`。
