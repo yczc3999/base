@@ -127,6 +127,9 @@ campaign CLI 和 GitHub 下游 receiver，并以 `base/v3.3.1` PATCH 补全 rece
 第四条 evidence schema 已由 `base/v3.4.0` 发布；operator 示例的 workflow-path
 权限修正已由 `base/v3.4.1` 发布并完成三项目真实试点：
 
+通用后台 `CrudTable` 的 select 多选契约已由 `base/v3.5.0` 发布：搜索和表单字段均支持
+`multiple: true`、数组值归一化、筛选/标签折叠及统一选中背景与对号；该版本不涉及数据库。
+
 - `scripts/schemas/base-downstream-registry.schema.json`：声明式下游项目清单。
   `repository` 固定为 GitHub canonical `OWNER/REPO`，OWNER/REPO 分别最长
   39/100，禁止 URL、credential、`.git` 后缀、嵌套路径和换行；

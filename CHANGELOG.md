@@ -15,6 +15,45 @@
 
 暂无。
 
+## [3.5.0] - 2026-08-19
+
+### 变更范围
+
+- 为通用 `CrudTable` 增加 select 多选契约：搜索字段和表单字段均支持
+  `multiple: true`，值统一为数组，空值统一为 `[]`，单值兼容归一化为单元素数组。
+- 多选默认启用筛选与标签折叠，并支持 `filterable`、`collapseTags`、
+  `collapseTagsTooltip`、`maxCollapseTags`、`clearable` 配置覆盖。
+- Base 统一提供多选下拉的选中背景色与对号；页面不再需要各自补选中样式。
+- 修正文档中已声明但此前未被类型和渲染器实现的 `multiple: true` 配置。
+
+### 兼容性（MINOR）
+
+- 无 HTTP API、数据库 schema、数据库 migration 或运行时数据迁移。
+- 未配置 `multiple` 的既有单选 select 行为保持不变。
+- 既有下游若已写入 `multiple: true`，同步后该配置正式生效；提交接口应接收数组值，
+  并按业务字段确认空数组的语义。
+
+### 下游操作
+
+- 下游从不可变 `base/v3.5.0` 同步 Base；无需手工改动既有单选字段。
+- 需要多选的页面将字段声明为 `type: 'select', multiple: true`，提供 `options`；
+  可按数据量选择性开启 `filterable` 或覆盖标签折叠参数。
+- 页面自定义的多选下拉可逐步迁移到 `CrudTable` 契约；非 CRUD 领域组件继续使用自身协议。
+
+### 验证
+
+- `cd admin && npm run lint`（既有 v-html 警告，无错误）。
+- `cd admin && npm run build`。
+- `python3 scripts/check-base-release.py`。
+- `python3 scripts/check-database-boundary.py`。
+- `git diff --check`。
+
+### 回滚
+
+- 未合并下游升级使用同步脚本的 `git merge --abort`；已合并则 revert 对应 Base 同步 merge commit。
+- 不移动 `base/v3.4.1` 或其他已发布 tag；修正继续使用新版本号发布。
+- 无数据库或运行时数据需要回滚。
+
 ## [3.4.1] - 2026-08-18
 
 ### 变更范围

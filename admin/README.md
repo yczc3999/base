@@ -36,7 +36,7 @@
 
 | 组件 | 功能 |
 |------|------|
-| **CrudTable** | 声明式 CRUD：columns + formFields → 搜索 + 表格 + 分页 + 弹窗 + 权限 + 导出 |
+| **CrudTable** | 声明式 CRUD：columns + formFields → 搜索 + 表格 + 分页 + 弹窗 + 权限 + 导出；select 支持统一多选 |
 | **SettingForm** | 多服务商配置：Tab 页切换，single（互斥）/ parallel（并行）两种模式 |
 | **ImageUpload** | 图片上传：单/多模式，可打开 FileManager 选择 |
 | **FileUpload** | 文件上传：拖拽区 + 进度条 + 文件列表 |

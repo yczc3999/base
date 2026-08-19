@@ -29,7 +29,22 @@ export interface CrudColumn {
 }
 
 /** 搜索字段配置 */
-export interface SearchField {
+export interface SelectFieldOptions {
+  /** 是否允许选择多个值（仅 type=select 生效） */
+  multiple?: boolean
+  /** 是否允许输入筛选选项；多选默认开启 */
+  filterable?: boolean
+  /** 是否将已选项折叠为标签；多选默认开启 */
+  collapseTags?: boolean
+  /** 鼠标悬停折叠标签时显示完整列表 */
+  collapseTagsTooltip?: boolean
+  /** 折叠标签时最多直接显示的数量 */
+  maxCollapseTags?: number
+  /** 是否显示清空按钮 */
+  clearable?: boolean
+}
+
+export interface SearchField extends SelectFieldOptions {
   /** 字段名 */
   field: string
   /** 显示名 */
@@ -43,7 +58,7 @@ export interface SearchField {
 }
 
 /** 表单字段配置 */
-export interface FormField {
+export interface FormField extends SelectFieldOptions {
   /** 字段名 */
   field: string
   /** 显示名 */

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "version": "3.5.0",
+  "tag": "base/v3.5.0",
+  "released_at": "2026-08-19",
+  "semver": "MINOR",
+  "summary": "为通用 CrudTable 补齐搜索与表单 select 多选能力及统一选中态",
+  "nodes": [
+    {
+      "id": "admin.crud-multiselect-contract",
+      "kind": "added",
+      "scope": "admin/crud",
+      "summary": "新增搜索/表单 select 的 multiple 数组契约、默认交互和统一选中反馈",
+      "files": [
+        "admin/src/components/CrudTable/types.ts",
+        "admin/src/components/CrudTable/index.vue",
+        "admin/src/styles/element-override.scss",
+        "admin/docs/frontend-design.md",
+        "admin/README.md"
+      ]
+    },
+    {
+      "id": "release.v3-5-0-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.5.0 版本、前端包元数据、变更账本、上游合同与机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "UPSTREAM.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.5.0.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "MINOR：无 HTTP API、数据库 schema、数据库 migration 或运行时数据迁移。",
+    "未配置 multiple 的既有单选 select 行为保持不变；配置 multiple=true 的字段从本版本起正式按数组处理。",
+    "仅 CrudTable 的 select 字段获得该通用契约，FileManager、上传组件和非 CRUD 页面组件协议不变。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无运行时数据迁移。"
+  ],
+  "downstream_actions": [
+    "从不可变 base/v3.5.0 同步；既有单选字段无需改动。",
+    "需要多选的 CrudTable 搜索/表单字段声明 type=select、multiple=true 并提供 options；后端按数组接收值。",
+    "可逐步删除 CrudTable 页面自定义的多选下拉配置和选中样式，保留非 CRUD 领域组件的专用多选协议。"
+  ],
+  "conflict_hotspots": [
+    "admin/src/components/CrudTable/types.ts",
+    "admin/src/components/CrudTable/index.vue",
+    "admin/src/styles/element-override.scss",
+    "admin/docs/frontend-design.md"
+  ],
+  "verify": [
+    "cd admin && npm run lint",
+    "cd admin && npm run build",
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "git diff --check"
+  ],
+  "rollback": [
+    "未合并下游升级使用 git merge --abort；已合并则 revert 对应 Base 同步 merge commit。",
+    "不移动 base/v3.4.1 或其他已发布 tag；修正继续使用新版本号发布。",
+    "无数据库或运行时数据需要回滚。"
+  ]
+}

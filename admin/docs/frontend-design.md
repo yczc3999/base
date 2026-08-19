@@ -184,6 +184,7 @@ interface RequestOptions {
 - 工具栏按钮（新增 / 删除 / 导出，根据 perms 自动显隐）
 - 行操作按钮（编辑 / 删除 / 详情，根据 perms 自动显隐）
 - 批量选择 + 批量删除
+- select 搜索/表单字段支持 `multiple: true` 多选，统一数组值、筛选、折叠标签和选中对号
 - keyword 搜索
 
 ### 3.3 CrudForm — 声明式表单（弹窗 / 页面双模式）
@@ -198,9 +199,13 @@ const formFields = [
   { field: 'phone', label: '手机号', type: 'input' },
   { field: 'status', label: '状态', type: 'switch', default: 1 },
   { field: 'avatar', label: '头像', type: 'imageUpload' },
-  { field: 'role_ids', label: '角色', type: 'select', multiple: true, dictApi: roleApi.getList },
+  { field: 'role_ids', label: '角色', type: 'select', multiple: true, filterable: true, options: roleOptions },
 ]
 ```
+
+`multiple: true` 只适用于 `type: 'select'`。搜索字段和表单字段均遵循同一份契约：值始终为数组，
+多选默认启用筛选与标签折叠；可用 `filterable`、`collapseTags`、`collapseTagsTooltip`、
+`maxCollapseTags` 覆盖默认行为。下拉选项的选中状态统一显示背景色与对号，页面不需要自行补选中样式。
 
 **双模式切换：**
 ```vue

@@ -24,10 +24,16 @@
           />
           <el-select
             v-else-if="f.type === 'select'"
-            v-model="crud.queryParams.filters[f.field]"
+            :model-value="getSelectValue(crud.queryParams.filters, f)"
             :placeholder="f.placeholder || `请选择${f.label}`"
-            clearable
+            :multiple="f.multiple"
+            :filterable="f.filterable ?? f.multiple"
+            :collapse-tags="f.collapseTags ?? f.multiple"
+            :collapse-tags-tooltip="f.collapseTagsTooltip ?? f.multiple"
+            :max-collapse-tags="f.maxCollapseTags"
+            :clearable="f.clearable ?? true"
             style="width: 150px"
+            @update:model-value="setSelectValue(crud.queryParams.filters, f, $event)"
           >
             <el-option
               v-for="opt in f.options"
@@ -196,6 +202,7 @@
       :title="crud.formMode.value === 'create' ? '新增' : '编辑'"
       :width="dialogWidth"
       destroy-on-close
+      @open="normalizeMultiSelectFormData"
     >
       <el-form
         ref="formRef"
@@ -257,10 +264,17 @@
             <!-- 下拉选择 -->
             <el-select
               v-else-if="f.type === 'select'"
-              v-model="crud.formData.value[f.field]"
+              :model-value="getSelectValue(crud.formData.value, f)"
               :placeholder="f.placeholder || `请选择${f.label}`"
+              :multiple="f.multiple"
+              :filterable="f.filterable ?? f.multiple"
+              :collapse-tags="f.collapseTags ?? f.multiple"
+              :collapse-tags-tooltip="f.collapseTagsTooltip ?? f.multiple"
+              :max-collapse-tags="f.maxCollapseTags"
+              :clearable="f.clearable ?? true"
               :disabled="f.disabled"
               style="width: 100%"
+              @update:model-value="setSelectValue(crud.formData.value, f, $event)"
             >
               <el-option
                 v-for="opt in f.options"
@@ -415,6 +429,33 @@ const importVisible = ref(false)
 function handleExportClick() {
   const filters = Object.keys(crud.queryParams.filters).length ? crud.queryParams.filters : undefined
   exportState.handleExport(filters)
+}
+
+type SelectField = SearchField | FormField
+
+function getSelectValue(source: Record<string, any>, field: SelectField) {
+  const value = source[field.field]
+  if (!field.multiple) return value
+  if (Array.isArray(value)) return value
+  return value == null ? [] : [value]
+}
+
+function setSelectValue(source: Record<string, any>, field: SelectField, value: any) {
+  source[field.field] = field.multiple
+    ? (Array.isArray(value) ? value : value == null ? [] : [value])
+    : value
+}
+
+function normalizeMultiSelectFormData() {
+  for (const field of props.formFields) {
+    if (field.type !== 'select' || !field.multiple) continue
+    const value = crud.formData.value[field.field]
+    if (value == null) {
+      crud.formData.value[field.field] = Array.isArray(field.default) ? [...field.default] : []
+    } else if (!Array.isArray(value)) {
+      crud.formData.value[field.field] = [value]
+    }
+  }
 }
 
 // 根据模式过滤表单字段

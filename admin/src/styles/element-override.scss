@@ -158,6 +158,46 @@
   box-shadow: none !important;
   border: 1px solid var(--border) !important;
 }
+// 通用多选下拉：所有 Element Plus multiple 下拉统一使用色块和对号，避免长列表中无法确认选择状态。
+// Element Plus 在 .el-select-dropdown.is-multiple 上标记多选，不要求页面额外挂载样式类。
+.el-select-dropdown.is-multiple {
+  .el-select-dropdown__item {
+    position: relative;
+
+    &.is-selected {
+      padding-right: 36px !important;
+      color: var(--primary) !important;
+      background: var(--primary-bg) !important;
+      font-weight: 600 !important;
+
+      &::after {
+        content: '✓';
+        position: absolute;
+        top: 0;
+        right: 12px;
+        width: auto !important;
+        height: auto !important;
+        background: none !important;
+        border: 0 !important;
+        transform: none !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+        color: var(--primary);
+        font-size: var(--text-base);
+        font-weight: 700;
+        line-height: 34px;
+      }
+    }
+
+    &.is-hovering {
+      background: var(--bg-input) !important;
+    }
+
+    &.is-selected.is-hovering {
+      background: var(--primary-light-7) !important;
+    }
+  }
+}
 // 压掉 Element Plus popper 默认阴影变量（tooltip/popover/datepicker 等全部弹层）
 :root {
   --el-box-shadow-light: none !important;
