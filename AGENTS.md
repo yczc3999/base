@@ -71,6 +71,14 @@ duplication.
 - This Base checkout uses only `base_platform_app@base_platform`; the password
   exists only in ignored `serve/.env`. Downstream projects must use their own
   database and role and must never connect to, migrate, or test this database.
+- Redis is also a runtime boundary: before a downstream project's first start,
+  assign it a dedicated Redis instance or an explicit non-shared `REDIS_DB`.
+  `APP_NAME` must be that project's stable slug and is the namespace prefix for
+  queues, locks, tokens and other keyed state. Do not make `APP_NAME` random;
+  randomness belongs only after this stable prefix. A dedicated DB/instance is
+  still required because generic cache helpers may accept legacy raw keys.
+  Record the chosen Redis boundary only in the downstream's ignored runtime
+  configuration and deployment ledger, never in Base defaults.
 - Keep secrets server-side and out of source, fixtures, logs, and generic settings.
 - Keep migrations transactional, preconditioned, and reversible.
 - Keep authorization on the server; hiding a frontend control is not authorization.

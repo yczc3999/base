@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "version": "3.5.1",
+  "tag": "base/v3.5.1",
+  "released_at": "2026-08-19",
+  "semver": "PATCH",
+  "summary": "明确下游 Redis 运行时隔离和稳定 key 命名空间合同",
+  "nodes": [
+    {
+      "id": "runtime.redis-downstream-boundary",
+      "kind": "changed",
+      "scope": "runtime/boundary",
+      "summary": "下游必须使用专属 Redis DB/实例及稳定 APP_NAME 前缀，兼容性原始 cache key 不得跨项目共享",
+      "files": [
+        "AGENTS.md",
+        "serve/docs/database-boundary.md",
+        "UPSTREAM.md"
+      ]
+    },
+    {
+      "id": "release.v3-5-1-metadata",
+      "kind": "changed",
+      "scope": "release",
+      "summary": "同步 v3.5.1 版本、变更账本和机器可读发布节点",
+      "files": [
+        "VERSION",
+        "CHANGELOG.md",
+        "UPSTREAM.md",
+        "admin/package.json",
+        "admin/package-lock.json",
+        "releases/base-v3.5.1.json"
+      ]
+    }
+  ],
+  "compatibility": [
+    "PATCH：无 HTTP API、数据库 schema、数据库 migration 或运行时数据迁移。",
+    "既有运行时行为不变；共享 Redis DB 的下游应在下一次部署前完成隔离。"
+  ],
+  "migrations": [
+    "无数据库 migration。",
+    "无自动运行时数据迁移；Redis 边界由下游部署配置完成。"
+  ],
+  "downstream_actions": [
+    "从不可变 base/v3.5.1 同步。",
+    "在下游忽略的运行时配置和部署账本中指定专属 Redis 实例或 REDIS_DB。",
+    "将 APP_NAME 保持为稳定项目 slug，验证队列、锁、token 与缓存处于专属边界。"
+  ],
+  "conflict_hotspots": [
+    "AGENTS.md",
+    "serve/docs/database-boundary.md",
+    "UPSTREAM.md"
+  ],
+  "verify": [
+    "python3 scripts/check-base-release.py",
+    "python3 scripts/check-database-boundary.py",
+    "git diff --check"
+  ],
+  "rollback": [
+    "未合并下游升级使用 git merge --abort；已合并则 revert 对应 Base 同步 merge commit。",
+    "不移动 base/v3.5.0 或其他已发布 tag；运行时 Redis 数据不自动迁回共享 DB。"
+  ]
+}

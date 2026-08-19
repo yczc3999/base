@@ -82,6 +82,10 @@ Base 仓库本机保留的 `base_platform_app@base_platform` 不随代码同步�
 `base_platform_app`。下游严禁运行 `scripts/provision-base-database.sh`，因为该脚本
 只服务于 Base 仓库自身的固定数据库身份。
 
+Redis 同样必须隔离：下游在首次启动前选择专属 Redis 实例或显式专属 `REDIS_DB`，并将
+`APP_NAME` 设为稳定项目 slug。不要复用 Base 的 DB 0，也不要用随机 `APP_NAME`；完整
+运行时边界见 `serve/docs/database-boundary.md`。
+
 新 Fork/Clone 完成 `upstream` remote 后，使用：
 
 ```bash
@@ -129,6 +133,10 @@ campaign CLI 和 GitHub 下游 receiver，并以 `base/v3.3.1` PATCH 补全 rece
 
 通用后台 `CrudTable` 的 select 多选契约已由 `base/v3.5.0` 发布：搜索和表单字段均支持
 `multiple: true`、数组值归一化、筛选/标签折叠及统一选中背景与对号；该版本不涉及数据库。
+
+下游 Redis 隔离合同已由 `base/v3.5.1` 发布：每个项目使用专属 Redis 实例或显式专属
+`REDIS_DB`，并以稳定项目 slug 作为 `APP_NAME` 前缀；原始 cache key 的兼容调用不能
+作为跨项目共享 Redis DB 的依据。
 
 - `scripts/schemas/base-downstream-registry.schema.json`：声明式下游项目清单。
   `repository` 固定为 GitHub canonical `OWNER/REPO`，OWNER/REPO 分别最长

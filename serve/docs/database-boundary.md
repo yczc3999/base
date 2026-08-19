@@ -48,6 +48,19 @@ Base 相同的通用建库内核，但强制拒绝 Base 保留标识，并生成
 Base 发布只交付 schema/migration 代码。下游同步 Base tag 时，仅在下游项目专属
 数据库执行迁移；不得把 Base 本机数据库作为共享库或验证库。
 
+## Redis 强制隔离
+
+Redis 与 PostgreSQL 一样属于运行时数据边界。下游 Fork/Clone 在首次启动前必须选择
+专属 Redis 实例，或在共享实例中分配明确且不与 Base/其他项目共用的 `REDIS_DB`；不得
+沿用 Base 默认的 DB 0。`APP_NAME` 必须设置为稳定的项目 slug，并作为队列、任务锁、
+令牌和其他 namespaced key 的前缀。不得把 `APP_NAME` 设为随机值，否则重启后无法定位
+既有任务和会话。
+
+前缀不是隔离的替代品：通用缓存层允许部分兼容性调用传入原始 key。因此专属 DB/实例和
+稳定前缀必须同时存在。随机 nonce、token 或对象 ID 只能出现在稳定项目此前缀之后。
+Redis host、DB 编号和密码只保存在下游项目的忽略运行时配置与部署账本中，不能写回
+Base 的 `.env.example` 或通用文档示例。
+
 ## 建库、验证与回滚
 
 ```bash

@@ -15,6 +15,34 @@
 
 暂无。
 
+## [3.5.1] - 2026-08-19
+
+### 变更范围
+
+- 明确下游 Redis 隔离合同：每个项目必须使用专属 Redis 实例或显式专属 `REDIS_DB`，并以稳定项目 slug 作为 `APP_NAME` key 前缀。
+- 说明通用缓存层存在兼容性原始 key 调用，因此只依赖前缀不足以隔离项目；随机值只能位于稳定此前缀之后。
+
+### 兼容性（PATCH）
+
+- 无 HTTP API、数据库 schema、数据库 migration 或运行时数据迁移。
+- 现有下游运行时行为不变；共享 Redis DB 0 的项目需在下一次部署前迁移到专属 DB/实例并重新登录。
+
+### 下游操作
+
+- 在下游忽略的运行时 `.env` 与部署账本中指定专属 `REDIS_DB` 或 Redis 实例；不要将实际 host、DB 编号或密码提交到 Base。
+- 将 `APP_NAME` 固定为项目 slug，验证队列、任务锁、登录令牌和缓存均落在该项目 Redis 边界。
+
+### 验证
+
+- `python3 scripts/check-base-release.py`。
+- `python3 scripts/check-database-boundary.py`。
+- `git diff --check`。
+
+### 回滚
+
+- 代码账本可 revert 到先前 Base tag；不会自动将下游运行时数据迁回共享 Redis。
+- 已迁移的下游保持专属 Redis DB/实例；如需回退部署，使用同一运行时边界重新启动。
+
 ## [3.5.0] - 2026-08-19
 
 ### 变更范围
